@@ -35,6 +35,7 @@ talking back to a running agent. It sits on the [`kan`](../../kan) (memory) and
 | [`04-relocalizer.md`](04-relocalizer.md) | the built algorithm: states, thresholds, tests, roadmap |
 | [`05-views-ux.md`](05-views-ux.md) | the four views + responsive layout + navigation |
 | [`06-roadmap.md`](06-roadmap.md) | phasing P0–P3, open decisions, naming lineage |
+| [`07-first-steps.md`](07-first-steps.md) | **fresh-session handoff** — orient fast + the ordered next dev steps |
 
 ## The load-bearing principle
 
