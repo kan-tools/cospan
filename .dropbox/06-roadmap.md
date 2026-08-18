@@ -4,7 +4,7 @@
 
 | phase | ships | notes |
 |-------|-------|-------|
-| **P0** | watch+fold read path; claims browser + `day status` render; single repo | proves the L1/L2 spine against a real `.kan/log`. Wire in the built re-localizer. |
+| **P0** | ✅ *first slice shipped*: `cospan watch-repo <path>` — poll `.kan/log/HEAD`, fold `kan status --json` + `day status` into a dashboard (process position · agents/handoff sessions · claims-by-subject). Shells to the binaries; plain-text render. | proves the L1→L2→render spine against a real `.kan/log`. TODO next: per-subject claim drill-in, then move to ratatui + link kan as a library. |
 | **P1** | editor view (live, tree-sitter) + comment view + sidecar store + `cospan mcp` **read** | the core doc-comment round trip |
 | **P2** | multi-worktree session picker + harness view + **constructed** agent hierarchy; `cospan mcp` **write** + agent-to-agent comments | flat `stream_list` fallback if hierarchy held |
 | **P3** | control plane over the command bus (spawn/kill/redirect); kan-mirrored comments; swap constructed hierarchy for ADR-75 vouching claims when kan ships them | the "control later" half |

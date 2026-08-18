@@ -15,8 +15,13 @@ talking back to a running agent. It sits on the [`kan`](../../kan) (memory) and
 
 - ✅ **Re-localizer core built** — the one load-bearing algorithm. 6/6 tests,
   working `demo` + `watch` modes. See [`04-relocalizer.md`](04-relocalizer.md).
-- ⬜ Everything else is designed here, not yet built: TUI, kan/day wiring, views,
-  comment sidecar + MCP server, dispatch hierarchy.
+- ✅ **P0 watch-and-fold spine built** — `cospan watch-repo <path>` polls
+  `.kan/log/HEAD` and redraws a dashboard (day process position + agents/handoff
+  sessions + claims-by-subject) from the real `kan`/`day` binaries. Runs against
+  `~/code/kan-tools/day` today. Shells out (library upgrade later); plain-text
+  render (ratatui later).
+- ⬜ Still designed-not-built: the ratatui TUI + four real views, comment sidecar
+  store + MCP server, editor, constructed dispatch hierarchy.
 - Reserved sibling crate names published: `lan`, `yoneda`.
 
 ## Read in this order
