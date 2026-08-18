@@ -8,19 +8,30 @@
 //!       Pin a comment to line N (1-based) of <file>, then poll the file and
 //!       re-localize live as you (or an agent) edit it. Ctrl-C to stop.
 //!
+//!   cospan watch-repo <path> [--once]
+//!       P0 spine: watch a kan/day repo's `.kan/log/HEAD` and, on every change,
+//!       re-fold and redraw a dashboard — process position (day), sessions, and a
+//!       claims-by-subject summary (kan). `--once` renders a single frame.
+//!
 //! Poll, don't subscribe: the whole kan/day substrate has no push channel, so the
 //! live tool watches by polling mtime + re-folding. This mirrors that.
 
+use cospan::substrate::{self, Dashboard};
 use cospan::{relocalize, Anchor, Localization, State};
-use std::time::Duration;
+use std::path::{Path, PathBuf};
+use std::time::{Duration, SystemTime};
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     match args.first().map(String::as_str) {
         Some("demo") => demo(),
         Some("watch") => watch(&args[1..]),
+        Some("watch-repo") => watch_repo(&args[1..]),
         _ => {
-            eprintln!("usage:\n  cospan demo\n  cospan watch <file> --line <N> [--ctx <N>]");
+            eprintln!(
+                "usage:\n  cospan demo\n  cospan watch <file> --line <N> [--ctx <N>]\n  \
+                 cospan watch-repo <path> [--once]"
+            );
             std::process::exit(2);
         }
     }
@@ -123,4 +134,87 @@ fn watch(args: &[String]) {
         }
         std::thread::sleep(Duration::from_millis(250));
     }
+}
+
+// --- P0 spine: watch a kan/day repo and redraw on change --------------------
+
+fn watch_repo(args: &[String]) {
+    let repo: PathBuf = args
+        .iter()
+        .find(|a| !a.starts_with("--"))
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("."));
+    let once = args.iter().any(|a| a == "--once");
+
+    if !repo.join(".kan").is_dir() {
+        eprintln!("warning: {} has no .kan/ — is this a kan repo?", repo.display());
+    }
+    let head = repo.join(".kan/log/HEAD");
+
+    let mut last: Option<SystemTime> = None;
+    let mut tick: u64 = 0;
+    loop {
+        let m = std::fs::metadata(&head).and_then(|md| md.modified()).ok();
+        if last.is_none() || m != last {
+            tick += 1;
+            let dash = substrate::collect(&repo);
+            render_dashboard(&repo, &dash, tick);
+            last = m;
+        }
+        if once {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(500));
+    }
+}
+
+fn render_dashboard(repo: &Path, dash: &Dashboard, tick: u64) {
+    print!("\x1b[2J\x1b[H"); // clear screen + cursor home
+    let rule = "─".repeat(64);
+
+    println!("cospan · {}  (fold #{tick})", repo.display());
+    println!("{rule}");
+
+    // Process position — day's own honest, ambiguity-preserving text.
+    println!("PROCESS  (day status)");
+    match &dash.day_status {
+        Some(text) if !text.is_empty() => {
+            for line in text.lines().take(14) {
+                println!("  {line}");
+            }
+            if text.lines().count() > 14 {
+                println!("  … (run `day status` for the full picture)");
+            }
+        }
+        _ => println!("  (unavailable)"),
+    }
+    println!("{rule}");
+
+    // Sessions — the flat agents/handoff registry (no hierarchy yet; see 02).
+    let sessions = dash.sessions();
+    println!("SESSIONS  (agents/handoff · {} live)", sessions.len());
+    for s in &sessions {
+        let short = s.name.trim_start_matches("agents/handoff/");
+        println!("  · {:<28} [{}]", short, s.state);
+    }
+    if sessions.is_empty() {
+        println!("  (none)");
+    }
+    println!("{rule}");
+
+    // Claims by subject namespace.
+    println!("CLAIMS  ({} subjects total)", dash.subjects.len());
+    for (ns, n) in dash.namespace_counts() {
+        println!("  {n:>4}  {ns}");
+    }
+
+    if !dash.errors.is_empty() {
+        println!("{rule}");
+        println!("NOTES");
+        for e in &dash.errors {
+            println!("  ! {e}");
+        }
+    }
+    println!("{rule}");
+    println!("watching {} · Ctrl-C to stop", repo.join(".kan/log/HEAD").display());
 }

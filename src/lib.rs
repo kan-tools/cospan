@@ -22,6 +22,8 @@
 //! optimisation, diffs against the *last-seen* contents rather than re-searching
 //! the whole file — but the fingerprint search below is the source of truth.
 
+pub mod substrate;
+
 /// A comment's fingerprint into a file: the text it sits on, plus the context
 /// that disambiguates it from lookalikes elsewhere in the file.
 #[derive(Clone, Debug)]
