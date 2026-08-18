@@ -27,10 +27,11 @@ fn main() {
         Some("demo") => demo(),
         Some("watch") => watch(&args[1..]),
         Some("watch-repo") => watch_repo(&args[1..]),
+        Some("subject") => subject_cmd(&args[1..]),
         _ => {
             eprintln!(
                 "usage:\n  cospan demo\n  cospan watch <file> --line <N> [--ctx <N>]\n  \
-                 cospan watch-repo <path> [--once]"
+                 cospan watch-repo <path> [--once]\n  cospan subject <repo> <subject>"
             );
             std::process::exit(2);
         }
@@ -133,6 +134,46 @@ fn watch(args: &[String]) {
             }
         }
         std::thread::sleep(Duration::from_millis(250));
+    }
+}
+
+// --- Per-subject claim drill-in: one-shot read of a subject's live claims ---
+
+fn subject_cmd(args: &[String]) {
+    let (repo, subject) = match (args.first(), args.get(1)) {
+        (Some(r), Some(s)) => (PathBuf::from(r), s.clone()),
+        _ => {
+            eprintln!("usage: cospan subject <repo> <subject>");
+            std::process::exit(2);
+        }
+    };
+
+    let claims = match substrate::subject_claims(&repo, &subject) {
+        Ok(claims) => claims,
+        Err(e) => {
+            eprintln!("cospan: {subject}: {e}");
+            std::process::exit(1);
+        }
+    };
+
+    if claims.is_empty() {
+        // kan's model has no "unknown subject": a subject is its claims, so an
+        // empty fold is indistinguishable from a never-used name. Say so rather
+        // than let a bare "0 claims" read as a lookup that succeeded emptily.
+        println!("{subject}  (no live claims — unused, or all claims retracted)");
+        return;
+    }
+
+    let plural = if claims.len() == 1 { "" } else { "s" };
+    println!("{subject}  ({} live claim{plural})", claims.len());
+    for c in &claims {
+        println!(
+            "  {:<11} {:<8}  {:<16}  {}",
+            c.kind,
+            c.short_author(),
+            c.recorded_utc(),
+            c.summary()
+        );
     }
 }
 
