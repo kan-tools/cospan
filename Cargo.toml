@@ -1,0 +1,15 @@
+[package]
+name = "cospan"
+version = "0.0.1-dev"
+edition = "2021"
+description = "A viewer that glues many local agent sessions, files, and kan claims into one apex view — plus a drift-tracking comment layer for AI-driven dev."
+license = "MIT OR Apache-2.0"
+publish = false  # not for crates.io yet; this is the working tool
+
+[[bin]]
+name = "cospan"
+path = "src/main.rs"
+
+[lib]
+name = "cospan"
+path = "src/lib.rs"
