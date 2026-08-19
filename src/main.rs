@@ -16,11 +16,12 @@
 //! Poll, don't subscribe: the whole kan/day substrate has no push channel, so the
 //! live tool watches by polling mtime + re-folding. This mirrors that.
 
+use cospan::comments::{self, Author, Comment, StoredAnchor};
 use cospan::substrate;
 use cospan::tui;
 use cospan::{relocalize, Anchor, Localization, State};
 use std::path::PathBuf;
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -29,10 +30,14 @@ fn main() {
         Some("watch") => watch(&args[1..]),
         Some("watch-repo") => watch_repo(&args[1..]),
         Some("subject") => subject_cmd(&args[1..]),
+        Some("comment") => comment_cmd(&args[1..]),
+        Some("comments") => comments_cmd(&args[1..]),
         _ => {
             eprintln!(
                 "usage:\n  cospan demo\n  cospan watch <file> --line <N> [--ctx <N>]\n  \
-                 cospan watch-repo <path> [--once]\n  cospan subject <repo> <subject>"
+                 cospan watch-repo <path> [--once]\n  cospan subject <repo> <subject>\n  \
+                 cospan comment add <file> --line <N> [--ctx <C>] <body>\n  \
+                 cospan comments <file>"
             );
             std::process::exit(2);
         }
@@ -51,6 +56,146 @@ fn render(loc: &Localization) -> String {
         None => "—".to_string(),
     };
     format!("{tag} {where_:<12} conf {:.2}", loc.confidence)
+}
+
+fn first_line(s: &str) -> &str {
+    s.lines().next().unwrap_or("")
+}
+
+// --- Comment sidecar: drop a comment, and list comments with live state ------
+
+fn comment_cmd(args: &[String]) {
+    if args.first().map(String::as_str) != Some("add") {
+        eprintln!("usage: cospan comment add <file> --line <N> [--ctx <C>] <body>");
+        std::process::exit(2);
+    }
+    let rest = &args[1..];
+
+    // Single pass: --line/--ctx consume their value; the first remaining bare
+    // token is the file, the rest join into the body. (Parsing the file after
+    // consuming flag values is what stops `--line 1 file` reading "1" as the
+    // file.)
+    let mut line = 1usize;
+    let mut ctx = 2usize;
+    let mut file: Option<String> = None;
+    let mut body_parts: Vec<&str> = Vec::new();
+    let mut i = 0;
+    while i < rest.len() {
+        match rest[i].as_str() {
+            "--line" => {
+                line = rest.get(i + 1).and_then(|s| s.parse().ok()).unwrap_or(1);
+                i += 2;
+            }
+            "--ctx" => {
+                ctx = rest.get(i + 1).and_then(|s| s.parse().ok()).unwrap_or(2);
+                i += 2;
+            }
+            other if file.is_none() => {
+                file = Some(other.to_string());
+                i += 1;
+            }
+            other => {
+                body_parts.push(other);
+                i += 1;
+            }
+        }
+    }
+    let file = match file {
+        Some(f) => f,
+        None => {
+            eprintln!("comment add needs a <file>");
+            std::process::exit(2);
+        }
+    };
+    let body = body_parts.join(" ");
+    if body.is_empty() {
+        eprintln!("comment add needs a <body>");
+        std::process::exit(2);
+    }
+
+    let content = match std::fs::read_to_string(&file) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("cospan: cannot read {file}: {e}");
+            std::process::exit(1);
+        }
+    };
+
+    let path = comments::sidecar_path(&file);
+    let mut existing = match comments::load(&path) {
+        Ok(v) => v,
+        Err(e) => {
+            eprintln!("cospan: {e}");
+            std::process::exit(1);
+        }
+    };
+
+    let anchor = StoredAnchor::capture(&content, line.saturating_sub(1), ctx);
+    let created_at = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_micros() as i64)
+        .unwrap_or(0);
+    let comment = Comment {
+        // created_at plus a per-file counter, so two comments added in the same
+        // microsecond still get distinct ids.
+        id: format!("c_{created_at}_{}", existing.len()),
+        anchor,
+        body,
+        author: Author {
+            who: "human".into(),
+            id: std::env::var("USER").unwrap_or_else(|_| "local".into()),
+        },
+        created_at,
+        resolved: false,
+    };
+
+    let loc = relocalize(&comment.anchor.as_anchor(), &content);
+    existing.push(comment.clone());
+    if let Err(e) = comments::save(&path, &existing) {
+        eprintln!("cospan: {e}");
+        std::process::exit(1);
+    }
+    println!("added {} → {}", comment.id, path.display());
+    println!("  {}  {}", render(&loc), first_line(&comment.body));
+}
+
+fn comments_cmd(args: &[String]) {
+    let file = match args.first() {
+        Some(f) => f.clone(),
+        None => {
+            eprintln!("usage: cospan comments <file>");
+            std::process::exit(2);
+        }
+    };
+    let content = match std::fs::read_to_string(&file) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("cospan: cannot read {file}: {e}");
+            std::process::exit(1);
+        }
+    };
+    let path = comments::sidecar_path(&file);
+    let mut records = match comments::load(&path) {
+        Ok(v) => v,
+        Err(e) => {
+            eprintln!("cospan: {e}");
+            std::process::exit(1);
+        }
+    };
+    if records.is_empty() {
+        println!("{file}: (no comments)");
+        return;
+    }
+    let plural = if records.len() == 1 { "" } else { "s" };
+    println!("{file}  ({} comment{plural})", records.len());
+    for c in &mut records {
+        let loc = comments::localize_and_update(c, &content);
+        println!("  {}  {}  {}", render(&loc), first_line(&c.body), c.id);
+    }
+    // Persist the updated last-seen anchors.
+    if let Err(e) = comments::save(&path, &records) {
+        eprintln!("cospan: {e}");
+    }
 }
 
 fn demo() {

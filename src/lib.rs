@@ -22,6 +22,7 @@
 //! optimisation, diffs against the *last-seen* contents rather than re-searching
 //! the whole file — but the fingerprint search below is the source of truth.
 
+pub mod comments;
 pub mod substrate;
 pub mod tui;
 
@@ -50,8 +51,10 @@ impl Anchor {
         let after_end = (line + 1 + ctx).min(lines.len());
         Anchor {
             target: lines.get(line).copied().unwrap_or("").to_string(),
-            before: lines[before_start..line].join("\n"),
-            after: lines[line + 1..after_end].join("\n"),
+            before: lines.get(before_start..line).unwrap_or(&[]).join("\n"),
+            // `line + 1` can exceed `after_end` on a 0- or 1-line file; a checked
+            // slice yields an empty context rather than panicking.
+            after: lines.get(line + 1..after_end).unwrap_or(&[]).join("\n"),
             line_hint: line,
         }
     }

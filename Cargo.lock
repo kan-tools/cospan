@@ -157,6 +157,7 @@ version = "0.0.1-alpha.3"
 dependencies = [
  "crossterm",
  "ratatui",
+ "serde",
  "serde_json",
 ]
 
