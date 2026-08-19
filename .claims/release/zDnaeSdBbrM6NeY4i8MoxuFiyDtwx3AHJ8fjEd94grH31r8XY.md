@@ -13,7 +13,7 @@
   ],
   "rev": "223mtffbedd2h",
   "seq": 0,
-  "of": 6,
+  "of": 8,
   "text_len": 236,
   "content": "p2Rib2R5oWZSZXN1bHShZHRleHRgZWNpdGVzgdgqWCUAAXESIKuVWY8LaRhMsfrgFHujE7Ojd2yyBOflibyWUuJsOqAKZmF1dGhvcqJjZGlkeDlkaWQ6a2V5OnpEbmFlU2RCYnJNNk5lWTRpOE1veHVGaXlEdHd4M0FISjhmakVkOTRnckgzMXI4WFllYWdlbnT2Z3N1YmplY3ShZUxvY2FsZ3JlbGVhc2VpYXJ0aWZhY3RzgaFmQ29tbWl0eChlODUwNGRlM2IwMWU1ZjRhMWQ5YjYxNGUzYjg2NDE5MzI5MjNiOGEyaXdvcmtzcGFjZaFpV29ya3NwYWNleEA4MzVmODdhZGU0MGJkYzhkZjIyYzNiYmQyNzhkNTdlMDQwZmFhMDhjYzZlNDE1ZDZiZDAzODRlYjlhN2U1M2Nla3JlY29yZGVkX2F0GwAGWVrOpKOf"
 }
@@ -34,7 +34,7 @@ Cut v0.0.1-alpha.1: first tagged prerelease — the P0 watch-and-fold spine plus
   "cites": [],
   "rev": "223mtffbeidl2",
   "seq": 1,
-  "of": 6,
+  "of": 8,
   "content": "p2Rib2R5oWtQdWJsaWNhdGlvbqFlbGF5ZXJnR2l0VHJlZWVjaXRlc4BmYXV0aG9yomNkaWR4OWRpZDprZXk6ekRuYWVTZEJick02TmVZNGk4TW94dUZpeUR0d3gzQUhKOGZqRWQ5NGdySDMxcjhYWWVhZ2VudPZnc3ViamVjdKFlTG9jYWxncmVsZWFzZWlhcnRpZmFjdHOBoWZDb21taXR4KGU4NTA0ZGUzYjAxZTVmNGExZDliNjE0ZTNiODY0MTkzMjkyM2I4YTJpd29ya3NwYWNloWlXb3Jrc3BhY2V4QDgzNWY4N2FkZTQwYmRjOGRmMjJjM2JiZDI3OGQ1N2UwNDBmYWEwOGNjNmU0MTVkNmJkMDM4NGViOWE3ZTUzY2VrcmVjb3JkZWRfYXQbAAZZWs6nJbw="
 }
 ---
@@ -54,7 +54,7 @@ Cut v0.0.1-alpha.1: first tagged prerelease — the P0 watch-and-fold spine plus
   ],
   "rev": "223mtfl5p6zct",
   "seq": 2,
-  "of": 6,
+  "of": 8,
   "text_len": 208,
   "content": "p2Rib2R5oWZSZXN1bHShZHRleHRgZWNpdGVzgdgqWCUAAXESIHDaEiOqdol2QDb6UqC7XcbNc12HMCqwqEGY/uycz8P/ZmF1dGhvcqJjZGlkeDlkaWQ6a2V5OnpEbmFlU2RCYnJNNk5lWTRpOE1veHVGaXlEdHd4M0FISjhmakVkOTRnckgzMXI4WFllYWdlbnT2Z3N1YmplY3ShZUxvY2FsZ3JlbGVhc2VpYXJ0aWZhY3RzgaFmQ29tbWl0eCgwNWJiZmMwOTc5NzJkNmMwYmFiNjhhZmI4NmQ3MDM2MGY2NmNlMTg5aXdvcmtzcGFjZaFpV29ya3NwYWNleEA4MzVmODdhZGU0MGJkYzhkZjIyYzNiYmQyNzhkNTdlMDQwZmFhMDhjYzZlNDE1ZDZiZDAzODRlYjlhN2U1M2Nla3JlY29yZGVkX2F0GwAGWVxHUnyz"
 }
@@ -75,7 +75,7 @@ Cut v0.0.1-alpha.2: Step 2, the interactive ratatui TUI for watch-repo, reviewed
   "cites": [],
   "rev": "223mtfl5pcrtp",
   "seq": 3,
-  "of": 6,
+  "of": 8,
   "content": "p2Rib2R5oWtQdWJsaWNhdGlvbqFlbGF5ZXJnR2l0VHJlZWVjaXRlc4BmYXV0aG9yomNkaWR4OWRpZDprZXk6ekRuYWVTZEJick02TmVZNGk4TW94dUZpeUR0d3gzQUhKOGZqRWQ5NGdySDMxcjhYWWVhZ2VudPZnc3ViamVjdKFlTG9jYWxncmVsZWFzZWlhcnRpZmFjdHOBoWZDb21taXR4KDA1YmJmYzA5Nzk3MmQ2YzBiYWI2OGFmYjg2ZDcwMzYwZjY2Y2UxODlpd29ya3NwYWNloWlXb3Jrc3BhY2V4QDgzNWY4N2FkZTQwYmRjOGRmMjJjM2JiZDI3OGQ1N2UwNDBmYWEwOGNjNmU0MTVkNmJkMDM4NGViOWE3ZTUzY2VrcmVjb3JkZWRfYXQbAAZZXEdUXtA="
 }
 ---
@@ -95,7 +95,7 @@ Cut v0.0.1-alpha.2: Step 2, the interactive ratatui TUI for watch-repo, reviewed
   ],
   "rev": "223mtgu5nrox6",
   "seq": 4,
-  "of": 6,
+  "of": 8,
   "text_len": 258,
   "content": "p2Rib2R5oWZSZXN1bHShZHRleHRgZWNpdGVzgdgqWCUAAXESIPX+f5Qj6KfTJWt/oeEdKdGXz8oCpgXCQVqzXeLmnn+jZmF1dGhvcqJjZGlkeDlkaWQ6a2V5OnpEbmFlU2RCYnJNNk5lWTRpOE1veHVGaXlEdHd4M0FISjhmakVkOTRnckgzMXI4WFllYWdlbnT2Z3N1YmplY3ShZUxvY2FsZ3JlbGVhc2VpYXJ0aWZhY3RzgaFmQ29tbWl0eCg1YmY1ODQ2ZGYyODFhMDhlNDA5NTQzNGI1MDNhOGRkODI3MGY0ZThiaXdvcmtzcGFjZaFpV29ya3NwYWNleEA4MzVmODdhZGU0MGJkYzhkZjIyYzNiYmQyNzhkNTdlMDQwZmFhMDhjYzZlNDE1ZDZiZDAzODRlYjlhN2U1M2Nla3JlY29yZGVkX2F0GwAGWWaHO9Mo"
 }
@@ -116,7 +116,48 @@ Cut v0.0.1-alpha.3: Step 3, the two-pane subject list + claim detail browser, re
   "cites": [],
   "rev": "223mtgu5nvycl",
   "seq": 5,
-  "of": 6,
+  "of": 8,
   "content": "p2Rib2R5oWtQdWJsaWNhdGlvbqFlbGF5ZXJnR2l0VHJlZWVjaXRlc4BmYXV0aG9yomNkaWR4OWRpZDprZXk6ekRuYWVTZEJick02TmVZNGk4TW94dUZpeUR0d3gzQUhKOGZqRWQ5NGdySDMxcjhYWWVhZ2VudPZnc3ViamVjdKFlTG9jYWxncmVsZWFzZWlhcnRpZmFjdHOBoWZDb21taXR4KDViZjU4NDZkZjI4MWEwOGU0MDk1NDM0YjUwM2E4ZGQ4MjcwZjRlOGJpd29ya3NwYWNloWlXb3Jrc3BhY2V4QDgzNWY4N2FkZTQwYmRjOGRmMjJjM2JiZDI3OGQ1N2UwNDBmYWEwOGNjNmU0MTVkNmJkMDM4NGViOWE3ZTUzY2VrcmVjb3JkZWRfYXQbAAZZZoc9+Kw="
+}
+---
+***8<***
+---
+{
+  "v": 3,
+  "cid": "bafyreibjhfmw3b2mvlwnkwkjhoobxw5ec2fejplyxvm7udzi5vb2txlbp4",
+  "sig": "9eea27673418dba787c11d2c3d80812095aa6276125192c3fa2999368598afab5679591f0ba3f723b93765a01ba5d96dc9fc16803f97a39d62cf081dc5498a50",
+  "author": "did:key:zDnaeSdBbrM6NeY4i8MoxuFiyDtwx3AHJ8fjEd94grH31r8XY",
+  "subject": {
+    "local": "release"
+  },
+  "kind": "result",
+  "cites": [
+    "bafyreibbfc5plbqtg23mkskm3fjc2dbdwbwkiblkcwws7nql4bqvmae32m"
+  ],
+  "rev": "223mtgvm6jwj5",
+  "seq": 6,
+  "of": 8,
+  "text_len": 301,
+  "content": "p2Rib2R5oWZSZXN1bHShZHRleHRgZWNpdGVzgdgqWCUAAXESICEouvWGEza2xUlM2VItDCOwbKQFahWtL7YL4GFWAJvTZmF1dGhvcqJjZGlkeDlkaWQ6a2V5OnpEbmFlU2RCYnJNNk5lWTRpOE1veHVGaXlEdHd4M0FISjhmakVkOTRnckgzMXI4WFllYWdlbnT2Z3N1YmplY3ShZUxvY2FsZ3JlbGVhc2VpYXJ0aWZhY3RzgaFmQ29tbWl0eChhNjg0MmRjNGIxZjJiZjExNTEyZTE4NjdlMjI3YWU5ZjMyNmQyMzhjaXdvcmtzcGFjZaFpV29ya3NwYWNleEA4MzVmODdhZGU0MGJkYzhkZjIyYzNiYmQyNzhkNTdlMDQwZmFhMDhjYzZlNDE1ZDZiZDAzODRlYjlhN2U1M2Nla3JlY29yZGVkX2F0GwAGWWbkR/F4"
+}
+---
+
+Cut v0.0.1-alpha.4: Step 4, the ephemeral comment sidecar with live re-localization (P1 begins), reviewed (APPROVE-WITH-FOLLOW-UPS, all six follow-ups addressed). The headless round trip (Anchored/Drifted/Unresolvable) is fully verified — no live-TTY caveat this step. Commits 2c2fee6..HEAD on main.
+***8<***
+---
+{
+  "v": 3,
+  "cid": "bafyreihuev42eqazbgxlspwodofm44lnydparjxabouc5qnens7zm43sza",
+  "sig": "9102a83c726671540a049b47aeccae7639bd8cd6a09611822e3078b27914590829b5e27f70f73b942db59a3833c63e285c875badb98706437306a11bfd338c84",
+  "author": "did:key:zDnaeSdBbrM6NeY4i8MoxuFiyDtwx3AHJ8fjEd94grH31r8XY",
+  "subject": {
+    "local": "release"
+  },
+  "kind": "publication",
+  "cites": [],
+  "rev": "223mtgvm6owl7",
+  "seq": 7,
+  "of": 8,
+  "content": "p2Rib2R5oWtQdWJsaWNhdGlvbqFlbGF5ZXJnR2l0VHJlZWVjaXRlc4BmYXV0aG9yomNkaWR4OWRpZDprZXk6ekRuYWVTZEJick02TmVZNGk4TW94dUZpeUR0d3gzQUhKOGZqRWQ5NGdySDMxcjhYWWVhZ2VudPZnc3ViamVjdKFlTG9jYWxncmVsZWFzZWlhcnRpZmFjdHOBoWZDb21taXR4KGE2ODQyZGM0YjFmMmJmMTE1MTJlMTg2N2UyMjdhZTlmMzI2ZDIzOGNpd29ya3NwYWNloWlXb3Jrc3BhY2V4QDgzNWY4N2FkZTQwYmRjOGRmMjJjM2JiZDI3OGQ1N2UwNDBmYWEwOGNjNmU0MTVkNmJkMDM4NGViOWE3ZTUzY2VrcmVjb3JkZWRfYXQbAAZZZuRKcbo="
 }
 ---
