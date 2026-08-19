@@ -1,6 +1,6 @@
 [package]
 name = "cospan"
-version = "0.0.1-alpha.5"
+version = "0.0.1-alpha.6"
 edition = "2021"
 description = "A viewer that glues many local agent sessions, files, and kan claims into one apex view — plus a drift-tracking comment layer for AI-driven dev."
 license = "MIT OR Apache-2.0"
