@@ -11,6 +11,7 @@
 
 use serde_json::Value;
 use std::cmp::Ordering;
+use std::collections::HashMap;
 use std::path::Path;
 use std::process::Command;
 
@@ -144,6 +145,12 @@ pub struct Claim {
     pub recorded_at: Option<i64>,
     pub text: Option<String>,
     pub title: Option<String>,
+    /// Artifact anchors as kan renders them, e.g. `Commit("…")`.
+    pub artifacts: Vec<String>,
+    /// CIDs this claim cites (empty when it cites nothing).
+    pub cites: Vec<String>,
+    /// The CID this claim supersedes/retracts, if any (e.g. a `Retraction`).
+    pub supersedes: Option<String>,
 }
 
 impl Claim {
@@ -158,6 +165,12 @@ impl Claim {
     /// quoted `title`, else a kind label — so a payload-less claim is never
     /// rendered blank.
     pub fn summary(&self) -> String {
+        // A retraction has no text of its own; show what it acted on.
+        if self.kind == "Retraction" {
+            if let Some(target) = &self.supersedes {
+                return format!("retracts {}", short_cid(target));
+            }
+        }
         if let Some(line) = self
             .text
             .as_deref()
@@ -243,7 +256,234 @@ fn claim_from_value(v: &Value) -> Claim {
         recorded_at: v.get("recorded_at").and_then(Value::as_i64),
         text: opt_str_at(v, "text"),
         title: opt_str_at(v, "title"),
+        artifacts: str_array_at(v, "artifacts"),
+        cites: str_array_at(v, "cites"),
+        supersedes: opt_str_at(v, "supersedes"),
     }
+}
+
+fn str_array_at(v: &Value, key: &str) -> Vec<String> {
+    v.get(key)
+        .and_then(Value::as_array)
+        .map(|a| {
+            a.iter()
+                .filter_map(|x| x.as_str().map(str::to_string))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// A kan CID in the project's compact display form: `@` + the seven characters
+/// after the shared `bafyrei` prefix + `…` (e.g. `@ctf6g6f…`). A CID without the
+/// prefix falls back to `@` + its first seven characters + `…`
+/// (subject `cid-shortcut-notation`).
+pub fn short_cid(cid: &str) -> String {
+    let rest = cid.strip_prefix("bafyrei").unwrap_or(cid);
+    let take: String = rest.chars().take(7).collect();
+    format!("@{take}…")
+}
+
+/// Fold every subject's live claims into a `cid -> Claim` map, so a cited CID can
+/// be resolved to its claim across subjects. Reads `kan show --all --json`, whose
+/// claims are nested under `subjects[].claims[]` (not the top-level `claims`), in
+/// one process spawn (kan#123).
+pub fn claim_index(repo: &Path) -> Result<HashMap<String, Claim>, String> {
+    let out = Command::new("kan")
+        .args(["show", "--all", "--json"])
+        .current_dir(repo)
+        .output()
+        .map_err(|e| format!("spawn failed: {e}"))?;
+    if !out.status.success() {
+        return Err(String::from_utf8_lossy(&out.stderr).trim().to_string());
+    }
+    let json: Value = serde_json::from_slice(&out.stdout).map_err(|e| e.to_string())?;
+    Ok(index_from_all_json(&json))
+}
+
+/// Build the `cid -> Claim` map from an `--all`-shaped payload. Split out so it
+/// is unit-testable without shelling out.
+fn index_from_all_json(json: &Value) -> HashMap<String, Claim> {
+    let mut map = HashMap::new();
+    if let Some(subjects) = json.get("subjects").and_then(Value::as_array) {
+        for s in subjects {
+            if let Some(claims) = s.get("claims").and_then(Value::as_array) {
+                for c in claims {
+                    let claim = claim_from_value(c);
+                    map.insert(claim.cid.clone(), claim);
+                }
+            }
+        }
+    }
+    map
+}
+
+// --- The declared process structure: atoms, teloi, tensions ------------------
+
+/// Return the JSON body of a fenced ```` ```<name> ```` block in `text`, or None.
+/// The fence must start a line and the name must end that line, so `day-atom`
+/// never matches a longer `day-atomx` or a ```` ``` ```` appearing mid-prose.
+pub fn extract_fenced<'a>(text: &'a str, name: &str) -> Option<&'a str> {
+    let fence = format!("```{name}");
+    let mut from = 0;
+    loop {
+        let idx = from + text[from..].find(&fence)?;
+        let at_line_start = idx == 0 || text.as_bytes()[idx - 1] == b'\n';
+        let after = &text[idx + fence.len()..];
+        let name_ends_line = after.starts_with('\n') || after.starts_with('\r');
+        if at_line_start && name_ends_line {
+            let body_start = after.find('\n')? + 1;
+            let body = &after[body_start..];
+            let end = body.find("```")?;
+            return Some(body[..end].trim());
+        }
+        from = idx + fence.len();
+    }
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Atom {
+    pub slug: String,
+    pub inputs: Vec<String>,
+    pub outputs: Vec<String>,
+    pub next: Vec<String>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct TelosView {
+    pub slug: String,
+    pub title: String,
+    pub statement: String,
+    pub witnesses: Vec<String>,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct ProcessSnapshot {
+    pub atoms: Vec<Atom>,
+    pub teloi: Vec<TelosView>,
+    pub tensions: Vec<String>,
+}
+
+/// Fold the declared atoms, teloi, and tensions from `kan show --all --json`.
+pub fn process_snapshot(repo: &Path) -> Result<ProcessSnapshot, String> {
+    let out = Command::new("kan")
+        .args(["show", "--all", "--json"])
+        .current_dir(repo)
+        .output()
+        .map_err(|e| format!("spawn failed: {e}"))?;
+    if !out.status.success() {
+        return Err(String::from_utf8_lossy(&out.stderr).trim().to_string());
+    }
+    let json: Value = serde_json::from_slice(&out.stdout).map_err(|e| e.to_string())?;
+    Ok(snapshot_from_all_json(&json))
+}
+
+/// Parse a `ProcessSnapshot` from an `--all`-shaped payload. Split out so it is
+/// unit-testable without shelling out.
+fn snapshot_from_all_json(json: &Value) -> ProcessSnapshot {
+    let mut snap = ProcessSnapshot::default();
+    let Some(subjects) = json.get("subjects").and_then(Value::as_array) else {
+        return snap;
+    };
+    for s in subjects {
+        let name = str_at(s, "subject");
+        let claims: Vec<Claim> = s
+            .get("claims")
+            .and_then(Value::as_array)
+            .map(|a| a.iter().map(claim_from_value).collect())
+            .unwrap_or_default();
+
+        if let Some(slug) = name.strip_prefix("atom/") {
+            if let Some(atom) = parse_atom(slug, &claims) {
+                snap.atoms.push(atom);
+            }
+        } else if let Some(slug) = name.strip_prefix("telos/") {
+            snap.teloi.push(parse_telos(slug, &claims));
+        } else if name.starts_with("tension/") {
+            if let Some(t) = parse_tension(&claims) {
+                snap.tensions.push(t);
+            }
+        }
+    }
+    snap.atoms.sort_by(|a, b| a.slug.cmp(&b.slug));
+    snap.teloi.sort_by(|a, b| a.slug.cmp(&b.slug));
+    snap.tensions.sort();
+    snap
+}
+
+/// The body of the newest claim carrying a `name` fenced block, if any.
+fn newest_block(claims: &[Claim], name: &str) -> Option<String> {
+    claims
+        .iter()
+        .filter_map(|c| {
+            c.text
+                .as_deref()
+                .and_then(|t| extract_fenced(t, name))
+                .map(|b| (c.recorded_at.unwrap_or(0), b.to_string()))
+        })
+        .max_by_key(|(ts, _)| *ts)
+        .map(|(_, b)| b)
+}
+
+fn parse_atom(slug: &str, claims: &[Claim]) -> Option<Atom> {
+    let j: Value = serde_json::from_str(&newest_block(claims, "day-atom")?).ok()?;
+    Some(Atom {
+        slug: slug.to_string(),
+        inputs: str_array_at(&j, "in"),
+        outputs: str_array_at(&j, "out"),
+        next: str_array_at(&j, "next"),
+    })
+}
+
+fn parse_telos(slug: &str, claims: &[Claim]) -> TelosView {
+    let title = claims
+        .iter()
+        .find(|c| c.kind == "Subject")
+        .and_then(|c| c.title.clone())
+        .unwrap_or_default();
+    let statement = claims
+        .iter()
+        .filter(|c| c.kind == "Decision")
+        .max_by_key(|c| c.recorded_at.unwrap_or(0))
+        .and_then(|c| c.text.as_deref())
+        .and_then(|t| t.lines().find(|l| !l.trim().is_empty()))
+        .unwrap_or("")
+        .to_string();
+    let witnesses = newest_block(claims, "day-telos")
+        .and_then(|b| serde_json::from_str::<Value>(&b).ok())
+        .map(|j| flatten_witnesses(&j))
+        .unwrap_or_default();
+    TelosView {
+        slug: slug.to_string(),
+        title,
+        statement,
+        witnesses,
+    }
+}
+
+/// Flatten a `day-telos` witnesses list; an alternative group (a nested array)
+/// joins with `|`.
+fn flatten_witnesses(j: &Value) -> Vec<String> {
+    let mut out = Vec::new();
+    if let Some(ws) = j.get("witnesses").and_then(Value::as_array) {
+        for w in ws {
+            if let Some(s) = w.as_str() {
+                out.push(s.to_string());
+            } else if let Some(a) = w.as_array() {
+                let any: Vec<String> = a
+                    .iter()
+                    .filter_map(|x| x.as_str().map(str::to_string))
+                    .collect();
+                out.push(any.join("|"));
+            }
+        }
+    }
+    out
+}
+
+fn parse_tension(claims: &[Claim]) -> Option<String> {
+    let j: Value = serde_json::from_str(&newest_block(claims, "day-tension")?).ok()?;
+    let between = str_array_at(&j, "between");
+    (between.len() == 2).then(|| format!("{} <-> {}", between[0], between[1]))
 }
 
 /// Format microseconds-since-epoch as a compact UTC stamp `YYYY-MM-DD HH:MM`.
@@ -380,12 +620,134 @@ mod tests {
             recorded_at: Some(1_787_091_237_989_445),
             text: Some("hello world\nmore".into()),
             title: None,
+            artifacts: vec![],
+            cites: vec![],
+            supersedes: None,
         };
         let line = c.display_line();
         assert!(line.contains("Decision"));
         assert!(line.contains("zABCDEFG")); // short author, did:key: stripped
         assert!(line.contains("2026-08-18 22:13"));
         assert!(line.contains("hello world")); // first line of text
+    }
+
+    #[test]
+    fn claim_parses_artifacts_and_cites() {
+        let json: Value = serde_json::from_str(
+            r#"{"claims":[
+              {"cid":"bafyA","kind":"Decision","subject":"s","author":"did:key:z",
+               "recorded_at":2,"text":"cites something",
+               "artifacts":["Commit(\"abc\")"],"cites":["bafyOLD"]},
+              {"cid":"bafyB","kind":"Subject","subject":"s","author":"did:key:z",
+               "recorded_at":1,"title":"t","artifacts":["Commit(\"abc\")"]}
+            ]}"#,
+        )
+        .unwrap();
+        let cs = claims_from_json(&json);
+        let a = cs.iter().find(|c| c.cid == "bafyA").unwrap();
+        assert_eq!(a.artifacts, vec!["Commit(\"abc\")"]);
+        assert_eq!(a.cites, vec!["bafyOLD"]);
+        let b = cs.iter().find(|c| c.cid == "bafyB").unwrap();
+        assert!(b.cites.is_empty(), "a claim without cites has an empty vec");
+    }
+
+    #[test]
+    fn retraction_summary_names_what_it_retracts() {
+        let json: Value = serde_json::from_str(
+            r#"{"claims":[
+              {"cid":"bafyR","kind":"Retraction","subject":"s","author":"did:key:z",
+               "recorded_at":9,"supersedes":"bafyreiTARGET0"}
+            ]}"#,
+        )
+        .unwrap();
+        let c = &claims_from_json(&json)[0];
+        assert_eq!(c.supersedes.as_deref(), Some("bafyreiTARGET0"));
+        assert!(
+            c.summary().starts_with("retracts @TARGET0"),
+            "{}",
+            c.summary()
+        );
+        assert!(c.display_line().contains("retracts @TARGET0"));
+    }
+
+    #[test]
+    fn short_cid_strips_bafyrei_prefix() {
+        assert_eq!(
+            short_cid("bafyreictf6g6fq4covvtzxwdxahadplft4wu2fx5ohtv7gtnb37jsful3y"),
+            "@ctf6g6f…"
+        );
+        // No bafyrei prefix: fall back to the first seven characters.
+        assert_eq!(short_cid("zXYZ12345678"), "@zXYZ123…");
+    }
+
+    #[test]
+    fn extract_fenced_pulls_a_block_body() {
+        let text = "prose above\n\n```day-atom\n{\"in\":[\"x\"],\"out\":[\"y\"]}\n```\nprose below";
+        assert_eq!(
+            extract_fenced(text, "day-atom"),
+            Some("{\"in\":[\"x\"],\"out\":[\"y\"]}")
+        );
+        assert_eq!(extract_fenced(text, "day-telos"), None);
+        // A longer fence name is not matched by a shorter prefix.
+        assert_eq!(
+            extract_fenced("```day-atomx\n{\"z\":1}\n```", "day-atom"),
+            None
+        );
+        // The real block is still found next to a prefix-colliding one.
+        let both = "```day-atomx\n{\"z\":1}\n```\n```day-atom\n{\"in\":[\"a\"]}\n```";
+        assert_eq!(extract_fenced(both, "day-atom"), Some("{\"in\":[\"a\"]}"));
+    }
+
+    #[test]
+    fn snapshot_folds_atoms_teloi_and_witnesses() {
+        let json: Value = serde_json::from_str(
+            r#"{"subjects":[
+              {"subject":"atom/build","claims":[
+                {"cid":"a1","kind":"Decision","subject":"atom/build","author":"z","recorded_at":2,
+                 "text":"builds\n\n```day-atom\n{\"in\":[\"design-doc\"],\"out\":[\"code-change\"],\"next\":[\"review\"]}\n```"}
+              ]},
+              {"subject":"telos/x","claims":[
+                {"cid":"t1","kind":"Subject","subject":"telos/x","author":"z","recorded_at":1,"title":"Telos X"},
+                {"cid":"t2","kind":"Decision","subject":"telos/x","author":"z","recorded_at":2,
+                 "text":"x holds\n\n```day-telos\n{\"witnesses\":[\"code-change\",[\"a\",\"b\"]]}\n```"}
+              ]},
+              {"subject":"tension/x--y","claims":[
+                {"cid":"n1","kind":"Observation","subject":"tension/x--y","author":"z","recorded_at":1,
+                 "text":"```day-tension\n{\"between\":[\"x\",\"y\"]}\n```"}
+              ]}
+            ]}"#,
+        )
+        .unwrap();
+        let snap = snapshot_from_all_json(&json);
+        assert_eq!(snap.atoms.len(), 1);
+        assert_eq!(snap.atoms[0].slug, "build");
+        assert_eq!(snap.atoms[0].inputs, vec!["design-doc"]);
+        assert_eq!(snap.atoms[0].next, vec!["review"]);
+        assert_eq!(snap.teloi.len(), 1);
+        assert_eq!(snap.teloi[0].title, "Telos X");
+        assert_eq!(snap.teloi[0].witnesses, vec!["code-change", "a|b"]);
+        assert_eq!(snap.tensions, vec!["x <-> y"]);
+    }
+
+    #[test]
+    fn claim_index_folds_the_nested_all_shape() {
+        // `kan show --all --json` nests claims under subjects[].claims[].
+        let json: Value = serde_json::from_str(
+            r#"{"v":1,"subjects":[
+              {"subject":"telos/a","claims":[
+                {"cid":"bafy1","kind":"Decision","subject":"telos/a","author":"did:key:z","recorded_at":1,"text":"one"}
+              ]},
+              {"subject":"telos/b","claims":[
+                {"cid":"bafy2","kind":"Result","subject":"telos/b","author":"did:key:z","recorded_at":2,"text":"two"},
+                {"cid":"bafy3","kind":"Subject","subject":"telos/b","author":"did:key:z","recorded_at":3,"title":"B"}
+              ]}
+            ]}"#,
+        )
+        .unwrap();
+        let idx = index_from_all_json(&json);
+        assert_eq!(idx.len(), 3);
+        assert_eq!(idx.get("bafy2").unwrap().kind, "Result");
+        assert_eq!(idx.get("bafy1").unwrap().subject, "telos/a");
     }
 
     #[test]
