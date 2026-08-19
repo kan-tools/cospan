@@ -11,7 +11,7 @@
   "cites": [],
   "rev": "223mtfagbk4mx",
   "seq": 0,
-  "of": 15,
+  "of": 17,
   "text_len": 197,
   "content": "p2Rib2R5oWtPYnNlcnZhdGlvbqFkdGV4dGBlY2l0ZXOAZmF1dGhvcqJjZGlkeDlkaWQ6a2V5OnpEbmFlU2RCYnJNNk5lWTRpOE1veHVGaXlEdHd4M0FISjhmakVkOTRnckgzMXI4WFllYWdlbnT2Z3N1YmplY3ShZUxvY2FsdWF0b20vZ2VuZXJhdGl2ZS1idWlsZGlhcnRpZmFjdHOBoWZDb21taXR4KGMzMDVkOTE5ZDc1NzgwYWYyOTQzZDdlOGMxMDA0MzA2YTQxMTIyMGFpd29ya3NwYWNloWlXb3Jrc3BhY2V4QDgzNWY4N2FkZTQwYmRjOGRmMjJjM2JiZDI3OGQ1N2UwNDBmYWEwOGNjNmU0MTVkNmJkMDM4NGViOWE3ZTUzY2VrcmVjb3JkZWRfYXQbAAZZWZh4CfE="
 }
@@ -37,7 +37,7 @@ An agent session turns an accepted design into code that builds and tests green.
   "cites": [],
   "rev": "223mtfaruqcn6",
   "seq": 1,
-  "of": 15,
+  "of": 17,
   "content": "p2Rib2R5oWtQdWJsaWNhdGlvbqFlbGF5ZXJnR2l0VHJlZWVjaXRlc4BmYXV0aG9yomNkaWR4OWRpZDprZXk6ekRuYWVTZEJick02TmVZNGk4TW94dUZpeUR0d3gzQUhKOGZqRWQ5NGdySDMxcjhYWWVhZ2VudPZnc3ViamVjdKFlTG9jYWx1YXRvbS9nZW5lcmF0aXZlLWJ1aWxkaWFydGlmYWN0c4GhZkNvbW1pdHgoZjEzMzc2NGMxMTI1OTgwYjYwZmJlZWYzNTFkODNjMWZjZjA3NzE4M2l3b3Jrc3BhY2WhaVdvcmtzcGFjZXhAODM1Zjg3YWRlNDBiZGM4ZGYyMmMzYmJkMjc4ZDU3ZTA0MGZhYTA4Y2M2ZTQxNWQ2YmQwMzg0ZWI5YTdlNTNjZWtyZWNvcmRlZF9hdBsABllZr6sh/A=="
 }
 ---
@@ -57,7 +57,7 @@ An agent session turns an accepted design into code that builds and tests green.
   ],
   "rev": "223mtfco6qppb",
   "seq": 2,
-  "of": 15,
+  "of": 17,
   "text_len": 613,
   "content": "p2Rib2R5oWZSZXN1bHShZHRleHRgZWNpdGVzgdgqWCUAAXESILSMxPQm75MW158RmGlt+lyqySQ2V477QQI3+VGHbd5FZmF1dGhvcqJjZGlkeDlkaWQ6a2V5OnpEbmFlU2RCYnJNNk5lWTRpOE1veHVGaXlEdHd4M0FISjhmakVkOTRnckgzMXI4WFllYWdlbnT2Z3N1YmplY3ShZUxvY2FsdWF0b20vZ2VuZXJhdGl2ZS1idWlsZGlhcnRpZmFjdHOBoWZDb21taXR4KGYxMzM3NjRjMTEyNTk4MGI2MGZiZWVmMzUxZDgzYzFmY2YwNzcxODNpd29ya3NwYWNloWlXb3Jrc3BhY2V4QDgzNWY4N2FkZTQwYmRjOGRmMjJjM2JiZDI3OGQ1N2UwNDBmYWEwOGNjNmU0MTVkNmJkMDM4NGViOWE3ZTUzY2VrcmVjb3JkZWRfYXQbAAZZWihLVjg="
 }
@@ -80,7 +80,7 @@ Built subject-claim-drill-in per .design/subject-claim-drill-in.md: added substr
   ],
   "rev": "223mtfegrdcmt",
   "seq": 3,
-  "of": 15,
+  "of": 17,
   "text_len": 560,
   "content": "p2Rib2R5oWZSZXN1bHShZHRleHRgZWNpdGVzgdgqWCUAAXESIKuVWY8LaRhMsfrgFHujE7Ojd2yyBOflibyWUuJsOqAKZmF1dGhvcqJjZGlkeDlkaWQ6a2V5OnpEbmFlU2RCYnJNNk5lWTRpOE1veHVGaXlEdHd4M0FISjhmakVkOTRnckgzMXI4WFllYWdlbnT2Z3N1YmplY3ShZUxvY2FsdWF0b20vZ2VuZXJhdGl2ZS1idWlsZGlhcnRpZmFjdHOBoWZDb21taXR4KGYxMzM3NjRjMTEyNTk4MGI2MGZiZWVmMzUxZDgzYzFmY2YwNzcxODNpd29ya3NwYWNloWlXb3Jrc3BhY2V4QDgzNWY4N2FkZTQwYmRjOGRmMjJjM2JiZDI3OGQ1N2UwNDBmYWEwOGNjNmU0MTVkNmJkMDM4NGViOWE3ZTUzY2VrcmVjb3JkZWRfYXQbAAZZWpl0oe8="
 }
@@ -103,7 +103,7 @@ Addressed adversarial-review follow-ups 1-3 (verdict APPROVE-WITH-FOLLOW-UPS): (
   ],
   "rev": "223mtfhjvpecb",
   "seq": 4,
-  "of": 15,
+  "of": 17,
   "text_len": 602,
   "content": "p2Rib2R5oWZSZXN1bHShZHRleHRgZWNpdGVzgdgqWCUAAXESIDMQjzpwhF4CURxHQN9DLK43oIEl1OVPPkVwyG1/Gd5yZmF1dGhvcqJjZGlkeDlkaWQ6a2V5OnpEbmFlU2RCYnJNNk5lWTRpOE1veHVGaXlEdHd4M0FISjhmakVkOTRnckgzMXI4WFllYWdlbnT2Z3N1YmplY3ShZUxvY2FsdWF0b20vZ2VuZXJhdGl2ZS1idWlsZGlhcnRpZmFjdHOBoWZDb21taXR4KGI5Y2ZmMzYwYTY1NjM1YTE3YmZiZTM2YmY3NTZkOGMyMDg0NGM0M2Jpd29ya3NwYWNloWlXb3Jrc3BhY2V4QDgzNWY4N2FkZTQwYmRjOGRmMjJjM2JiZDI3OGQ1N2UwNDBmYWEwOGNjNmU0MTVkNmJkMDM4NGViOWE3ZTUzY2VrcmVjb3JkZWRfYXQbAAZZW1+6qKA="
 }
@@ -126,7 +126,7 @@ Built Step 2 (ratatui-interactive-tui) per .design/ratatui-interactive-tui.md: n
   ],
   "rev": "223mtfjuyvv3s",
   "seq": 5,
-  "of": 15,
+  "of": 17,
   "text_len": 595,
   "content": "p2Rib2R5oWZSZXN1bHShZHRleHRgZWNpdGVzgdgqWCUAAXESIHDaEiOqdol2QDb6UqC7XcbNc12HMCqwqEGY/uycz8P/ZmF1dGhvcqJjZGlkeDlkaWQ6a2V5OnpEbmFlU2RCYnJNNk5lWTRpOE1veHVGaXlEdHd4M0FISjhmakVkOTRnckgzMXI4WFllYWdlbnT2Z3N1YmplY3ShZUxvY2FsdWF0b20vZ2VuZXJhdGl2ZS1idWlsZGlhcnRpZmFjdHOBoWZDb21taXR4KGI5Y2ZmMzYwYTY1NjM1YTE3YmZiZTM2YmY3NTZkOGMyMDg0NGM0M2Jpd29ya3NwYWNloWlXb3Jrc3BhY2V4QDgzNWY4N2FkZTQwYmRjOGRmMjJjM2JiZDI3OGQ1N2UwNDBmYWEwOGNjNmU0MTVkNmJkMDM4NGViOWE3ZTUzY2VrcmVjb3JkZWRfYXQbAAZZW/Xt6wU="
 }
@@ -149,7 +149,7 @@ Addressed Step-2 adversarial-review follow-ups (verdict APPROVE-WITH-FOLLOW-UPS)
   ],
   "rev": "223mtfmfl2eyq",
   "seq": 6,
-  "of": 15,
+  "of": 17,
   "text_len": 735,
   "content": "p2Rib2R5oWZSZXN1bHShZHRleHRgZWNpdGVzgdgqWCUAAXESILqzrKBJImDtBb4GSBY49HkrBAdsY/d0RMkKyROa/TlHZmF1dGhvcqJjZGlkeDlkaWQ6a2V5OnpEbmFlU2RCYnJNNk5lWTRpOE1veHVGaXlEdHd4M0FISjhmakVkOTRnckgzMXI4WFllYWdlbnT2Z3N1YmplY3ShZUxvY2FsdWF0b20vZ2VuZXJhdGl2ZS1idWlsZGlhcnRpZmFjdHOBoWZDb21taXR4KDg4ZWRlMGI2M2I5ZWQ5NDE1M2ViZjA5YTdlZmQxYWNjMjk2ZTc1NzNpd29ya3NwYWNloWlXb3Jrc3BhY2V4QDgzNWY4N2FkZTQwYmRjOGRmMjJjM2JiZDI3OGQ1N2UwNDBmYWEwOGNjNmU0MTVkNmJkMDM4NGViOWE3ZTUzY2VrcmVjb3JkZWRfYXQbAAZZXJcQK1k="
 }
@@ -172,7 +172,7 @@ Built Step 3 (two-pane-claim-browser) per .design/two-pane-claim-browser.md: ext
   ],
   "rev": "223mtgu4j67cf",
   "seq": 7,
-  "of": 15,
+  "of": 17,
   "text_len": 501,
   "content": "p2Rib2R5oWZSZXN1bHShZHRleHRgZWNpdGVzgdgqWCUAAXESIPX+f5Qj6KfTJWt/oeEdKdGXz8oCpgXCQVqzXeLmnn+jZmF1dGhvcqJjZGlkeDlkaWQ6a2V5OnpEbmFlU2RCYnJNNk5lWTRpOE1veHVGaXlEdHd4M0FISjhmakVkOTRnckgzMXI4WFllYWdlbnT2Z3N1YmplY3ShZUxvY2FsdWF0b20vZ2VuZXJhdGl2ZS1idWlsZGlhcnRpZmFjdHOBoWZDb21taXR4KDg4ZWRlMGI2M2I5ZWQ5NDE1M2ViZjA5YTdlZmQxYWNjMjk2ZTc1NzNpd29ya3NwYWNloWlXb3Jrc3BhY2V4QDgzNWY4N2FkZTQwYmRjOGRmMjJjM2JiZDI3OGQ1N2UwNDBmYWEwOGNjNmU0MTVkNmJkMDM4NGViOWE3ZTUzY2VrcmVjb3JkZWRfYXQbAAZZZoTyE8Y="
 }
@@ -193,7 +193,7 @@ Addressed Step-3 adversarial-review follow-ups (verdict APPROVE-WITH-FOLLOW-UPS)
   "cites": [],
   "rev": "223mtgum2eoyb",
   "seq": 8,
-  "of": 15,
+  "of": 17,
   "content": "p2Rib2R5oWpSZXRyYWN0aW9uoWpzdXBlcnNlZGVz2CpYJQABcRIgzqWrt7UUPgjvUg1uGB8kIEfGdlmUa/BKj7sJBinubE9lY2l0ZXOAZmF1dGhvcqJjZGlkeDlkaWQ6a2V5OnpEbmFlU2RCYnJNNk5lWTRpOE1veHVGaXlEdHd4M0FISjhmakVkOTRnckgzMXI4WFllYWdlbnT2Z3N1YmplY3ShZUxvY2FsdWF0b20vZ2VuZXJhdGl2ZS1idWlsZGlhcnRpZmFjdHOBoWZDb21taXR4KDcyYTk4N2IyNDllZTJiNmZmZDE4M2Q3MDI4MTc2OTFmYjIyZjY4ODFpd29ya3NwYWNloWlXb3Jrc3BhY2V4QDgzNWY4N2FkZTQwYmRjOGRmMjJjM2JiZDI3OGQ1N2UwNDBmYWEwOGNjNmU0MTVkNmJkMDM4NGViOWE3ZTUzY2VrcmVjb3JkZWRfYXQbAAZZZqQFU18="
 }
 ---
@@ -213,7 +213,7 @@ Addressed Step-3 adversarial-review follow-ups (verdict APPROVE-WITH-FOLLOW-UPS)
   ],
   "rev": "223mtgum2iujk",
   "seq": 9,
-  "of": 15,
+  "of": 17,
   "text_len": 807,
   "content": "p2Rib2R5oWZSZXN1bHShZHRleHRgZWNpdGVzgdgqWCUAAXESIHT89VOJ0FRzLVITBO3V+O3F7dGoAO6fBXyE3VZRzFBiZmF1dGhvcqJjZGlkeDlkaWQ6a2V5OnpEbmFlU2RCYnJNNk5lWTRpOE1veHVGaXlEdHd4M0FISjhmakVkOTRnckgzMXI4WFllYWdlbnT2Z3N1YmplY3ShZUxvY2FsdWF0b20vZ2VuZXJhdGl2ZS1idWlsZGlhcnRpZmFjdHOBoWZDb21taXR4KDcyYTk4N2IyNDllZTJiNmZmZDE4M2Q3MDI4MTc2OTFmYjIyZjY4ODFpd29ya3NwYWNloWlXb3Jrc3BhY2V4QDgzNWY4N2FkZTQwYmRjOGRmMjJjM2JiZDI3OGQ1N2UwNDBmYWEwOGNjNmU0MTVkNmJkMDM4NGViOWE3ZTUzY2VrcmVjb3JkZWRfYXQbAAZZZqQHaYU="
 }
@@ -236,7 +236,7 @@ Built Step 4 (comment-sidecar-store) per .design/comment-sidecar-store.md: new s
   ],
   "rev": "223mtgvks6goo",
   "seq": 10,
-  "of": 15,
+  "of": 17,
   "text_len": 1011,
   "content": "p2Rib2R5oWZSZXN1bHShZHRleHRgZWNpdGVzgdgqWCUAAXESICEouvWGEza2xUlM2VItDCOwbKQFahWtL7YL4GFWAJvTZmF1dGhvcqJjZGlkeDlkaWQ6a2V5OnpEbmFlU2RCYnJNNk5lWTRpOE1veHVGaXlEdHd4M0FISjhmakVkOTRnckgzMXI4WFllYWdlbnT2Z3N1YmplY3ShZUxvY2FsdWF0b20vZ2VuZXJhdGl2ZS1idWlsZGlhcnRpZmFjdHOBoWZDb21taXR4KDcyYTk4N2IyNDllZTJiNmZmZDE4M2Q3MDI4MTc2OTFmYjIyZjY4ODFpd29ya3NwYWNloWlXb3Jrc3BhY2V4QDgzNWY4N2FkZTQwYmRjOGRmMjJjM2JiZDI3OGQ1N2UwNDBmYWEwOGNjNmU0MTVkNmJkMDM4NGViOWE3ZTUzY2VrcmVjb3JkZWRfYXQbAAZZZuGCMi4="
 }
@@ -259,7 +259,7 @@ Addressed all Step-4 adversarial-review follow-ups (verdict APPROVE-WITH-FOLLOW-
   ],
   "rev": "223mtgwmd7c3j",
   "seq": 11,
-  "of": 15,
+  "of": 17,
   "text_len": 1074,
   "content": "p2Rib2R5oWZSZXN1bHShZHRleHRgZWNpdGVzgdgqWCUAAXESIMZebGUWJ5Ynhu9+r/fvZbY+kV6AQOBQngIRbHKXqAkyZmF1dGhvcqJjZGlkeDlkaWQ6a2V5OnpEbmFlU2RCYnJNNk5lWTRpOE1veHVGaXlEdHd4M0FISjhmakVkOTRnckgzMXI4WFllYWdlbnT2Z3N1YmplY3ShZUxvY2FsdWF0b20vZ2VuZXJhdGl2ZS1idWlsZGlhcnRpZmFjdHOBoWZDb21taXR4KDBhMTI5YWJjODczN2ZhZjRlNjJjNDE4ZTBhYTM5M2EyZjkxOWE0Y2Vpd29ya3NwYWNloWlXb3Jrc3BhY2V4QDgzNWY4N2FkZTQwYmRjOGRmMjJjM2JiZDI3OGQ1N2UwNDBmYWEwOGNjNmU0MTVkNmJkMDM4NGViOWE3ZTUzY2VrcmVjb3JkZWRfYXQbAAZZZySSn8Y="
 }
@@ -282,7 +282,7 @@ Built the claim detail view (claim-detail-view) per .design/claim-detail-view.md
   ],
   "rev": "223mtgxnhelph",
   "seq": 12,
-  "of": 15,
+  "of": 17,
   "text_len": 817,
   "content": "p2Rib2R5oWZSZXN1bHShZHRleHRgZWNpdGVzgdgqWCUAAXESILnBHrtI9V1W50APzQk7mChGpU6essCeA9qrmNW5T5tIZmF1dGhvcqJjZGlkeDlkaWQ6a2V5OnpEbmFlU2RCYnJNNk5lWTRpOE1veHVGaXlEdHd4M0FISjhmakVkOTRnckgzMXI4WFllYWdlbnT2Z3N1YmplY3ShZUxvY2FsdWF0b20vZ2VuZXJhdGl2ZS1idWlsZGlhcnRpZmFjdHOBoWZDb21taXR4KDBhMTI5YWJjODczN2ZhZjRlNjJjNDE4ZTBhYTM5M2EyZjkxOWE0Y2Vpd29ya3NwYWNloWlXb3Jrc3BhY2V4QDgzNWY4N2FkZTQwYmRjOGRmMjJjM2JiZDI3OGQ1N2UwNDBmYWEwOGNjNmU0MTVkNmJkMDM4NGViOWE3ZTUzY2VrcmVjb3JkZWRfYXQbAAZZZ2bVRjQ="
 }
@@ -305,7 +305,7 @@ Built claim-visual-formatting (bundle feature 2/3) per .design/claim-visual-form
   ],
   "rev": "223mtgxxvefba",
   "seq": 13,
-  "of": 15,
+  "of": 17,
   "text_len": 1011,
   "content": "p2Rib2R5oWZSZXN1bHShZHRleHRgZWNpdGVzgdgqWCUAAXESIPcZ9TY3bv+q5jf81dlEEQBqor91CDOFCWPa2qW0yhg/ZmF1dGhvcqJjZGlkeDlkaWQ6a2V5OnpEbmFlU2RCYnJNNk5lWTRpOE1veHVGaXlEdHd4M0FISjhmakVkOTRnckgzMXI4WFllYWdlbnT2Z3N1YmplY3ShZUxvY2FsdWF0b20vZ2VuZXJhdGl2ZS1idWlsZGlhcnRpZmFjdHOBoWZDb21taXR4KDBhMTI5YWJjODczN2ZhZjRlNjJjNDE4ZTBhYTM5M2EyZjkxOWE0Y2Vpd29ya3NwYWNloWlXb3Jrc3BhY2V4QDgzNWY4N2FkZTQwYmRjOGRmMjJjM2JiZDI3OGQ1N2UwNDBmYWEwOGNjNmU0MTVkNmJkMDM4NGViOWE3ZTUzY2VrcmVjb3JkZWRfYXQbAAZZZ3u1KYE="
 }
@@ -328,10 +328,56 @@ Built process-atom-telos-views (bundle feature 3/3) per .design/process-atom-tel
   ],
   "rev": "223mtgypziuwg",
   "seq": 14,
-  "of": 15,
+  "of": 17,
   "text_len": 811,
   "content": "p2Rib2R5oWZSZXN1bHShZHRleHRgZWNpdGVzgdgqWCUAAXESID9d4SIgVHvd4ZmQi1RxSvoBPFq7enE+yoeuzOOcObbUZmF1dGhvcqJjZGlkeDlkaWQ6a2V5OnpEbmFlU2RCYnJNNk5lWTRpOE1veHVGaXlEdHd4M0FISjhmakVkOTRnckgzMXI4WFllYWdlbnT2Z3N1YmplY3ShZUxvY2FsdWF0b20vZ2VuZXJhdGl2ZS1idWlsZGlhcnRpZmFjdHOBoWZDb21taXR4KDBhMTI5YWJjODczN2ZhZjRlNjJjNDE4ZTBhYTM5M2EyZjkxOWE0Y2Vpd29ya3NwYWNloWlXb3Jrc3BhY2V4QDgzNWY4N2FkZTQwYmRjOGRmMjJjM2JiZDI3OGQ1N2UwNDBmYWEwOGNjNmU0MTVkNmJkMDM4NGViOWE3ZTUzY2VrcmVjb3JkZWRfYXQbAAZZZ6v3ayE="
 }
 ---
 
 Addressed the UX-bundle adversarial-review follow-ups (verdict APPROVE-WITH-FOLLOW-UPS): (1) atom_scroll/telos_scroll are now clamped on increment against a shared process_view_lines() line-builder (used by both the renderer and the clamp), so a held j no longer inflates the offset and scroll-up is responsive; added a test for that path. (2) extract_fenced now anchors the fence to a line start and requires the name to end the line, so day-atom never matches a longer day-atomx or a mid-prose ``` — with a prefix-collision test. (4) removed the duplicate json_str_array (str_array_at is the one helper). (3) will run cargo fmt to normalize the tree (fmt is not a CI gate here). Deferred: the empty-repo '(loading …)' cosmetic cue (finding 5, harmless). cargo test 44/44, build + clippy -D warnings clean.
+***8<***
+---
+{
+  "v": 3,
+  "cid": "bafyreibh4xb6t3u74hxtc5kf6uduo46uhcyi46ayjnetathjkb2raz5cty",
+  "sig": "1a83012c1825842650bb3b005befa5f5ad94566fb1abb77950383eee57bdf299091e0417cd4b496ec6bc9220fde971fed3186152c7eaf14088a615668e6565fa",
+  "author": "did:key:zDnaeSdBbrM6NeY4i8MoxuFiyDtwx3AHJ8fjEd94grH31r8XY",
+  "subject": {
+    "local": "atom/generative-build"
+  },
+  "kind": "result",
+  "cites": [
+    "bafyreidmsck3exu4hljn3ev46gtbilrdt3emtqpou4mylturdu5sn7syde"
+  ],
+  "rev": "223mth37ydw2l",
+  "seq": 15,
+  "of": 17,
+  "text_len": 932,
+  "content": "p2Rib2R5oWZSZXN1bHShZHRleHRgZWNpdGVzgdgqWCUAAXESIGyQlbJenDrS3ZK88aYULiOeyMnB7qcZhc6RHTsm/lgZZmF1dGhvcqJjZGlkeDlkaWQ6a2V5OnpEbmFlU2RCYnJNNk5lWTRpOE1veHVGaXlEdHd4M0FISjhmakVkOTRnckgzMXI4WFllYWdlbnT2Z3N1YmplY3ShZUxvY2FsdWF0b20vZ2VuZXJhdGl2ZS1idWlsZGlhcnRpZmFjdHOBoWZDb21taXR4KGRmZjc4MDQyZGFlZjlmMjM3MTgwMjRjMmI0NTZkOWE3ZmVkNWE3MjFpd29ya3NwYWNloWlXb3Jrc3BhY2V4QDgzNWY4N2FkZTQwYmRjOGRmMjJjM2JiZDI3OGQ1N2UwNDBmYWEwOGNjNmU0MTVkNmJkMDM4NGViOWE3ZTUzY2VrcmVjb3JkZWRfYXQbAAZZaEvk7No="
+}
+---
+
+Built unified-fold (bundle item 4, perf) per .design/unified-fold.md. substrate: a Fold holds subjects, per-subject newest-first claims, a cid->Claim index, the ProcessSnapshot, and day_status, all from one kan show --all --json spawn (plus one day status); fold(repo) builds it, populate_fold parses it. Fold::{claims_for, namespace_counts, sessions} are in-memory reads. tui: AppState holds a single fold (rebuilt only on mtime change) instead of dash + a per-subject claims cache + cite_index + process; removed ensure_selected_loaded/ensure_cite_index/ensure_process — selecting a subject or opening a detail/process view is now a map lookup, no spawn. Removed the now-dead Dashboard/Subject/collect/kan_status/claim_index/process_snapshot and migrated their tests to populate_fold. cargo test 44/44, build + clippy -D warnings clean; --once and subject unchanged. The subject CLI keeps per-subject subject_claims (one spawn).
+***8<***
+---
+{
+  "v": 3,
+  "cid": "bafyreia56a4wsayt4txvgygs3wuirjbpbiuuvt5ze6fnyxffq3pedskezi",
+  "sig": "a5cc2dbff417a787f2331c01d08c69a9312f91efd4ddca77245718dedec6a142315c448fd429e074937c92fa1ebfab68d8f98b0d512b5dab9cd2f7bbd4cb3d92",
+  "author": "did:key:zDnaeSdBbrM6NeY4i8MoxuFiyDtwx3AHJ8fjEd94grH31r8XY",
+  "subject": {
+    "local": "atom/generative-build"
+  },
+  "kind": "result",
+  "cites": [
+    "bafyreihrh2wx7rp4zttuq4hgobmrgl3ofujtju2rras5wkn5r6nbz6b5be"
+  ],
+  "rev": "223mth3qeep3c",
+  "seq": 16,
+  "of": 17,
+  "text_len": 591,
+  "content": "p2Rib2R5oWZSZXN1bHShZHRleHRgZWNpdGVzgdgqWCUAAXESIPE+rX/F/MznSHDmcFkTL24tEzTTUYgl2ym9j5oc+D0JZmF1dGhvcqJjZGlkeDlkaWQ6a2V5OnpEbmFlU2RCYnJNNk5lWTRpOE1veHVGaXlEdHd4M0FISjhmakVkOTRnckgzMXI4WFllYWdlbnT2Z3N1YmplY3ShZUxvY2FsdWF0b20vZ2VuZXJhdGl2ZS1idWlsZGlhcnRpZmFjdHOBoWZDb21taXR4KGRmZjc4MDQyZGFlZjlmMjM3MTgwMjRjMmI0NTZkOWE3ZmVkNWE3MjFpd29ya3NwYWNloWlXb3Jrc3BhY2V4QDgzNWY4N2FkZTQwYmRjOGRmMjJjM2JiZDI3OGQ1N2UwNDBmYWEwOGNjNmU0MTVkNmJkMDM4NGViOWE3ZTUzY2VrcmVjb3JkZWRfYXQbAAZZaGylU7M="
+}
+---
+
+Addressed unified-fold review follow-ups (verdict APPROVE-WITH-FOLLOW-UPS): (1) the fold test now asserts newest-first order within a subject (bafy3 before bafy2), not just count; (2) added a dedicated Fold::{namespace_counts, sessions} test with real agents/handoff subjects; (3) Fold.errors are now rendered — plain_frame gets a NOTES section and the TUI process pane prepends '! error' lines — so a failed kan show --all is not mistaken for an empty repo (honest-ambiguity; this was a carried-over gap, not a regression). cargo test 45/45, build + clippy -D warnings clean, fmt clean.
