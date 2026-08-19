@@ -11,7 +11,7 @@
   "cites": [],
   "rev": "223mtfagbk4mx",
   "seq": 0,
-  "of": 8,
+  "of": 11,
   "text_len": 197,
   "content": "p2Rib2R5oWtPYnNlcnZhdGlvbqFkdGV4dGBlY2l0ZXOAZmF1dGhvcqJjZGlkeDlkaWQ6a2V5OnpEbmFlU2RCYnJNNk5lWTRpOE1veHVGaXlEdHd4M0FISjhmakVkOTRnckgzMXI4WFllYWdlbnT2Z3N1YmplY3ShZUxvY2FsdWF0b20vZ2VuZXJhdGl2ZS1idWlsZGlhcnRpZmFjdHOBoWZDb21taXR4KGMzMDVkOTE5ZDc1NzgwYWYyOTQzZDdlOGMxMDA0MzA2YTQxMTIyMGFpd29ya3NwYWNloWlXb3Jrc3BhY2V4QDgzNWY4N2FkZTQwYmRjOGRmMjJjM2JiZDI3OGQ1N2UwNDBmYWEwOGNjNmU0MTVkNmJkMDM4NGViOWE3ZTUzY2VrcmVjb3JkZWRfYXQbAAZZWZh4CfE="
 }
@@ -37,7 +37,7 @@ An agent session turns an accepted design into code that builds and tests green.
   "cites": [],
   "rev": "223mtfaruqcn6",
   "seq": 1,
-  "of": 8,
+  "of": 11,
   "content": "p2Rib2R5oWtQdWJsaWNhdGlvbqFlbGF5ZXJnR2l0VHJlZWVjaXRlc4BmYXV0aG9yomNkaWR4OWRpZDprZXk6ekRuYWVTZEJick02TmVZNGk4TW94dUZpeUR0d3gzQUhKOGZqRWQ5NGdySDMxcjhYWWVhZ2VudPZnc3ViamVjdKFlTG9jYWx1YXRvbS9nZW5lcmF0aXZlLWJ1aWxkaWFydGlmYWN0c4GhZkNvbW1pdHgoZjEzMzc2NGMxMTI1OTgwYjYwZmJlZWYzNTFkODNjMWZjZjA3NzE4M2l3b3Jrc3BhY2WhaVdvcmtzcGFjZXhAODM1Zjg3YWRlNDBiZGM4ZGYyMmMzYmJkMjc4ZDU3ZTA0MGZhYTA4Y2M2ZTQxNWQ2YmQwMzg0ZWI5YTdlNTNjZWtyZWNvcmRlZF9hdBsABllZr6sh/A=="
 }
 ---
@@ -57,7 +57,7 @@ An agent session turns an accepted design into code that builds and tests green.
   ],
   "rev": "223mtfco6qppb",
   "seq": 2,
-  "of": 8,
+  "of": 11,
   "text_len": 613,
   "content": "p2Rib2R5oWZSZXN1bHShZHRleHRgZWNpdGVzgdgqWCUAAXESILSMxPQm75MW158RmGlt+lyqySQ2V477QQI3+VGHbd5FZmF1dGhvcqJjZGlkeDlkaWQ6a2V5OnpEbmFlU2RCYnJNNk5lWTRpOE1veHVGaXlEdHd4M0FISjhmakVkOTRnckgzMXI4WFllYWdlbnT2Z3N1YmplY3ShZUxvY2FsdWF0b20vZ2VuZXJhdGl2ZS1idWlsZGlhcnRpZmFjdHOBoWZDb21taXR4KGYxMzM3NjRjMTEyNTk4MGI2MGZiZWVmMzUxZDgzYzFmY2YwNzcxODNpd29ya3NwYWNloWlXb3Jrc3BhY2V4QDgzNWY4N2FkZTQwYmRjOGRmMjJjM2JiZDI3OGQ1N2UwNDBmYWEwOGNjNmU0MTVkNmJkMDM4NGViOWE3ZTUzY2VrcmVjb3JkZWRfYXQbAAZZWihLVjg="
 }
@@ -80,7 +80,7 @@ Built subject-claim-drill-in per .design/subject-claim-drill-in.md: added substr
   ],
   "rev": "223mtfegrdcmt",
   "seq": 3,
-  "of": 8,
+  "of": 11,
   "text_len": 560,
   "content": "p2Rib2R5oWZSZXN1bHShZHRleHRgZWNpdGVzgdgqWCUAAXESIKuVWY8LaRhMsfrgFHujE7Ojd2yyBOflibyWUuJsOqAKZmF1dGhvcqJjZGlkeDlkaWQ6a2V5OnpEbmFlU2RCYnJNNk5lWTRpOE1veHVGaXlEdHd4M0FISjhmakVkOTRnckgzMXI4WFllYWdlbnT2Z3N1YmplY3ShZUxvY2FsdWF0b20vZ2VuZXJhdGl2ZS1idWlsZGlhcnRpZmFjdHOBoWZDb21taXR4KGYxMzM3NjRjMTEyNTk4MGI2MGZiZWVmMzUxZDgzYzFmY2YwNzcxODNpd29ya3NwYWNloWlXb3Jrc3BhY2V4QDgzNWY4N2FkZTQwYmRjOGRmMjJjM2JiZDI3OGQ1N2UwNDBmYWEwOGNjNmU0MTVkNmJkMDM4NGViOWE3ZTUzY2VrcmVjb3JkZWRfYXQbAAZZWpl0oe8="
 }
@@ -103,7 +103,7 @@ Addressed adversarial-review follow-ups 1-3 (verdict APPROVE-WITH-FOLLOW-UPS): (
   ],
   "rev": "223mtfhjvpecb",
   "seq": 4,
-  "of": 8,
+  "of": 11,
   "text_len": 602,
   "content": "p2Rib2R5oWZSZXN1bHShZHRleHRgZWNpdGVzgdgqWCUAAXESIDMQjzpwhF4CURxHQN9DLK43oIEl1OVPPkVwyG1/Gd5yZmF1dGhvcqJjZGlkeDlkaWQ6a2V5OnpEbmFlU2RCYnJNNk5lWTRpOE1veHVGaXlEdHd4M0FISjhmakVkOTRnckgzMXI4WFllYWdlbnT2Z3N1YmplY3ShZUxvY2FsdWF0b20vZ2VuZXJhdGl2ZS1idWlsZGlhcnRpZmFjdHOBoWZDb21taXR4KGI5Y2ZmMzYwYTY1NjM1YTE3YmZiZTM2YmY3NTZkOGMyMDg0NGM0M2Jpd29ya3NwYWNloWlXb3Jrc3BhY2V4QDgzNWY4N2FkZTQwYmRjOGRmMjJjM2JiZDI3OGQ1N2UwNDBmYWEwOGNjNmU0MTVkNmJkMDM4NGViOWE3ZTUzY2VrcmVjb3JkZWRfYXQbAAZZW1+6qKA="
 }
@@ -126,7 +126,7 @@ Built Step 2 (ratatui-interactive-tui) per .design/ratatui-interactive-tui.md: n
   ],
   "rev": "223mtfjuyvv3s",
   "seq": 5,
-  "of": 8,
+  "of": 11,
   "text_len": 595,
   "content": "p2Rib2R5oWZSZXN1bHShZHRleHRgZWNpdGVzgdgqWCUAAXESIHDaEiOqdol2QDb6UqC7XcbNc12HMCqwqEGY/uycz8P/ZmF1dGhvcqJjZGlkeDlkaWQ6a2V5OnpEbmFlU2RCYnJNNk5lWTRpOE1veHVGaXlEdHd4M0FISjhmakVkOTRnckgzMXI4WFllYWdlbnT2Z3N1YmplY3ShZUxvY2FsdWF0b20vZ2VuZXJhdGl2ZS1idWlsZGlhcnRpZmFjdHOBoWZDb21taXR4KGI5Y2ZmMzYwYTY1NjM1YTE3YmZiZTM2YmY3NTZkOGMyMDg0NGM0M2Jpd29ya3NwYWNloWlXb3Jrc3BhY2V4QDgzNWY4N2FkZTQwYmRjOGRmMjJjM2JiZDI3OGQ1N2UwNDBmYWEwOGNjNmU0MTVkNmJkMDM4NGViOWE3ZTUzY2VrcmVjb3JkZWRfYXQbAAZZW/Xt6wU="
 }
@@ -149,7 +149,7 @@ Addressed Step-2 adversarial-review follow-ups (verdict APPROVE-WITH-FOLLOW-UPS)
   ],
   "rev": "223mtfmfl2eyq",
   "seq": 6,
-  "of": 8,
+  "of": 11,
   "text_len": 735,
   "content": "p2Rib2R5oWZSZXN1bHShZHRleHRgZWNpdGVzgdgqWCUAAXESILqzrKBJImDtBb4GSBY49HkrBAdsY/d0RMkKyROa/TlHZmF1dGhvcqJjZGlkeDlkaWQ6a2V5OnpEbmFlU2RCYnJNNk5lWTRpOE1veHVGaXlEdHd4M0FISjhmakVkOTRnckgzMXI4WFllYWdlbnT2Z3N1YmplY3ShZUxvY2FsdWF0b20vZ2VuZXJhdGl2ZS1idWlsZGlhcnRpZmFjdHOBoWZDb21taXR4KDg4ZWRlMGI2M2I5ZWQ5NDE1M2ViZjA5YTdlZmQxYWNjMjk2ZTc1NzNpd29ya3NwYWNloWlXb3Jrc3BhY2V4QDgzNWY4N2FkZTQwYmRjOGRmMjJjM2JiZDI3OGQ1N2UwNDBmYWEwOGNjNmU0MTVkNmJkMDM4NGViOWE3ZTUzY2VrcmVjb3JkZWRfYXQbAAZZXJcQK1k="
 }
@@ -172,10 +172,74 @@ Built Step 3 (two-pane-claim-browser) per .design/two-pane-claim-browser.md: ext
   ],
   "rev": "223mtgu4j67cf",
   "seq": 7,
-  "of": 8,
+  "of": 11,
   "text_len": 501,
   "content": "p2Rib2R5oWZSZXN1bHShZHRleHRgZWNpdGVzgdgqWCUAAXESIPX+f5Qj6KfTJWt/oeEdKdGXz8oCpgXCQVqzXeLmnn+jZmF1dGhvcqJjZGlkeDlkaWQ6a2V5OnpEbmFlU2RCYnJNNk5lWTRpOE1veHVGaXlEdHd4M0FISjhmakVkOTRnckgzMXI4WFllYWdlbnT2Z3N1YmplY3ShZUxvY2FsdWF0b20vZ2VuZXJhdGl2ZS1idWlsZGlhcnRpZmFjdHOBoWZDb21taXR4KDg4ZWRlMGI2M2I5ZWQ5NDE1M2ViZjA5YTdlZmQxYWNjMjk2ZTc1NzNpd29ya3NwYWNloWlXb3Jrc3BhY2V4QDgzNWY4N2FkZTQwYmRjOGRmMjJjM2JiZDI3OGQ1N2UwNDBmYWEwOGNjNmU0MTVkNmJkMDM4NGViOWE3ZTUzY2VrcmVjb3JkZWRfYXQbAAZZZoTyE8Y="
 }
 ---
 
 Addressed Step-3 adversarial-review follow-ups (verdict APPROVE-WITH-FOLLOW-UPS): (1) dropped the needless &fetch borrow in the cache test — cargo clippy --all-targets -- -D warnings now passes project-wide (also fixed the 3 pre-existing lib.rs doc-overindent nits, so the whole tree is clippy-clean for the first time); (2) draw_detail no longer shows '(loading …)' when no subject is selected; (3) bare subjects with no '/' render without a redundant namespace header (+ test). cargo test 24/24.
+***8<***
+---
+{
+  "v": 3,
+  "cid": "bafyreihkbqp5y5uwcix2hd7kbnlj3snizaopetueoecpewdrntj6qe4yxm",
+  "sig": "42bb4d6cdc52496bf086c3a36258fabe5c5894da13382746b9f45b797128268b52c59ca6e7f7b5b8ba8311de4aec4dbc6398142ed9ed61edffe60029e0ec64c8",
+  "author": "did:key:zDnaeSdBbrM6NeY4i8MoxuFiyDtwx3AHJ8fjEd94grH31r8XY",
+  "subject": {
+    "local": "atom/generative-build"
+  },
+  "kind": "retraction",
+  "cites": [],
+  "rev": "223mtgum2eoyb",
+  "seq": 8,
+  "of": 11,
+  "content": "p2Rib2R5oWpSZXRyYWN0aW9uoWpzdXBlcnNlZGVz2CpYJQABcRIgzqWrt7UUPgjvUg1uGB8kIEfGdlmUa/BKj7sJBinubE9lY2l0ZXOAZmF1dGhvcqJjZGlkeDlkaWQ6a2V5OnpEbmFlU2RCYnJNNk5lWTRpOE1veHVGaXlEdHd4M0FISjhmakVkOTRnckgzMXI4WFllYWdlbnT2Z3N1YmplY3ShZUxvY2FsdWF0b20vZ2VuZXJhdGl2ZS1idWlsZGlhcnRpZmFjdHOBoWZDb21taXR4KDcyYTk4N2IyNDllZTJiNmZmZDE4M2Q3MDI4MTc2OTFmYjIyZjY4ODFpd29ya3NwYWNloWlXb3Jrc3BhY2V4QDgzNWY4N2FkZTQwYmRjOGRmMjJjM2JiZDI3OGQ1N2UwNDBmYWEwOGNjNmU0MTVkNmJkMDM4NGViOWE3ZTUzY2VrcmVjb3JkZWRfYXQbAAZZZqQFU18="
+}
+---
+***8<***
+---
+{
+  "v": 3,
+  "cid": "bafyreidbfnr5ycpszu5kv4loefi7jrjzidl2dykcvnaegjcfizbizccc3y",
+  "sig": "6308421c6305f85aab42b01ff93b15899b1b0c2740dc405802f285826ecad6911210f02418ac064e937b7f921c998d8649133a8c9c8fbf9f55557b7d2b05c053",
+  "author": "did:key:zDnaeSdBbrM6NeY4i8MoxuFiyDtwx3AHJ8fjEd94grH31r8XY",
+  "subject": {
+    "local": "atom/generative-build"
+  },
+  "kind": "result",
+  "cites": [
+    "bafyreidu7t2vhcoqkrzs2uqtatw5l6hnyxw5dkaa52pqk7ee3vlfdtcqmi"
+  ],
+  "rev": "223mtgum2iujk",
+  "seq": 9,
+  "of": 11,
+  "text_len": 807,
+  "content": "p2Rib2R5oWZSZXN1bHShZHRleHRgZWNpdGVzgdgqWCUAAXESIHT89VOJ0FRzLVITBO3V+O3F7dGoAO6fBXyE3VZRzFBiZmF1dGhvcqJjZGlkeDlkaWQ6a2V5OnpEbmFlU2RCYnJNNk5lWTRpOE1veHVGaXlEdHd4M0FISjhmakVkOTRnckgzMXI4WFllYWdlbnT2Z3N1YmplY3ShZUxvY2FsdWF0b20vZ2VuZXJhdGl2ZS1idWlsZGlhcnRpZmFjdHOBoWZDb21taXR4KDcyYTk4N2IyNDllZTJiNmZmZDE4M2Q3MDI4MTc2OTFmYjIyZjY4ODFpd29ya3NwYWNloWlXb3Jrc3BhY2V4QDgzNWY4N2FkZTQwYmRjOGRmMjJjM2JiZDI3OGQ1N2UwNDBmYWEwOGNjNmU0MTVkNmJkMDM4NGViOWE3ZTUzY2VrcmVjb3JkZWRfYXQbAAZZZqQHaYU="
+}
+---
+
+Built Step 4 (comment-sidecar-store) per .design/comment-sidecar-store.md: new src/comments.rs — Comment/StoredAnchor/Author records (serde JSONL), sidecar_path (.cospan/comments/<path>.jsonl), load/save, content_hash, and localize_and_update (incremental last-seen: re-anchors on Anchored/Drifted, leaves Unresolvable unchanged). Added the "cospan comment add" and "cospan comments" subcommands in src/main.rs; pub mod comments in src/lib.rs; serde derive dep; .cospan/ gitignored. cargo test 29/29 (5 new), build + clippy -D warnings clean. Verified the full headless round trip on a temp file: add -> ANCHORED line 2, pure line-shift -> ANCHORED at the shifted line, rename -> DRIFTED 0.85, whole-fn rewrite -> UNRESOLVED. no-tracked-junk still passes. Nothing written to kan (sidecar-only, ephemeral).
+***8<***
+---
+{
+  "v": 3,
+  "cid": "bafyreialzbxvuoaq24wqtandrsh3h3oy2ejonwmckcmvhdg4dvliwo6evy",
+  "sig": "994003fdde4ce14beedea72cf7abc85000db68d4beb7beede4882b0ea66fa8b675a270f0bd4d3e71729d48120a34c7124ea71d0de83103d17627916a827a8f96",
+  "author": "did:key:zDnaeSdBbrM6NeY4i8MoxuFiyDtwx3AHJ8fjEd94grH31r8XY",
+  "subject": {
+    "local": "atom/generative-build"
+  },
+  "kind": "result",
+  "cites": [
+    "bafyreibbfc5plbqtg23mkskm3fjc2dbdwbwkiblkcwws7nql4bqvmae32m"
+  ],
+  "rev": "223mtgvks6goo",
+  "seq": 10,
+  "of": 11,
+  "text_len": 1011,
+  "content": "p2Rib2R5oWZSZXN1bHShZHRleHRgZWNpdGVzgdgqWCUAAXESICEouvWGEza2xUlM2VItDCOwbKQFahWtL7YL4GFWAJvTZmF1dGhvcqJjZGlkeDlkaWQ6a2V5OnpEbmFlU2RCYnJNNk5lWTRpOE1veHVGaXlEdHd4M0FISjhmakVkOTRnckgzMXI4WFllYWdlbnT2Z3N1YmplY3ShZUxvY2FsdWF0b20vZ2VuZXJhdGl2ZS1idWlsZGlhcnRpZmFjdHOBoWZDb21taXR4KDcyYTk4N2IyNDllZTJiNmZmZDE4M2Q3MDI4MTc2OTFmYjIyZjY4ODFpd29ya3NwYWNloWlXb3Jrc3BhY2V4QDgzNWY4N2FkZTQwYmRjOGRmMjJjM2JiZDI3OGQ1N2UwNDBmYWEwOGNjNmU0MTVkNmJkMDM4NGViOWE3ZTUzY2VrcmVjb3JkZWRfYXQbAAZZZuGCMi4="
+}
+---
+
+Addressed all Step-4 adversarial-review follow-ups (verdict APPROVE-WITH-FOLLOW-UPS): (1) empty/short-file panic fixed — Anchor::from_file now uses a checked slice for the after-context, so comment add on an empty file is graceful instead of panicking; (2) base_hash is now load-bearing — localize_and_update short-circuits an unchanged file (hash match) to Anchored at line_hint; (3) load skips-and-warns on a malformed JSONL line instead of failing the whole sidecar, and save writes-then-renames (atomic); (4) comment add uses a single-pass parser so flag-before-file (--line N file) resolves the real file; (5) added a RE_ANCHOR_FLOOR (0.85): a weak Drifted match is reported but does not become the new anchor, so the anchor cannot walk onto unrelated text (honest-ambiguity) — the Drifted/floor branch is now unit-tested; (6) comment ids carry a per-file counter. cargo test 32/32 (3 new), build + clippy -D warnings clean. Re-verified empty-file, flag-order, id-uniqueness, and the full round trip.
