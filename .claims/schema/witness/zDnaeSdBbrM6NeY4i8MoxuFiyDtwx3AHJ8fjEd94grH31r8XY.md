@@ -11,7 +11,7 @@
   "cites": [],
   "rev": "223mtfae3lwxy",
   "seq": 0,
-  "of": 3,
+  "of": 4,
   "text_len": 539,
   "content": "p2Rib2R5oWtPYnNlcnZhdGlvbqFkdGV4dGBlY2l0ZXOAZmF1dGhvcqJjZGlkeDlkaWQ6a2V5OnpEbmFlU2RCYnJNNk5lWTRpOE1veHVGaXlEdHd4M0FISjhmakVkOTRnckgzMXI4WFllYWdlbnT2Z3N1YmplY3ShZUxvY2FsbnNjaGVtYS93aXRuZXNzaWFydGlmYWN0c4GhZkNvbW1pdHgoYzMwNWQ5MTlkNzU3ODBhZjI5NDNkN2U4YzEwMDQzMDZhNDExMjIwYWl3b3Jrc3BhY2WhaVdvcmtzcGFjZXhAODM1Zjg3YWRlNDBiZGM4ZGYyMmMzYmJkMjc4ZDU3ZTA0MGZhYTA4Y2M2ZTQxNWQ2YmQwMzg0ZWI5YTdlNTNjZWtyZWNvcmRlZF9hdBsABllZlBjzUA=="
 }
@@ -46,7 +46,7 @@ Witness probe map for cospan — how each evidence type is checked (docs/CONVENT
   "cites": [],
   "rev": "223mtfartxdnz",
   "seq": 1,
-  "of": 3,
+  "of": 4,
   "content": "p2Rib2R5oWtQdWJsaWNhdGlvbqFlbGF5ZXJnR2l0VHJlZWVjaXRlc4BmYXV0aG9yomNkaWR4OWRpZDprZXk6ekRuYWVTZEJick02TmVZNGk4TW94dUZpeUR0d3gzQUhKOGZqRWQ5NGdySDMxcjhYWWVhZ2VudPZnc3ViamVjdKFlTG9jYWxuc2NoZW1hL3dpdG5lc3NpYXJ0aWZhY3RzgaFmQ29tbWl0eChmMTMzNzY0YzExMjU5ODBiNjBmYmVlZjM1MWQ4M2MxZmNmMDc3MTgzaXdvcmtzcGFjZaFpV29ya3NwYWNleEA4MzVmODdhZGU0MGJkYzhkZjIyYzNiYmQyNzhkNTdlMDQwZmFhMDhjYzZlNDE1ZDZiZDAzODRlYjlhN2U1M2Nla3JlY29yZGVkX2F0GwAGWVmvnqYP"
 }
 ---
@@ -64,7 +64,7 @@ Witness probe map for cospan — how each evidence type is checked (docs/CONVENT
   "cites": [],
   "rev": "223mtfasvyw77",
   "seq": 2,
-  "of": 3,
+  "of": 4,
   "text_len": 670,
   "content": "p2Rib2R5oWtPYnNlcnZhdGlvbqFkdGV4dGBlY2l0ZXOAZmF1dGhvcqJjZGlkeDlkaWQ6a2V5OnpEbmFlU2RCYnJNNk5lWTRpOE1veHVGaXlEdHd4M0FISjhmakVkOTRnckgzMXI4WFllYWdlbnT2Z3N1YmplY3ShZUxvY2FsbnNjaGVtYS93aXRuZXNzaWFydGlmYWN0c4GhZkNvbW1pdHgoZjEzMzc2NGMxMTI1OTgwYjYwZmJlZWYzNTFkODNjMWZjZjA3NzE4M2l3b3Jrc3BhY2WhaVdvcmtzcGFjZXhAODM1Zjg3YWRlNDBiZGM4ZGYyMmMzYmJkMjc4ZDU3ZTA0MGZhYTA4Y2M2ZTQxNWQ2YmQwMzg0ZWI5YTdlNTNjZWtyZWNvcmRlZF9hdBsABllZsb9wRg=="
 }
@@ -75,6 +75,45 @@ Witness probe map for cospan — how each evidence type is checked (docs/CONVENT
 ```day-witness
 {
   "design-doc": {"path": ".dropbox/*.md"},
+  "code-change": {
+    "material": {"path": "src/*.rs"},
+    "record":   {"claim": {"kind": "Result", "subject": "atom/*"}}
+  },
+  "passing-tests": {"command": "cargo test"},
+  "verdict": {"claim": {"kind": "Decision", "starts_with": "adversarial review of"}},
+  "assessment": {"claim": {"kind": "Result", "subject": "atom/*"}},
+  "published-artifact": {"tag": "v*"},
+  "ambiguity-tests": {"command": "cargo test unresolvable"},
+  "clean-of-tracked-junk": {"command": "scripts/no-tracked-junk.sh"}
+}
+```
+***8<***
+---
+{
+  "v": 3,
+  "cid": "bafyreieact7op2tcev6wi6luqfklnrjwhz364zqksqlxzm3csiyoda63qe",
+  "sig": "ef43a1a9d0d4b30e4313298a7f45399b8389d67cf507cad5256bf0925d4dacec3f45fc1a146e9077fd16fcc3a6dabfb52497dc3f234496a7f9d71e344a0ec0c0",
+  "author": "did:key:zDnaeSdBbrM6NeY4i8MoxuFiyDtwx3AHJ8fjEd94grH31r8XY",
+  "subject": {
+    "local": "schema/witness"
+  },
+  "kind": "observation",
+  "cites": [],
+  "rev": "223mtfhjvsvdi",
+  "seq": 3,
+  "of": 4,
+  "text_len": 940,
+  "content": "p2Rib2R5oWtPYnNlcnZhdGlvbqFkdGV4dGBlY2l0ZXOAZmF1dGhvcqJjZGlkeDlkaWQ6a2V5OnpEbmFlU2RCYnJNNk5lWTRpOE1veHVGaXlEdHd4M0FISjhmakVkOTRnckgzMXI4WFllYWdlbnT2Z3N1YmplY3ShZUxvY2FsbnNjaGVtYS93aXRuZXNzaWFydGlmYWN0c4GhZkNvbW1pdHgoYjljZmYzNjBhNjU2MzVhMTdiZmJlMzZiZjc1NmQ4YzIwODQ0YzQzYml3b3Jrc3BhY2WhaVdvcmtzcGFjZXhAODM1Zjg3YWRlNDBiZGM4ZGYyMmMzYmJkMjc4ZDU3ZTA0MGZhYTA4Y2M2ZTQxNWQ2YmQwMzg0ZWI5YTdlNTNjZWtyZWNvcmRlZF9hdBsABllbX7xsxw=="
+}
+---
+
+Witness probe map for cospan — how each evidence type is checked (docs/CONVENTIONS.md, schema/witness).
+
+design-doc now probes .design/*.md, where the `design` atom (day design record) writes its output; the earlier .dropbox/*.md pointed at the reference corpus, which produced a false off-sequence warning (design looked skipped because .dropbox never changes per feature).
+
+```day-witness
+{
+  "design-doc": {"path": ".design/*.md"},
   "code-change": {
     "material": {"path": "src/*.rs"},
     "record":   {"claim": {"kind": "Result", "subject": "atom/*"}}
