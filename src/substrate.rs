@@ -172,7 +172,7 @@ pub fn namespace(name: &str) -> &str {
 pub fn is_day_subject(name: &str) -> bool {
     matches!(
         namespace(name),
-        "telos" | "atom" | "bridge" | "tension" | "schema"
+        "telos" | "atom" | "bridge" | "tension" | "schema" | "agents/handoff"
     ) || name == "practice"
         || name == "general"
 }
@@ -815,6 +815,7 @@ mod tests {
         assert!(is_day_subject("telos/x"));
         assert!(is_day_subject("schema/witness"));
         assert!(is_day_subject("practice"));
+        assert!(is_day_subject("agents/handoff/main")); // day's own thread registry
         assert!(!is_day_subject("claim-detail-view"));
         assert!(!is_day_subject("release"));
     }

@@ -12,13 +12,67 @@ use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
 
-/// One row of the left-pane tree: a collapsible top-level section, a collapsible
-/// namespace group, or a selectable subject leaf.
+/// One row of the left-pane tree. The tree is a path trie over subject names:
+/// a collapsible top-level `Section` (`[my work]` / `[day]`), a collapsible
+/// intermediate `Branch` (a non-terminal path prefix like `agents/handoff`), or
+/// a selectable `Leaf` subject. `depth` is the row's path depth from its section
+/// (sections are depth 0), and drives the render indent. A subject that is also
+/// a branch prefix appears as both a `Branch` and a `Leaf` one indent deeper.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Row {
     Section(String),
-    Group(String),
-    Subject(String),
+    Branch { path: String, depth: usize },
+    Leaf { subject: String, depth: usize },
+}
+
+/// A node in the subject path trie: whether the path to here is itself a recorded
+/// subject, and its children keyed by the next path segment (`BTreeMap` so
+/// siblings flatten in sorted order).
+#[derive(Default)]
+struct TrieNode {
+    is_subject: bool,
+    children: std::collections::BTreeMap<String, TrieNode>,
+}
+
+/// Flatten a trie node's children into rows at `depth`. A childless node is a
+/// plain `Leaf`; a node with children is a `Branch`, and — unless collapsed — its
+/// own subject-ness (a dual node) is a `Leaf` one indent deeper, followed by its
+/// recursively flattened subtree.
+fn flatten_trie(
+    node: &TrieNode,
+    prefix: &str,
+    depth: usize,
+    collapsed: &HashSet<String>,
+    rows: &mut Vec<Row>,
+) {
+    for (seg, child) in &node.children {
+        let full = if prefix.is_empty() {
+            seg.clone()
+        } else {
+            format!("{prefix}/{seg}")
+        };
+        if child.children.is_empty() {
+            rows.push(Row::Leaf {
+                subject: full,
+                depth,
+            });
+            continue;
+        }
+        rows.push(Row::Branch {
+            path: full.clone(),
+            depth,
+        });
+        if collapsed.contains(&format!("path:{full}")) {
+            continue;
+        }
+        if child.is_subject {
+            rows.push(Row::Leaf {
+                subject: full.clone(),
+                depth: depth + 1,
+            });
+        }
+        flatten_trie(child, &full, depth + 1, collapsed, rows);
+    }
 }
 
 /// The interactive dashboard's state: the current fold plus a selection over the
@@ -29,7 +83,7 @@ pub struct AppState {
     /// The whole in-memory model, folded from one `kan show --all` per tick.
     pub fold: Fold,
     pub rows: Vec<Row>,
-    /// Index into `rows`; always points at a `Row::Subject` when any subject exists.
+    /// Index into `rows`; always points at a `Row::Leaf` when any subject exists.
     pub selected: usize,
     pub last_mtime: Option<SystemTime>,
     /// Which of the three levels currently has focus.
@@ -42,7 +96,7 @@ pub struct AppState {
     pub view: View,
     pub atom_scroll: usize,
     pub telos_scroll: usize,
-    /// Keys of collapsed tree nodes (`sec:<label>` / `grp:<ns>`).
+    /// Keys of collapsed tree nodes (`sec:<label>` / `path:<prefix>`).
     pub collapsed: HashSet<String>,
 }
 
@@ -200,78 +254,48 @@ impl AppState {
         }
     }
 
-    /// Rebuild the tree rows from the fold: a `[my work]` section of bare
-    /// subjects and a `[day]` section of day vocabulary (namespace groups then
-    /// bare day subjects), skipping the children of any collapsed node.
+    /// Rebuild the tree rows from the fold: a `[my work]` section and a `[day]`
+    /// section, each a recursive path trie over its subjects (split on `/`),
+    /// skipping the subtree of any collapsed node.
     fn rebuild_rows(&mut self) {
         let mut rows = Vec::new();
 
-        rows.push(Row::Section("my work".into()));
-        if !self.collapsed.contains("sec:my work") {
-            let mut mine: Vec<&str> = self
+        for (label, is_day) in [("my work", false), ("day", true)] {
+            rows.push(Row::Section(label.into()));
+            if self.collapsed.contains(&format!("sec:{label}")) {
+                continue;
+            }
+            let mut members: Vec<&str> = self
                 .fold
                 .subjects
                 .iter()
-                .filter(|n| !is_day_subject(n))
+                .filter(|n| is_day_subject(n) == is_day)
                 .map(String::as_str)
                 .collect();
-            mine.sort();
-            for n in mine {
-                rows.push(Row::Subject(n.to_string()));
-            }
-        }
-
-        rows.push(Row::Section("day".into()));
-        if !self.collapsed.contains("sec:day") {
-            for (ns, _count) in self.fold.namespace_counts() {
-                if !matches!(
-                    ns.as_str(),
-                    "telos" | "atom" | "bridge" | "tension" | "schema"
-                ) {
-                    continue;
-                }
-                rows.push(Row::Group(ns.clone()));
-                if !self.collapsed.contains(&format!("grp:{ns}")) {
-                    let mut members: Vec<&str> = self
-                        .fold
-                        .subjects
-                        .iter()
-                        .filter(|n| namespace(n) == ns)
-                        .map(String::as_str)
-                        .collect();
-                    members.sort();
-                    for n in members {
-                        rows.push(Row::Subject(n.to_string()));
-                    }
-                }
-            }
-            let mut bare_day: Vec<&str> = self
-                .fold
-                .subjects
-                .iter()
-                // Day subjects with no group of their own (practice, general).
-                // A bare subject literally named a group word (e.g. "telos") is
-                // rendered under that group, not here, so it appears once.
-                .filter(|n| {
-                    is_day_subject(n)
-                        && !matches!(
-                            namespace(n),
-                            "telos" | "atom" | "bridge" | "tension" | "schema"
-                        )
-                })
-                .map(String::as_str)
-                .collect();
-            bare_day.sort();
-            for n in bare_day {
-                rows.push(Row::Subject(n.to_string()));
-            }
+            members.sort();
+            self.push_trie(&mut rows, &members);
         }
 
         self.rows = rows;
     }
 
+    /// Emit the path-trie rows for one section's `subjects`. Builds a trie keyed
+    /// by path segment (a `BTreeMap` keeps siblings sorted), then flattens it
+    /// depth-first, skipping the subtree of any collapsed `Branch`.
+    fn push_trie(&self, rows: &mut Vec<Row>, subjects: &[&str]) {
+        let mut root = TrieNode::default();
+        for s in subjects {
+            let mut node = &mut root;
+            for seg in s.split('/') {
+                node = node.children.entry(seg.to_string()).or_default();
+            }
+            node.is_subject = true;
+        }
+        flatten_trie(&root, "", 1, &self.collapsed, rows);
+    }
+
     fn first_subject_index(&self) -> Option<usize> {
-        self.rows.iter().position(|r| matches!(r, Row::Subject(_)))
+        self.rows.iter().position(|r| matches!(r, Row::Leaf { .. }))
     }
 
     /// A stable identity for the row at `i`, so the cursor can stay put across a
@@ -279,8 +303,8 @@ impl AppState {
     fn row_key(&self, i: usize) -> Option<String> {
         Some(match self.rows.get(i)? {
             Row::Section(l) => format!("sec:{l}"),
-            Row::Group(g) => format!("grp:{g}"),
-            Row::Subject(n) => format!("sub:{n}"),
+            Row::Branch { path, .. } => format!("path:{path}"),
+            Row::Leaf { subject, .. } => format!("sub:{subject}"),
         })
     }
 
@@ -291,7 +315,7 @@ impl AppState {
     /// The name of the currently selected subject, if the selected row is one.
     pub fn selected_subject(&self) -> Option<&str> {
         match self.rows.get(self.selected) {
-            Some(Row::Subject(name)) => Some(name.as_str()),
+            Some(Row::Leaf { subject, .. }) => Some(subject.as_str()),
             _ => None,
         }
     }
@@ -308,19 +332,19 @@ impl AppState {
         self.selected = self.selected.saturating_sub(1);
     }
 
-    /// Enter in the Subjects focus: toggle a Section/Group node, or descend a
-    /// Subject into its claims.
+    /// Enter in the Subjects focus: toggle a Section/Branch node, or descend a
+    /// Leaf subject into its claims.
     pub fn activate(&mut self) {
         match self.rows.get(self.selected) {
             Some(Row::Section(l)) => {
                 let key = format!("sec:{l}");
                 self.toggle(&key);
             }
-            Some(Row::Group(g)) => {
-                let key = format!("grp:{g}");
+            Some(Row::Branch { path, .. }) => {
+                let key = format!("path:{path}");
                 self.toggle(&key);
             }
-            Some(Row::Subject(_)) => self.descend(),
+            Some(Row::Leaf { .. }) => self.descend(),
             None => {}
         }
     }
@@ -865,27 +889,78 @@ fn draw_telos(frame: &mut ratatui::Frame, state: &AppState, area: ratatui::layou
     render_scrolled(frame, area, " teloi ", &lines, state.telos_scroll);
 }
 
+/// A foreground color per top-level section, from the ANSI-16 palette so it reads
+/// on both light and dark terminals (like `kind_style`).
+fn section_color(label: &str) -> ratatui::style::Color {
+    use ratatui::style::Color;
+    match label {
+        "my work" => Color::Cyan,
+        "day" => Color::Magenta,
+        _ => Color::Reset,
+    }
+}
+
+/// One rendered left-pane line for a tree row: indent from its depth, a collapse
+/// marker on the collapsible `Section`/`Branch` rows, a colored bold section
+/// header, a full-weight branch segment, and a `Leaf` whose path prefix is dimmed
+/// so the final segment reads as the subject's own name.
+fn row_line(row: &Row, collapsed: &HashSet<String>) -> ratatui::text::Line<'static> {
+    use ratatui::style::{Modifier, Style};
+    use ratatui::text::{Line, Span};
+    let marker = |key: &str| {
+        if collapsed.contains(key) {
+            "▸ "
+        } else {
+            "▾ "
+        }
+    };
+    match row {
+        Row::Section(l) => Line::from(vec![
+            Span::raw(marker(&format!("sec:{l}")).to_string()),
+            Span::styled(
+                format!("[{l}]"),
+                Style::new()
+                    .fg(section_color(l))
+                    .add_modifier(Modifier::BOLD),
+            ),
+        ]),
+        Row::Branch { path, depth } => {
+            let seg = path.rsplit('/').next().unwrap_or(path);
+            Line::from(vec![
+                Span::raw(format!(
+                    "{}{}",
+                    "  ".repeat(*depth),
+                    marker(&format!("path:{path}"))
+                )),
+                Span::raw(seg.to_string()),
+            ])
+        }
+        Row::Leaf { subject, depth } => {
+            // Reserve the collapse-marker width so a leaf aligns under its branch.
+            let indent = format!("{}  ", "  ".repeat(*depth));
+            match subject.rfind('/') {
+                Some(i) => Line::from(vec![
+                    Span::raw(indent),
+                    Span::styled(
+                        subject[..=i].to_string(),
+                        Style::new().add_modifier(Modifier::DIM),
+                    ),
+                    Span::raw(subject[i + 1..].to_string()),
+                ]),
+                None => Line::from(vec![Span::raw(indent), Span::raw(subject.clone())]),
+            }
+        }
+    }
+}
+
 fn draw_list(frame: &mut ratatui::Frame, state: &AppState, area: ratatui::layout::Rect) {
     use ratatui::style::{Modifier, Style};
     use ratatui::widgets::{Block, List, ListItem, ListState};
 
-    let marker = |key: &str| {
-        if state.collapsed.contains(key) {
-            "▸"
-        } else {
-            "▾"
-        }
-    };
     let items: Vec<ListItem> = state
         .rows
         .iter()
-        .map(|row| match row {
-            Row::Section(l) => ListItem::new(format!("{} [{l}]", marker(&format!("sec:{l}"))))
-                .style(Style::new().add_modifier(Modifier::BOLD)),
-            Row::Group(g) => ListItem::new(format!("  {} {g}", marker(&format!("grp:{g}"))))
-                .style(Style::new().add_modifier(Modifier::DIM)),
-            Row::Subject(name) => ListItem::new(format!("    {name}")),
-        })
+        .map(|row| ListItem::new(row_line(row, &state.collapsed)))
         .collect();
     let mut list_state = ListState::default();
     if !items.is_empty() {
@@ -1008,61 +1083,124 @@ mod tests {
         AppState::new(PathBuf::from("."), fold_of(names), None)
     }
 
+    fn branch(path: &str, depth: usize) -> Row {
+        Row::Branch {
+            path: path.into(),
+            depth,
+        }
+    }
+
+    fn leaf(subject: &str, depth: usize) -> Row {
+        Row::Leaf {
+            subject: subject.into(),
+            depth,
+        }
+    }
+
     #[test]
-    fn tree_splits_my_work_and_day_with_groups() {
-        // a bare design subject (my work), two telos + one atom (day groups, in
-        // count order), and practice (a bare day subject after the groups).
-        let a = app(&[
-            "claim-detail-view",
-            "telos/a",
-            "telos/b",
-            "atom/x",
-            "practice",
-        ]);
+    fn tree_aggregates_subjects_into_a_recursive_path_trie() {
+        // (AC-1) A bare my-work subject; a three-deep day path; and two telos
+        // leaves — the whitelist is gone, so `agents/handoff/main` nests fully.
+        let a = app(&["cospan", "telos/a", "telos/b", "agents/handoff/main"]);
         assert_eq!(
             a.rows,
             vec![
                 Row::Section("my work".into()),
-                Row::Subject("claim-detail-view".into()),
+                leaf("cospan", 1),
                 Row::Section("day".into()),
-                Row::Group("telos".into()),
-                Row::Subject("telos/a".into()),
-                Row::Subject("telos/b".into()),
-                Row::Group("atom".into()),
-                Row::Subject("atom/x".into()),
-                Row::Subject("practice".into()),
+                branch("agents", 1),
+                branch("agents/handoff", 2),
+                leaf("agents/handoff/main", 3),
+                branch("telos", 1),
+                leaf("telos/a", 2),
+                leaf("telos/b", 2),
             ]
         );
         // Initial selection lands on the first subject leaf.
-        assert_eq!(a.selected_subject(), Some("claim-detail-view"));
+        assert_eq!(a.selected_subject(), Some("cospan"));
+    }
+
+    #[test]
+    fn a_subject_that_is_also_a_branch_appears_as_both() {
+        // (AC-3) `foo` is a subject and a prefix of `foo/bar`: it is a Branch
+        // header plus a Leaf child one indent deeper.
+        let mut a = app(&["foo", "foo/bar"]);
+        assert_eq!(
+            a.rows,
+            vec![
+                Row::Section("my work".into()),
+                branch("foo", 1),
+                leaf("foo", 2),
+                leaf("foo/bar", 2),
+                Row::Section("day".into()),
+            ]
+        );
+        // Enter on the Branch toggles it; Enter on the self-Leaf descends.
+        a.selected = a.index_of_key("path:foo").unwrap();
+        a.activate();
+        assert!(a.collapsed.contains("path:foo"));
+        assert_eq!(a.focus, Focus::Subjects);
+        a.activate(); // re-expand
+        a.selected = a.index_of_key("sub:foo").unwrap();
+        a.activate();
+        assert_eq!(a.focus, Focus::Claims);
+    }
+
+    #[test]
+    fn collapsing_a_branch_hides_its_whole_subtree() {
+        // (AC-4) Collapsing `agents` hides the nested handoff branch and leaf,
+        // the cursor stays on `agents`, and re-expanding restores them.
+        let mut a = app(&["cospan", "agents/handoff/main"]);
+        a.selected = a.index_of_key("path:agents").unwrap();
+        a.activate(); // collapse agents
+        assert!(a.collapsed.contains("path:agents"));
+        assert_eq!(a.row_key(a.selected).as_deref(), Some("path:agents"));
+        assert!(!a
+            .rows
+            .iter()
+            .any(|r| matches!(r, Row::Branch { path, .. } if path == "agents/handoff")));
+        assert!(!a
+            .rows
+            .iter()
+            .any(|r| matches!(r, Row::Leaf { subject, .. } if subject == "agents/handoff/main")));
+        // The my-work leaf is untouched.
+        assert!(a
+            .rows
+            .iter()
+            .any(|r| matches!(r, Row::Leaf { subject, .. } if subject == "cospan")));
+        a.activate(); // re-expand (cursor stayed on the branch)
+        assert!(a
+            .rows
+            .iter()
+            .any(|r| matches!(r, Row::Leaf { subject, .. } if subject == "agents/handoff/main")));
     }
 
     #[test]
     fn collapsing_day_hides_its_children_and_toggles_back() {
-        let mut a = app(&["claim-detail-view", "telos/a"]);
+        let mut a = app(&["cospan", "telos/a"]);
         a.selected = a.index_of_key("sec:day").unwrap();
         a.activate(); // collapse [day]
         assert!(a.collapsed.contains("sec:day"));
-        assert!(!a.rows.iter().any(|r| matches!(r, Row::Group(_))));
+        assert!(!a.rows.iter().any(|r| matches!(r, Row::Branch { .. })));
         assert!(!a
             .rows
             .iter()
-            .any(|r| matches!(r, Row::Subject(s) if s == "telos/a")));
+            .any(|r| matches!(r, Row::Leaf { subject, .. } if subject == "telos/a")));
         // [my work] and its subject remain.
         assert!(a
             .rows
             .iter()
-            .any(|r| matches!(r, Row::Subject(s) if s == "claim-detail-view")));
+            .any(|r| matches!(r, Row::Leaf { subject, .. } if subject == "cospan")));
         a.activate(); // expand again (cursor stayed on the [day] section)
         assert!(a
             .rows
             .iter()
-            .any(|r| matches!(r, Row::Subject(s) if s == "telos/a")));
+            .any(|r| matches!(r, Row::Leaf { subject, .. } if subject == "telos/a")));
     }
 
     #[test]
     fn jk_moves_over_all_rows_and_clamps() {
-        // rows: Section(my work), Section(day), Group(telos), Subject(telos/a)
+        // rows: Section(my work), Section(day), Branch(telos), Leaf(telos/a)
         let mut a = app(&["telos/a"]);
         a.selected = 0;
         a.select_prev(); // clamps at the first row
@@ -1077,24 +1215,57 @@ mod tests {
     }
 
     #[test]
-    fn activate_toggles_a_group_but_descends_a_subject() {
+    fn activate_toggles_a_branch_but_descends_a_leaf() {
         let mut a = app(&["telos/a"]);
-        a.selected = a.index_of_key("grp:telos").unwrap();
-        a.activate(); // on a Group: toggle, focus unchanged
+        a.selected = a.index_of_key("path:telos").unwrap();
+        a.activate(); // on a Branch: toggle, focus unchanged
         assert_eq!(a.focus, Focus::Subjects);
-        assert!(a.collapsed.contains("grp:telos"));
-        a.activate(); // re-expand (cursor stays on the group)
+        assert!(a.collapsed.contains("path:telos"));
+        a.activate(); // re-expand (cursor stays on the branch)
         a.selected = a.index_of_key("sub:telos/a").unwrap();
-        a.activate(); // on a Subject: descend to Claims
+        a.activate(); // on a Leaf: descend to Claims
         assert_eq!(a.focus, Focus::Claims);
     }
 
     #[test]
     fn refold_keeps_the_cursor_on_the_same_row_by_identity() {
         let mut a = app(&["telos/a", "telos/b"]);
-        a.selected = a.index_of_key("grp:telos").unwrap();
+        a.selected = a.index_of_key("path:telos").unwrap();
         a.refold(fold_of(&["telos/a", "telos/b", "telos/c"]), None);
-        assert_eq!(a.row_key(a.selected).as_deref(), Some("grp:telos"));
+        assert_eq!(a.row_key(a.selected).as_deref(), Some("path:telos"));
+    }
+
+    #[test]
+    fn row_line_fades_a_leaf_prefix_but_not_a_branch_or_section() {
+        // (AC-2) A leaf's `telos/` prefix is dimmed and its final segment is not;
+        // a branch segment carries no dim; a section carries its color.
+        use ratatui::style::{Color, Modifier};
+        let collapsed = HashSet::new();
+        let leaf_line = row_line(&leaf("telos/readable-claim-browser", 2), &collapsed);
+        let dimmed: Vec<&str> = leaf_line
+            .spans
+            .iter()
+            .filter(|s| s.style.add_modifier.contains(Modifier::DIM))
+            .map(|s| s.content.as_ref())
+            .collect();
+        assert_eq!(dimmed, vec!["telos/"]);
+        assert!(leaf_line
+            .spans
+            .iter()
+            .any(|s| s.content == "readable-claim-browser"
+                && !s.style.add_modifier.contains(Modifier::DIM)));
+
+        let branch_line = row_line(&branch("telos", 1), &collapsed);
+        assert!(branch_line
+            .spans
+            .iter()
+            .all(|s| !s.style.add_modifier.contains(Modifier::DIM)));
+
+        let section_line = row_line(&Row::Section("day".into()), &collapsed);
+        assert!(section_line
+            .spans
+            .iter()
+            .any(|s| s.style.fg == Some(Color::Magenta)));
     }
 
     #[test]
