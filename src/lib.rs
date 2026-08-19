@@ -23,6 +23,7 @@
 //! the whole file — but the fingerprint search below is the source of truth.
 
 pub mod comments;
+pub mod markdown;
 pub mod substrate;
 pub mod tui;
 

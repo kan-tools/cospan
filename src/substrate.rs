@@ -1,4 +1,4 @@
-//! P0 substrate reads — the watch-and-fold spine.
+//! Substrate reads — the watch-and-fold spine.
 //!
 //! Shells out to the real `kan` and `day` binaries and folds their output into a
 //! small in-memory model (L2) for rendering. Shelling (not linking the `kan`
@@ -7,7 +7,7 @@
 //! see `.dropbox/02-kan-day-integration.md`.
 //!
 //! Everything here is poll-driven: the caller watches `.kan/log/HEAD` and asks for
-//! a fresh `Dashboard` only when it changes.
+//! a fresh `Fold` (one `kan show --all --json` spawn) only when it changes.
 
 use serde_json::Value;
 use std::cmp::Ordering;
@@ -167,6 +167,16 @@ pub fn namespace(name: &str) -> &str {
     name.split('/').next().unwrap_or(name)
 }
 
+/// Whether a subject belongs to day's own vocabulary (shown under the `[day]`
+/// tree section) rather than the operator's own work.
+pub fn is_day_subject(name: &str) -> bool {
+    matches!(
+        namespace(name),
+        "telos" | "atom" | "bridge" | "tension" | "schema"
+    ) || name == "practice"
+        || name == "general"
+}
+
 fn claim_from_value(v: &Value) -> Claim {
     Claim {
         cid: str_at(v, "cid"),
@@ -323,6 +333,82 @@ fn parse_tension(claims: &[Claim]) -> Option<String> {
     let j: Value = serde_json::from_str(&newest_block(claims, "day-tension")?).ok()?;
     let between = str_array_at(&j, "between");
     (between.len() == 2).then(|| format!("{} <-> {}", between[0], between[1]))
+}
+
+/// Append every top-level key of `j` not already `covered` (and not a `_version`
+/// marker) as `key: value`, so a recognized block never hides author-provided
+/// fields the summary does not know about (`telos/honest-ambiguity`).
+fn append_extra_keys(out: &mut Vec<String>, j: &Value, covered: &[&str]) {
+    let Some(map) = j.as_object() else { return };
+    let mut keys: Vec<&String> = map
+        .keys()
+        .filter(|k| !covered.contains(&k.as_str()) && !k.starts_with('_'))
+        .collect();
+    keys.sort();
+    for k in keys {
+        let v = &map[k];
+        let rendered = match v {
+            Value::String(s) => s.clone(),
+            Value::Array(_) => str_array_at(j, k).join(", "),
+            other => other.to_string(),
+        };
+        out.push(format!("{k}: {rendered}"));
+    }
+}
+
+/// A human-readable view of a supported fenced block's parsed JSON, or `None`
+/// for a block type this does not know (which the caller shows as raw code).
+pub fn block_summary(fence: &str, j: &Value) -> Option<Vec<String>> {
+    let arr = |k: &str| str_array_at(j, k).join(", ");
+    match fence {
+        "day-atom" => {
+            let mut out = vec![
+                format!("in:    {}", arr("in")),
+                format!("out:   {}", arr("out")),
+                format!("next:  {}", arr("next")),
+            ];
+            append_extra_keys(&mut out, j, &["in", "out", "next"]);
+            Some(out)
+        }
+        "day-telos" => {
+            let mut out = vec![format!("witnesses: {}", flatten_witnesses(j).join(", "))];
+            append_extra_keys(&mut out, j, &["witnesses"]);
+            Some(out)
+        }
+        "day-tension" => {
+            let b = str_array_at(j, "between");
+            let mut out = vec![format!("between: {}", b.join(" <-> "))];
+            append_extra_keys(&mut out, j, &["between"]);
+            Some(out)
+        }
+        "day-witness" => {
+            let mut out = Vec::new();
+            if let Some(map) = j.as_object() {
+                let mut keys: Vec<&String> = map.keys().collect();
+                keys.sort();
+                for k in keys {
+                    // Show the probe kind (the first key of the probe object).
+                    let probe = map
+                        .get(k)
+                        .and_then(Value::as_object)
+                        .and_then(|o| o.keys().next())
+                        .map(String::as_str)
+                        .unwrap_or("?");
+                    out.push(format!("{k}: {probe}"));
+                }
+            }
+            Some(out)
+        }
+        "cospan-comment" => {
+            let mut out = vec![format!(
+                "comment: {}",
+                j.get("body").and_then(Value::as_str).unwrap_or("")
+            )];
+            append_extra_keys(&mut out, j, &["body"]);
+            Some(out)
+        }
+        _ => None,
+    }
 }
 
 // --- The unified fold: everything from one `kan show --all --json` -----------
@@ -722,6 +808,34 @@ mod tests {
         assert!(counts.contains(&("atom".to_string(), 1)));
         assert!(counts.contains(&("agents/handoff".to_string(), 1)));
         assert_eq!(f.sessions(), vec!["agents/handoff/thread-1"]);
+    }
+
+    #[test]
+    fn is_day_subject_classifies_vocabulary() {
+        assert!(is_day_subject("telos/x"));
+        assert!(is_day_subject("schema/witness"));
+        assert!(is_day_subject("practice"));
+        assert!(!is_day_subject("claim-detail-view"));
+        assert!(!is_day_subject("release"));
+    }
+
+    #[test]
+    fn block_summary_supported_and_unknown() {
+        let atom: Value = serde_json::from_str(
+            r#"{"in":["design-doc"],"out":["code-change"],"next":["review"],"done":["passing-tests"]}"#,
+        )
+        .unwrap();
+        let joined = block_summary("day-atom", &atom).unwrap().join("\n");
+        assert!(joined.contains("in:") && joined.contains("design-doc"));
+        assert!(joined.contains("out:") && joined.contains("code-change"));
+        assert!(joined.contains("next:") && joined.contains("review"));
+        // An extra key the summary doesn't special-case is surfaced, not hidden.
+        assert!(
+            joined.contains("done: passing-tests"),
+            "extra key hidden: {joined}"
+        );
+        // An unknown fence has no human view (the caller shows it as code).
+        assert!(block_summary("something-else", &atom).is_none());
     }
 
     #[test]

@@ -7,15 +7,17 @@
 //! re-fold tick, and the fold is rebuilt only when `.kan/log/HEAD` changes
 //! (`telos/poll-dont-subscribe`).
 
-use crate::substrate::{self, namespace, short_cid, Claim, Fold, ProcessSnapshot};
-use std::collections::HashMap;
+use crate::substrate::{self, is_day_subject, namespace, short_cid, Claim, Fold, ProcessSnapshot};
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
 
-/// One line in the CLAIMS section: a namespace header, or a selectable subject.
+/// One row of the left-pane tree: a collapsible top-level section, a collapsible
+/// namespace group, or a selectable subject leaf.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Row {
-    Header(String),
+    Section(String),
+    Group(String),
     Subject(String),
 }
 
@@ -40,6 +42,8 @@ pub struct AppState {
     pub view: View,
     pub atom_scroll: usize,
     pub telos_scroll: usize,
+    /// Keys of collapsed tree nodes (`sec:<label>` / `grp:<ns>`).
+    pub collapsed: HashSet<String>,
 }
 
 /// The top-level views, switched with `1`/`2`/`3` or `Tab`.
@@ -111,6 +115,7 @@ impl AppState {
             view: View::Browser,
             atom_scroll: 0,
             telos_scroll: 0,
+            collapsed: HashSet::new(),
         };
         s.rebuild_rows();
         s.selected = s.first_subject_index().unwrap_or(0);
@@ -181,7 +186,7 @@ impl AppState {
 
     fn detail_line_count(&self) -> usize {
         match self.selected_claim() {
-            Some(c) => detail_view(c, Some(&self.fold.by_cid)).len(),
+            Some(c) => claim_detail(c, Some(&self.fold.by_cid)).len(),
             None => 0,
         }
     }
@@ -195,53 +200,95 @@ impl AppState {
         }
     }
 
-    /// Rebuild the grouped row list from the fold: namespace headers in
-    /// `namespace_counts` order, each followed by its subjects.
+    /// Rebuild the tree rows from the fold: a `[my work]` section of bare
+    /// subjects and a `[day]` section of day vocabulary (namespace groups then
+    /// bare day subjects), skipping the children of any collapsed node.
     fn rebuild_rows(&mut self) {
         let mut rows = Vec::new();
-        for (ns, _count) in self.fold.namespace_counts() {
-            let members: Vec<&str> = self
+
+        rows.push(Row::Section("my work".into()));
+        if !self.collapsed.contains("sec:my work") {
+            let mut mine: Vec<&str> = self
                 .fold
                 .subjects
                 .iter()
-                .filter(|n| namespace(n) == ns)
+                .filter(|n| !is_day_subject(n))
                 .map(String::as_str)
                 .collect();
-            // A bare subject (no `/`) is its own namespace; don't render a header
-            // line identical to the single subject beneath it.
-            let bare_solo = members.len() == 1 && members[0] == ns;
-            if !bare_solo {
-                rows.push(Row::Header(ns.clone()));
-            }
-            for name in members {
-                rows.push(Row::Subject(name.to_string()));
+            mine.sort();
+            for n in mine {
+                rows.push(Row::Subject(n.to_string()));
             }
         }
-        self.rows = rows;
-    }
 
-    /// Indices of the selectable (subject) rows, in order.
-    fn subject_indices(&self) -> Vec<usize> {
-        self.rows
-            .iter()
-            .enumerate()
-            .filter(|(_, r)| matches!(r, Row::Subject(_)))
-            .map(|(i, _)| i)
-            .collect()
+        rows.push(Row::Section("day".into()));
+        if !self.collapsed.contains("sec:day") {
+            for (ns, _count) in self.fold.namespace_counts() {
+                if !matches!(
+                    ns.as_str(),
+                    "telos" | "atom" | "bridge" | "tension" | "schema"
+                ) {
+                    continue;
+                }
+                rows.push(Row::Group(ns.clone()));
+                if !self.collapsed.contains(&format!("grp:{ns}")) {
+                    let mut members: Vec<&str> = self
+                        .fold
+                        .subjects
+                        .iter()
+                        .filter(|n| namespace(n) == ns)
+                        .map(String::as_str)
+                        .collect();
+                    members.sort();
+                    for n in members {
+                        rows.push(Row::Subject(n.to_string()));
+                    }
+                }
+            }
+            let mut bare_day: Vec<&str> = self
+                .fold
+                .subjects
+                .iter()
+                // Day subjects with no group of their own (practice, general).
+                // A bare subject literally named a group word (e.g. "telos") is
+                // rendered under that group, not here, so it appears once.
+                .filter(|n| {
+                    is_day_subject(n)
+                        && !matches!(
+                            namespace(n),
+                            "telos" | "atom" | "bridge" | "tension" | "schema"
+                        )
+                })
+                .map(String::as_str)
+                .collect();
+            bare_day.sort();
+            for n in bare_day {
+                rows.push(Row::Subject(n.to_string()));
+            }
+        }
+
+        self.rows = rows;
     }
 
     fn first_subject_index(&self) -> Option<usize> {
         self.rows.iter().position(|r| matches!(r, Row::Subject(_)))
     }
 
-    /// The selection's ordinal among subject rows (0 = first subject), if any.
-    fn selected_ordinal(&self) -> Option<usize> {
-        self.subject_indices()
-            .iter()
-            .position(|&i| i == self.selected)
+    /// A stable identity for the row at `i`, so the cursor can stay put across a
+    /// re-fold or a collapse toggle.
+    fn row_key(&self, i: usize) -> Option<String> {
+        Some(match self.rows.get(i)? {
+            Row::Section(l) => format!("sec:{l}"),
+            Row::Group(g) => format!("grp:{g}"),
+            Row::Subject(n) => format!("sub:{n}"),
+        })
     }
 
-    /// The name of the currently selected subject, if any.
+    fn index_of_key(&self, key: &str) -> Option<usize> {
+        (0..self.rows.len()).find(|&i| self.row_key(i).as_deref() == Some(key))
+    }
+
+    /// The name of the currently selected subject, if the selected row is one.
     pub fn selected_subject(&self) -> Option<&str> {
         match self.rows.get(self.selected) {
             Some(Row::Subject(name)) => Some(name.as_str()),
@@ -249,36 +296,51 @@ impl AppState {
         }
     }
 
-    /// Move the selection to the next subject row, clamped at the last.
+    /// Move the selection down over all visible rows, clamped at the last.
     pub fn select_next(&mut self) {
-        let idx = self.subject_indices();
-        if let Some(pos) = idx.iter().position(|&i| i == self.selected) {
-            if pos + 1 < idx.len() {
-                self.selected = idx[pos + 1];
-            }
-        } else if let Some(&first) = idx.first() {
-            self.selected = first;
+        if self.selected + 1 < self.rows.len() {
+            self.selected += 1;
         }
     }
 
-    /// Move the selection to the previous subject row, clamped at the first.
+    /// Move the selection up over all visible rows, clamped at the first.
     pub fn select_prev(&mut self) {
-        let idx = self.subject_indices();
-        if let Some(pos) = idx.iter().position(|&i| i == self.selected) {
-            if pos > 0 {
-                self.selected = idx[pos - 1];
+        self.selected = self.selected.saturating_sub(1);
+    }
+
+    /// Enter in the Subjects focus: toggle a Section/Group node, or descend a
+    /// Subject into its claims.
+    pub fn activate(&mut self) {
+        match self.rows.get(self.selected) {
+            Some(Row::Section(l)) => {
+                let key = format!("sec:{l}");
+                self.toggle(&key);
             }
-        } else if let Some(&first) = idx.first() {
-            self.selected = first;
+            Some(Row::Group(g)) => {
+                let key = format!("grp:{g}");
+                self.toggle(&key);
+            }
+            Some(Row::Subject(_)) => self.descend(),
+            None => {}
         }
     }
 
-    /// Replace the fold with a fresh one, preserving the selection **by subject
-    /// name** so a background edit to the log never jumps the cursor. If the
-    /// selected subject is gone, the index clamps into the new range.
+    /// Flip a node's collapsed state and rebuild, keeping the cursor on it.
+    fn toggle(&mut self, key: &str) {
+        if !self.collapsed.remove(key) {
+            self.collapsed.insert(key.to_string());
+        }
+        let sel = self.row_key(self.selected);
+        self.rebuild_rows();
+        self.selected = sel
+            .and_then(|k| self.index_of_key(&k))
+            .unwrap_or_else(|| self.selected.min(self.rows.len().saturating_sub(1)));
+    }
+
+    /// Replace the fold, preserving the selection by the selected row's identity
+    /// so a background log change never jumps the cursor.
     pub fn refold(&mut self, fold: Fold, mtime: Option<SystemTime>) {
-        let prev = self.selected_subject().map(str::to_string);
-        let prev_ordinal = self.selected_ordinal();
+        let sel = self.row_key(self.selected);
         self.fold = fold;
         self.last_mtime = mtime;
         self.claim_selected = 0;
@@ -286,26 +348,11 @@ impl AppState {
         self.atom_scroll = 0;
         self.telos_scroll = 0;
         self.rebuild_rows();
-
-        let subjects = self.subject_indices();
-        self.selected = prev
-            // Same subject still present: keep the cursor on it.
-            .and_then(|name| {
-                self.rows
-                    .iter()
-                    .position(|r| matches!(r, Row::Subject(s) if *s == name))
-            })
-            // Gone: clamp the old ordinal into the new subject list (positional
-            // locality), rather than snapping to the top.
-            .or_else(|| {
-                prev_ordinal.and_then(|o| {
-                    subjects
-                        .get(o.min(subjects.len().saturating_sub(1)))
-                        .copied()
-                })
-            })
-            .or_else(|| subjects.first().copied())
-            .unwrap_or(0);
+        self.selected = sel
+            .and_then(|k| self.index_of_key(&k))
+            .or_else(|| self.first_subject_index())
+            .unwrap_or(0)
+            .min(self.rows.len().saturating_sub(1));
     }
 }
 
@@ -347,20 +394,78 @@ pub fn detail_lines(subject: &str, claims: &[Claim]) -> Vec<String> {
     }
 }
 
-/// The full-detail lines for a single claim: header fields, artifact anchors, the
-/// untruncated text, and each cite resolved through the index to a one-line
-/// preview (falling back to the bare short-cid). A pure projection — nothing
-/// synthesized (`telos/kan-is-truth`), nothing truncated (`telos/honest-ambiguity`).
-pub fn detail_view(claim: &Claim, cite_index: Option<&HashMap<String, Claim>>) -> Vec<String> {
-    let mut out = vec![
-        format!("{}  {}", claim.kind, claim.cid),
-        format!("author {}   {}", claim.short_author(), claim.recorded_utc()),
-        format!("subject {}", claim.subject),
+/// One segment of a claim body: prose (rendered as markdown) or a named fenced
+/// block (a human summary if supported, else code).
+enum Segment {
+    Prose(String),
+    Block { name: String, content: String },
+}
+
+/// Split a body into prose and named fenced blocks (```` ```name ````).
+fn split_blocks(text: &str) -> Vec<Segment> {
+    let lines: Vec<&str> = text.lines().collect();
+    let mut segs = Vec::new();
+    let mut prose: Vec<&str> = Vec::new();
+    let mut i = 0;
+    while i < lines.len() {
+        let name = lines[i]
+            .strip_prefix("```")
+            .map(str::trim)
+            .filter(|n| !n.is_empty());
+        if let Some(name) = name {
+            let mut j = i + 1;
+            let mut content: Vec<&str> = Vec::new();
+            while j < lines.len() && lines[j].trim_end() != "```" {
+                content.push(lines[j]);
+                j += 1;
+            }
+            if j < lines.len() {
+                if !prose.is_empty() {
+                    segs.push(Segment::Prose(prose.join("\n")));
+                    prose.clear();
+                }
+                segs.push(Segment::Block {
+                    name: name.to_string(),
+                    content: content.join("\n"),
+                });
+                i = j + 1;
+                continue;
+            }
+        }
+        prose.push(lines[i]);
+        i += 1;
+    }
+    if !prose.is_empty() {
+        segs.push(Segment::Prose(prose.join("\n")));
+    }
+    segs
+}
+
+/// The full styled detail for a single claim: header fields, the body (markdown
+/// prose with supported blocks summarized and unsupported blocks shown as code),
+/// and each cite resolved through the index. A pure projection of the claim
+/// (`telos/kan-is-truth`); an unsupported block is shown, never hidden
+/// (`telos/honest-ambiguity`).
+pub fn claim_detail(
+    claim: &Claim,
+    cite_index: Option<&HashMap<String, Claim>>,
+) -> Vec<ratatui::text::Line<'static>> {
+    use ratatui::style::{Modifier, Style};
+    use ratatui::text::{Line, Span};
+
+    let mut out: Vec<Line<'static>> = vec![
+        Line::from(format!("{}  {}", claim.kind, claim.cid)),
+        Line::from(format!(
+            "author {}   {}",
+            claim.short_author(),
+            claim.recorded_utc()
+        )),
+        Line::from(format!("subject {}", claim.subject)),
     ];
     if !claim.artifacts.is_empty() {
-        out.push(format!("anchor {}", claim.artifacts.join(", ")));
+        out.push(Line::from(format!("anchor {}", claim.artifacts.join(", "))));
     }
-    out.push(String::new());
+    out.push(Line::from(""));
 
     let body = claim
         .text
@@ -368,17 +473,48 @@ pub fn detail_view(claim: &Claim, cite_index: Option<&HashMap<String, Claim>>) -
         .or(claim.title.as_deref())
         .unwrap_or("");
     if body.is_empty() {
-        out.push(format!("({})", claim.kind.to_lowercase()));
+        out.push(Line::from(format!("({})", claim.kind.to_lowercase())));
     } else {
-        out.extend(body.lines().map(str::to_string));
+        for seg in split_blocks(body) {
+            match seg {
+                Segment::Prose(p) => out.extend(crate::markdown::render(&p)),
+                Segment::Block { name, content } => {
+                    let summary = serde_json::from_str::<serde_json::Value>(&content)
+                        .ok()
+                        .and_then(|j| substrate::block_summary(&name, &j));
+                    match summary {
+                        Some(lines) => {
+                            out.push(Line::from(Span::styled(
+                                format!("{name}:"),
+                                Style::new().add_modifier(Modifier::BOLD),
+                            )));
+                            out.extend(lines.into_iter().map(|l| Line::from(format!("  {l}"))));
+                        }
+                        None => {
+                            out.push(Line::from(Span::styled(
+                                format!("```{name}"),
+                                crate::markdown::code_style(),
+                            )));
+                            for l in content.lines() {
+                                out.push(Line::from(Span::styled(
+                                    l.to_string(),
+                                    crate::markdown::code_style(),
+                                )));
+                            }
+                        }
+                    }
+                    out.push(Line::from(""));
+                }
+            }
+        }
     }
 
     if !claim.cites.is_empty() {
-        out.push(String::new());
-        out.push(format!("cites ({}):", claim.cites.len()));
+        out.push(Line::from(""));
+        out.push(Line::from(format!("cites ({}):", claim.cites.len())));
         for cid in &claim.cites {
             let short = short_cid(cid);
-            match cite_index.and_then(|idx| idx.get(cid)) {
+            let line = match cite_index.and_then(|idx| idx.get(cid)) {
                 Some(c) => {
                     let first = c
                         .text
@@ -392,10 +528,11 @@ pub fn detail_view(claim: &Claim, cite_index: Option<&HashMap<String, Claim>>) -
                     } else {
                         first.to_string()
                     };
-                    out.push(format!("  {short}  {}  {first}", c.kind));
+                    format!("  {short}  {}  {first}", c.kind)
                 }
-                None => out.push(format!("  {short}")),
-            }
+                None => format!("  {short}"),
+            };
+            out.push(Line::from(line));
         }
     }
     out
@@ -445,16 +582,24 @@ pub fn plain_frame(state: &AppState) -> String {
         "CLAIMS  ({} subjects)\n",
         state.fold.subjects.len()
     ));
-    if state.rows.is_empty() {
+    if state.fold.subjects.is_empty() {
         out.push_str("  (none)\n");
     }
-    for (i, row) in state.rows.iter().enumerate() {
-        match row {
-            Row::Header(ns) => out.push_str(&format!("  {ns}\n")),
-            Row::Subject(name) => {
-                let marker = if i == state.selected { ">" } else { " " };
-                out.push_str(&format!("  {marker} {name}\n"));
-            }
+    // A flat namespace grouping, independent of the interactive tree, so the
+    // --once frame stays scriptable.
+    for (ns, _count) in state.fold.namespace_counts() {
+        let members: Vec<&String> = state
+            .fold
+            .subjects
+            .iter()
+            .filter(|n| namespace(n) == ns)
+            .collect();
+        // Skip a header identical to its single bare subject.
+        if !(members.len() == 1 && *members[0] == ns) {
+            out.push_str(&format!("  {ns}\n"));
+        }
+        for name in &members {
+            out.push_str(&format!("    {name}\n"));
         }
     }
     if !state.fold.errors.is_empty() {
@@ -532,7 +677,13 @@ pub fn run(repo: PathBuf) -> std::io::Result<()> {
                         View::Atoms => state.atom_scroll = state.atom_scroll.saturating_sub(1),
                         View::Telos => state.telos_scroll = state.telos_scroll.saturating_sub(1),
                     },
-                    KeyCode::Enter if state.view == View::Browser => state.descend(),
+                    KeyCode::Enter if state.view == View::Browser => {
+                        if state.focus == Focus::Subjects {
+                            state.activate(); // toggle a node, or descend a subject
+                        } else {
+                            state.descend();
+                        }
+                    }
                     KeyCode::Esc if state.view == View::Browser => state.ascend(),
                     _ => {}
                 },
@@ -715,16 +866,25 @@ fn draw_telos(frame: &mut ratatui::Frame, state: &AppState, area: ratatui::layou
 }
 
 fn draw_list(frame: &mut ratatui::Frame, state: &AppState, area: ratatui::layout::Rect) {
-    use ratatui::style::{Modifier, Style, Stylize};
-    use ratatui::text::Line;
+    use ratatui::style::{Modifier, Style};
     use ratatui::widgets::{Block, List, ListItem, ListState};
 
+    let marker = |key: &str| {
+        if state.collapsed.contains(key) {
+            "▸"
+        } else {
+            "▾"
+        }
+    };
     let items: Vec<ListItem> = state
         .rows
         .iter()
         .map(|row| match row {
-            Row::Header(ns) => ListItem::new(Line::from(ns.clone()).add_modifier(Modifier::DIM)),
-            Row::Subject(name) => ListItem::new(Line::from(format!("  {name}"))),
+            Row::Section(l) => ListItem::new(format!("{} [{l}]", marker(&format!("sec:{l}"))))
+                .style(Style::new().add_modifier(Modifier::BOLD)),
+            Row::Group(g) => ListItem::new(format!("  {} {g}", marker(&format!("grp:{g}"))))
+                .style(Style::new().add_modifier(Modifier::DIM)),
+            Row::Subject(name) => ListItem::new(format!("    {name}")),
         })
         .collect();
     let mut list_state = ListState::default();
@@ -800,25 +960,26 @@ fn draw_claims(frame: &mut ratatui::Frame, state: &AppState, area: ratatui::layo
 
 fn draw_claim_detail(frame: &mut ratatui::Frame, state: &AppState, area: ratatui::layout::Rect) {
     use ratatui::style::Style;
-    use ratatui::text::Span;
-    use ratatui::widgets::{Block, Paragraph};
+    use ratatui::text::{Line, Span};
+    use ratatui::widgets::{Block, Paragraph, Wrap};
 
     let (title, style, lines) = match state.selected_claim() {
         Some(c) => (
             short_cid(&c.cid),
             kind_style(&c.kind),
-            detail_view(c, Some(&state.fold.by_cid)),
+            claim_detail(c, Some(&state.fold.by_cid)),
         ),
         None => (
             "(no claim)".to_string(),
             Style::new(),
-            vec!["(no claim selected)".to_string()],
+            vec![Line::from("(no claim selected)")],
         ),
     };
     // Scroll offset, clamped so it can never slice past the end.
     let scroll = state.detail_scroll.min(lines.len().saturating_sub(1));
     frame.render_widget(
-        Paragraph::new(lines[scroll..].join("\n"))
+        Paragraph::new(lines[scroll..].to_vec())
+            .wrap(Wrap { trim: false })
             .block(Block::bordered().title(Span::styled(format!(" {title} "), style))),
         area,
     );
@@ -848,71 +1009,92 @@ mod tests {
     }
 
     #[test]
-    fn rows_are_grouped_by_namespace_with_all_subjects_selectable() {
-        // two telos, one atom -> namespace_counts orders telos (2) before atom (1).
-        let a = app(&["telos/a", "telos/b", "atom/x"]);
+    fn tree_splits_my_work_and_day_with_groups() {
+        // a bare design subject (my work), two telos + one atom (day groups, in
+        // count order), and practice (a bare day subject after the groups).
+        let a = app(&[
+            "claim-detail-view",
+            "telos/a",
+            "telos/b",
+            "atom/x",
+            "practice",
+        ]);
         assert_eq!(
             a.rows,
             vec![
-                Row::Header("telos".into()),
+                Row::Section("my work".into()),
+                Row::Subject("claim-detail-view".into()),
+                Row::Section("day".into()),
+                Row::Group("telos".into()),
                 Row::Subject("telos/a".into()),
                 Row::Subject("telos/b".into()),
-                Row::Header("atom".into()),
+                Row::Group("atom".into()),
                 Row::Subject("atom/x".into()),
+                Row::Subject("practice".into()),
             ]
         );
-        let selectable = a.subject_indices().len();
-        assert_eq!(selectable, 3);
-        // First subject is selected initially.
-        assert_eq!(a.selected_subject(), Some("telos/a"));
+        // Initial selection lands on the first subject leaf.
+        assert_eq!(a.selected_subject(), Some("claim-detail-view"));
     }
 
     #[test]
-    fn bare_subject_renders_without_a_redundant_header() {
-        // `release` has no namespace prefix, so its namespace is the whole name;
-        // it renders as one Subject row with no identical header above it.
-        let a = app(&["release", "telos/a"]);
-        assert_eq!(
-            a.rows,
-            vec![
-                Row::Subject("release".into()),
-                Row::Header("telos".into()),
-                Row::Subject("telos/a".into()),
-            ]
-        );
+    fn collapsing_day_hides_its_children_and_toggles_back() {
+        let mut a = app(&["claim-detail-view", "telos/a"]);
+        a.selected = a.index_of_key("sec:day").unwrap();
+        a.activate(); // collapse [day]
+        assert!(a.collapsed.contains("sec:day"));
+        assert!(!a.rows.iter().any(|r| matches!(r, Row::Group(_))));
+        assert!(!a
+            .rows
+            .iter()
+            .any(|r| matches!(r, Row::Subject(s) if s == "telos/a")));
+        // [my work] and its subject remain.
+        assert!(a
+            .rows
+            .iter()
+            .any(|r| matches!(r, Row::Subject(s) if s == "claim-detail-view")));
+        a.activate(); // expand again (cursor stayed on the [day] section)
+        assert!(a
+            .rows
+            .iter()
+            .any(|r| matches!(r, Row::Subject(s) if s == "telos/a")));
     }
 
     #[test]
-    fn jk_moves_one_subject_and_clamps_at_both_ends() {
-        let mut a = app(&["telos/a", "telos/b", "atom/x"]);
-        a.select_prev(); // already at first -> stays
-        assert_eq!(a.selected_subject(), Some("telos/a"));
+    fn jk_moves_over_all_rows_and_clamps() {
+        // rows: Section(my work), Section(day), Group(telos), Subject(telos/a)
+        let mut a = app(&["telos/a"]);
+        a.selected = 0;
+        a.select_prev(); // clamps at the first row
+        assert_eq!(a.selected, 0);
         a.select_next();
-        assert_eq!(a.selected_subject(), Some("telos/b"));
-        a.select_next(); // skips the atom header row
-        assert_eq!(a.selected_subject(), Some("atom/x"));
-        a.select_next(); // at last -> stays
-        assert_eq!(a.selected_subject(), Some("atom/x"));
+        a.select_next();
+        a.select_next();
+        assert_eq!(a.selected, 3);
+        a.select_next(); // clamps at the last row
+        assert_eq!(a.selected, 3);
+        assert_eq!(a.selected_subject(), Some("telos/a"));
     }
 
     #[test]
-    fn refold_preserves_by_name_then_clamps_to_ordinal_when_gone() {
-        let mut a = app(&["telos/a", "telos/b", "atom/x"]);
-        a.select_next(); // telos/b (subject ordinal 1)
-        assert_eq!(a.selected_subject(), Some("telos/b"));
+    fn activate_toggles_a_group_but_descends_a_subject() {
+        let mut a = app(&["telos/a"]);
+        a.selected = a.index_of_key("grp:telos").unwrap();
+        a.activate(); // on a Group: toggle, focus unchanged
+        assert_eq!(a.focus, Focus::Subjects);
+        assert!(a.collapsed.contains("grp:telos"));
+        a.activate(); // re-expand (cursor stays on the group)
+        a.selected = a.index_of_key("sub:telos/a").unwrap();
+        a.activate(); // on a Subject: descend to Claims
+        assert_eq!(a.focus, Focus::Claims);
+    }
 
-        // telos/a vanishes but telos/b remains: cursor stays on telos/b by name.
-        a.refold(fold_of(&["telos/b", "atom/x"]), None);
-        assert_eq!(a.selected_subject(), Some("telos/b"));
-
-        // Remove the *selected* subject. Using one namespace keeps ordering
-        // stable, so the cursor must land on the subject now at the old ordinal
-        // (telos/c at ordinal 1) — NOT the first (telos/a). This distinguishes a
-        // real clamp from a jump-to-top.
-        let mut b = app(&["telos/a", "telos/b", "telos/c"]);
-        b.select_next(); // telos/b at ordinal 1
-        b.refold(fold_of(&["telos/a", "telos/c"]), None);
-        assert_eq!(b.selected_subject(), Some("telos/c"));
+    #[test]
+    fn refold_keeps_the_cursor_on_the_same_row_by_identity() {
+        let mut a = app(&["telos/a", "telos/b"]);
+        a.selected = a.index_of_key("grp:telos").unwrap();
+        a.refold(fold_of(&["telos/a", "telos/b", "telos/c"]), None);
+        assert_eq!(a.row_key(a.selected).as_deref(), Some("grp:telos"));
     }
 
     #[test]
@@ -1014,8 +1196,21 @@ mod tests {
         assert_eq!(a.detail_scroll, 0);
     }
 
+    fn detail_text(claim: &Claim, idx: Option<&HashMap<String, Claim>>) -> String {
+        claim_detail(claim, idx)
+            .iter()
+            .map(|l| {
+                l.spans
+                    .iter()
+                    .map(|s| s.content.as_ref())
+                    .collect::<String>()
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
     #[test]
-    fn detail_view_shows_fields_and_resolves_cites() {
+    fn claim_detail_shows_fields_and_resolves_cites() {
         let mut claim = mk_claim("Decision", "the full body text\nsecond line");
         claim.artifacts = vec!["Commit(\"abc\")".into()];
         claim.cites = vec!["bafyreiPRESENT".into(), "bafyreiMISSING".into()];
@@ -1026,18 +1221,45 @@ mod tests {
             mk_claim("Result", "cut a release"),
         );
 
-        let lines = detail_view(&claim, Some(&idx));
-        let joined = lines.join("\n");
+        let joined = detail_text(&claim, Some(&idx));
         assert!(joined.contains("Decision"), "kind: {joined}");
         assert!(joined.contains("the full body text"), "full text: {joined}");
         assert!(joined.contains("Commit(\"abc\")"), "artifact: {joined}");
-        // Present cite -> short-cid + kind + first line.
         assert!(
             joined.contains("@PRESENT…  Result  cut a release"),
             "resolved cite: {joined}"
         );
-        // Missing cite -> bare short-cid.
         assert!(joined.contains("@MISSING…"), "unresolved cite: {joined}");
+    }
+
+    #[test]
+    fn claim_detail_summarizes_a_supported_block() {
+        let body =
+            "some prose here\n\n```day-telos\n{\"witnesses\":[\"code-change\",\"verdict\"]}\n```";
+        let claim = mk_claim("Decision", body);
+        let joined = detail_text(&claim, None);
+        assert!(joined.contains("some prose here"), "prose: {joined}");
+        // Human summary, not the raw JSON.
+        assert!(
+            joined.contains("witnesses: code-change, verdict"),
+            "summary: {joined}"
+        );
+        assert!(
+            !joined.contains("\"witnesses\""),
+            "raw json leaked: {joined}"
+        );
+    }
+
+    #[test]
+    fn claim_detail_shows_an_unsupported_block_as_code() {
+        let body = "```json\n{\"k\": 1}\n```";
+        let claim = mk_claim("Observation", body);
+        let joined = detail_text(&claim, None);
+        // The block content is shown (as code), not dropped.
+        assert!(
+            joined.contains("{\"k\": 1}"),
+            "unsupported block content: {joined}"
+        );
     }
 
     #[test]
