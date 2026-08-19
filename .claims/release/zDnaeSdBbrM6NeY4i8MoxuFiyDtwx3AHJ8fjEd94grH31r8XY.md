@@ -13,7 +13,7 @@
   ],
   "rev": "223mtffbedd2h",
   "seq": 0,
-  "of": 8,
+  "of": 10,
   "text_len": 236,
   "content": "p2Rib2R5oWZSZXN1bHShZHRleHRgZWNpdGVzgdgqWCUAAXESIKuVWY8LaRhMsfrgFHujE7Ojd2yyBOflibyWUuJsOqAKZmF1dGhvcqJjZGlkeDlkaWQ6a2V5OnpEbmFlU2RCYnJNNk5lWTRpOE1veHVGaXlEdHd4M0FISjhmakVkOTRnckgzMXI4WFllYWdlbnT2Z3N1YmplY3ShZUxvY2FsZ3JlbGVhc2VpYXJ0aWZhY3RzgaFmQ29tbWl0eChlODUwNGRlM2IwMWU1ZjRhMWQ5YjYxNGUzYjg2NDE5MzI5MjNiOGEyaXdvcmtzcGFjZaFpV29ya3NwYWNleEA4MzVmODdhZGU0MGJkYzhkZjIyYzNiYmQyNzhkNTdlMDQwZmFhMDhjYzZlNDE1ZDZiZDAzODRlYjlhN2U1M2Nla3JlY29yZGVkX2F0GwAGWVrOpKOf"
 }
@@ -34,7 +34,7 @@ Cut v0.0.1-alpha.1: first tagged prerelease — the P0 watch-and-fold spine plus
   "cites": [],
   "rev": "223mtffbeidl2",
   "seq": 1,
-  "of": 8,
+  "of": 10,
   "content": "p2Rib2R5oWtQdWJsaWNhdGlvbqFlbGF5ZXJnR2l0VHJlZWVjaXRlc4BmYXV0aG9yomNkaWR4OWRpZDprZXk6ekRuYWVTZEJick02TmVZNGk4TW94dUZpeUR0d3gzQUhKOGZqRWQ5NGdySDMxcjhYWWVhZ2VudPZnc3ViamVjdKFlTG9jYWxncmVsZWFzZWlhcnRpZmFjdHOBoWZDb21taXR4KGU4NTA0ZGUzYjAxZTVmNGExZDliNjE0ZTNiODY0MTkzMjkyM2I4YTJpd29ya3NwYWNloWlXb3Jrc3BhY2V4QDgzNWY4N2FkZTQwYmRjOGRmMjJjM2JiZDI3OGQ1N2UwNDBmYWEwOGNjNmU0MTVkNmJkMDM4NGViOWE3ZTUzY2VrcmVjb3JkZWRfYXQbAAZZWs6nJbw="
 }
 ---
@@ -54,7 +54,7 @@ Cut v0.0.1-alpha.1: first tagged prerelease — the P0 watch-and-fold spine plus
   ],
   "rev": "223mtfl5p6zct",
   "seq": 2,
-  "of": 8,
+  "of": 10,
   "text_len": 208,
   "content": "p2Rib2R5oWZSZXN1bHShZHRleHRgZWNpdGVzgdgqWCUAAXESIHDaEiOqdol2QDb6UqC7XcbNc12HMCqwqEGY/uycz8P/ZmF1dGhvcqJjZGlkeDlkaWQ6a2V5OnpEbmFlU2RCYnJNNk5lWTRpOE1veHVGaXlEdHd4M0FISjhmakVkOTRnckgzMXI4WFllYWdlbnT2Z3N1YmplY3ShZUxvY2FsZ3JlbGVhc2VpYXJ0aWZhY3RzgaFmQ29tbWl0eCgwNWJiZmMwOTc5NzJkNmMwYmFiNjhhZmI4NmQ3MDM2MGY2NmNlMTg5aXdvcmtzcGFjZaFpV29ya3NwYWNleEA4MzVmODdhZGU0MGJkYzhkZjIyYzNiYmQyNzhkNTdlMDQwZmFhMDhjYzZlNDE1ZDZiZDAzODRlYjlhN2U1M2Nla3JlY29yZGVkX2F0GwAGWVxHUnyz"
 }
@@ -75,7 +75,7 @@ Cut v0.0.1-alpha.2: Step 2, the interactive ratatui TUI for watch-repo, reviewed
   "cites": [],
   "rev": "223mtfl5pcrtp",
   "seq": 3,
-  "of": 8,
+  "of": 10,
   "content": "p2Rib2R5oWtQdWJsaWNhdGlvbqFlbGF5ZXJnR2l0VHJlZWVjaXRlc4BmYXV0aG9yomNkaWR4OWRpZDprZXk6ekRuYWVTZEJick02TmVZNGk4TW94dUZpeUR0d3gzQUhKOGZqRWQ5NGdySDMxcjhYWWVhZ2VudPZnc3ViamVjdKFlTG9jYWxncmVsZWFzZWlhcnRpZmFjdHOBoWZDb21taXR4KDA1YmJmYzA5Nzk3MmQ2YzBiYWI2OGFmYjg2ZDcwMzYwZjY2Y2UxODlpd29ya3NwYWNloWlXb3Jrc3BhY2V4QDgzNWY4N2FkZTQwYmRjOGRmMjJjM2JiZDI3OGQ1N2UwNDBmYWEwOGNjNmU0MTVkNmJkMDM4NGViOWE3ZTUzY2VrcmVjb3JkZWRfYXQbAAZZXEdUXtA="
 }
 ---
@@ -95,7 +95,7 @@ Cut v0.0.1-alpha.2: Step 2, the interactive ratatui TUI for watch-repo, reviewed
   ],
   "rev": "223mtgu5nrox6",
   "seq": 4,
-  "of": 8,
+  "of": 10,
   "text_len": 258,
   "content": "p2Rib2R5oWZSZXN1bHShZHRleHRgZWNpdGVzgdgqWCUAAXESIPX+f5Qj6KfTJWt/oeEdKdGXz8oCpgXCQVqzXeLmnn+jZmF1dGhvcqJjZGlkeDlkaWQ6a2V5OnpEbmFlU2RCYnJNNk5lWTRpOE1veHVGaXlEdHd4M0FISjhmakVkOTRnckgzMXI4WFllYWdlbnT2Z3N1YmplY3ShZUxvY2FsZ3JlbGVhc2VpYXJ0aWZhY3RzgaFmQ29tbWl0eCg1YmY1ODQ2ZGYyODFhMDhlNDA5NTQzNGI1MDNhOGRkODI3MGY0ZThiaXdvcmtzcGFjZaFpV29ya3NwYWNleEA4MzVmODdhZGU0MGJkYzhkZjIyYzNiYmQyNzhkNTdlMDQwZmFhMDhjYzZlNDE1ZDZiZDAzODRlYjlhN2U1M2Nla3JlY29yZGVkX2F0GwAGWWaHO9Mo"
 }
@@ -116,7 +116,7 @@ Cut v0.0.1-alpha.3: Step 3, the two-pane subject list + claim detail browser, re
   "cites": [],
   "rev": "223mtgu5nvycl",
   "seq": 5,
-  "of": 8,
+  "of": 10,
   "content": "p2Rib2R5oWtQdWJsaWNhdGlvbqFlbGF5ZXJnR2l0VHJlZWVjaXRlc4BmYXV0aG9yomNkaWR4OWRpZDprZXk6ekRuYWVTZEJick02TmVZNGk4TW94dUZpeUR0d3gzQUhKOGZqRWQ5NGdySDMxcjhYWWVhZ2VudPZnc3ViamVjdKFlTG9jYWxncmVsZWFzZWlhcnRpZmFjdHOBoWZDb21taXR4KDViZjU4NDZkZjI4MWEwOGU0MDk1NDM0YjUwM2E4ZGQ4MjcwZjRlOGJpd29ya3NwYWNloWlXb3Jrc3BhY2V4QDgzNWY4N2FkZTQwYmRjOGRmMjJjM2JiZDI3OGQ1N2UwNDBmYWEwOGNjNmU0MTVkNmJkMDM4NGViOWE3ZTUzY2VrcmVjb3JkZWRfYXQbAAZZZoc9+Kw="
 }
 ---
@@ -136,7 +136,7 @@ Cut v0.0.1-alpha.3: Step 3, the two-pane subject list + claim detail browser, re
   ],
   "rev": "223mtgvm6jwj5",
   "seq": 6,
-  "of": 8,
+  "of": 10,
   "text_len": 301,
   "content": "p2Rib2R5oWZSZXN1bHShZHRleHRgZWNpdGVzgdgqWCUAAXESICEouvWGEza2xUlM2VItDCOwbKQFahWtL7YL4GFWAJvTZmF1dGhvcqJjZGlkeDlkaWQ6a2V5OnpEbmFlU2RCYnJNNk5lWTRpOE1veHVGaXlEdHd4M0FISjhmakVkOTRnckgzMXI4WFllYWdlbnT2Z3N1YmplY3ShZUxvY2FsZ3JlbGVhc2VpYXJ0aWZhY3RzgaFmQ29tbWl0eChhNjg0MmRjNGIxZjJiZjExNTEyZTE4NjdlMjI3YWU5ZjMyNmQyMzhjaXdvcmtzcGFjZaFpV29ya3NwYWNleEA4MzVmODdhZGU0MGJkYzhkZjIyYzNiYmQyNzhkNTdlMDQwZmFhMDhjYzZlNDE1ZDZiZDAzODRlYjlhN2U1M2Nla3JlY29yZGVkX2F0GwAGWWbkR/F4"
 }
@@ -157,7 +157,48 @@ Cut v0.0.1-alpha.4: Step 4, the ephemeral comment sidecar with live re-localizat
   "cites": [],
   "rev": "223mtgvm6owl7",
   "seq": 7,
-  "of": 8,
+  "of": 10,
   "content": "p2Rib2R5oWtQdWJsaWNhdGlvbqFlbGF5ZXJnR2l0VHJlZWVjaXRlc4BmYXV0aG9yomNkaWR4OWRpZDprZXk6ekRuYWVTZEJick02TmVZNGk4TW94dUZpeUR0d3gzQUhKOGZqRWQ5NGdySDMxcjhYWWVhZ2VudPZnc3ViamVjdKFlTG9jYWxncmVsZWFzZWlhcnRpZmFjdHOBoWZDb21taXR4KGE2ODQyZGM0YjFmMmJmMTE1MTJlMTg2N2UyMjdhZTlmMzI2ZDIzOGNpd29ya3NwYWNloWlXb3Jrc3BhY2V4QDgzNWY4N2FkZTQwYmRjOGRmMjJjM2JiZDI3OGQ1N2UwNDBmYWEwOGNjNmU0MTVkNmJkMDM4NGViOWE3ZTUzY2VrcmVjb3JkZWRfYXQbAAZZZuRKcbo="
+}
+---
+***8<***
+---
+{
+  "v": 3,
+  "cid": "bafyreiappj3ecrcxgrmdjsd4fzibmfitaqn2oihsppmw4myhhp3qgzjho4",
+  "sig": "9e70ae49b37fad1b873e6a317b05d721528ddc275b7c7008433e761c0829888149c35c25f90ccb471c8476d557533d6167d0a89cbe82c22543fe8a8895d3a926",
+  "author": "did:key:zDnaeSdBbrM6NeY4i8MoxuFiyDtwx3AHJ8fjEd94grH31r8XY",
+  "subject": {
+    "local": "release"
+  },
+  "kind": "result",
+  "cites": [
+    "bafyreib7lxqseicuppo6dgmqrnkhcsx2ae6fvo32oe7mvb5oztrzyonw2q"
+  ],
+  "rev": "223mtgyskpgnf",
+  "seq": 8,
+  "of": 10,
+  "text_len": 466,
+  "content": "p2Rib2R5oWZSZXN1bHShZHRleHRgZWNpdGVzgdgqWCUAAXESID9d4SIgVHvd4ZmQi1RxSvoBPFq7enE+yoeuzOOcObbUZmF1dGhvcqJjZGlkeDlkaWQ6a2V5OnpEbmFlU2RCYnJNNk5lWTRpOE1veHVGaXlEdHd4M0FISjhmakVkOTRnckgzMXI4WFllYWdlbnT2Z3N1YmplY3ShZUxvY2FsZ3JlbGVhc2VpYXJ0aWZhY3RzgaFmQ29tbWl0eChmMmI2YjI5ZGNhZDk1ZGM5MTc1MWQwN2NhMmU1NzdlNGZiN2M0ZDVmaXdvcmtzcGFjZaFpV29ya3NwYWNleEA4MzVmODdhZGU0MGJkYzhkZjIyYzNiYmQyNzhkNTdlMDQwZmFhMDhjYzZlNDE1ZDZiZDAzODRlYjlhN2U1M2Nla3JlY29yZGVkX2F0GwAGWWexCrIJ"
+}
+---
+
+Cut v0.0.1-alpha.5: the UX bundle — claim detail view (three-level focus, scrollable detail, resolved cite previews), kind colors + retraction display, and atom/telos structure views (view switcher, day-block parse, live state honestly deferred). One bundle adversarial review, APPROVE-WITH-FOLLOW-UPS, all follow-ups addressed. Commits c0dad66..HEAD on main. Interactive views pending a live-TTY eyeball; the structure/parse/focus logic is unit-tested (44 tests).
+***8<***
+---
+{
+  "v": 3,
+  "cid": "bafyreiby4fuy6rke3rjd6m3cyablk3y3wtadljz2zxanm7m3gi6vqwfmka",
+  "sig": "a0ead8d9bcf10a600f8d6df9da327ec822653f36d77303927ef565047c3c09bb706850f021f5f401fedaf90bc4c9cf77c9993dba4f134aeef60674470a15389b",
+  "author": "did:key:zDnaeSdBbrM6NeY4i8MoxuFiyDtwx3AHJ8fjEd94grH31r8XY",
+  "subject": {
+    "local": "release"
+  },
+  "kind": "publication",
+  "cites": [],
+  "rev": "223mtgyskvmgn",
+  "seq": 9,
+  "of": 10,
+  "content": "p2Rib2R5oWtQdWJsaWNhdGlvbqFlbGF5ZXJnR2l0VHJlZWVjaXRlc4BmYXV0aG9yomNkaWR4OWRpZDprZXk6ekRuYWVTZEJick02TmVZNGk4TW94dUZpeUR0d3gzQUhKOGZqRWQ5NGdySDMxcjhYWWVhZ2VudPZnc3ViamVjdKFlTG9jYWxncmVsZWFzZWlhcnRpZmFjdHOBoWZDb21taXR4KGYyYjZiMjlkY2FkOTVkYzkxNzUxZDA3Y2EyZTU3N2U0ZmI3YzRkNWZpd29ya3NwYWNloWlXb3Jrc3BhY2V4QDgzNWY4N2FkZTQwYmRjOGRmMjJjM2JiZDI3OGQ1N2UwNDBmYWEwOGNjNmU0MTVkNmJkMDM4NGViOWE3ZTUzY2VrcmVjb3JkZWRfYXQbAAZZZ7ENySs="
 }
 ---
