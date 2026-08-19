@@ -13,7 +13,7 @@
   ],
   "rev": "223mtffbedd2h",
   "seq": 0,
-  "of": 10,
+  "of": 12,
   "text_len": 236,
   "content": "p2Rib2R5oWZSZXN1bHShZHRleHRgZWNpdGVzgdgqWCUAAXESIKuVWY8LaRhMsfrgFHujE7Ojd2yyBOflibyWUuJsOqAKZmF1dGhvcqJjZGlkeDlkaWQ6a2V5OnpEbmFlU2RCYnJNNk5lWTRpOE1veHVGaXlEdHd4M0FISjhmakVkOTRnckgzMXI4WFllYWdlbnT2Z3N1YmplY3ShZUxvY2FsZ3JlbGVhc2VpYXJ0aWZhY3RzgaFmQ29tbWl0eChlODUwNGRlM2IwMWU1ZjRhMWQ5YjYxNGUzYjg2NDE5MzI5MjNiOGEyaXdvcmtzcGFjZaFpV29ya3NwYWNleEA4MzVmODdhZGU0MGJkYzhkZjIyYzNiYmQyNzhkNTdlMDQwZmFhMDhjYzZlNDE1ZDZiZDAzODRlYjlhN2U1M2Nla3JlY29yZGVkX2F0GwAGWVrOpKOf"
 }
@@ -34,7 +34,7 @@ Cut v0.0.1-alpha.1: first tagged prerelease — the P0 watch-and-fold spine plus
   "cites": [],
   "rev": "223mtffbeidl2",
   "seq": 1,
-  "of": 10,
+  "of": 12,
   "content": "p2Rib2R5oWtQdWJsaWNhdGlvbqFlbGF5ZXJnR2l0VHJlZWVjaXRlc4BmYXV0aG9yomNkaWR4OWRpZDprZXk6ekRuYWVTZEJick02TmVZNGk4TW94dUZpeUR0d3gzQUhKOGZqRWQ5NGdySDMxcjhYWWVhZ2VudPZnc3ViamVjdKFlTG9jYWxncmVsZWFzZWlhcnRpZmFjdHOBoWZDb21taXR4KGU4NTA0ZGUzYjAxZTVmNGExZDliNjE0ZTNiODY0MTkzMjkyM2I4YTJpd29ya3NwYWNloWlXb3Jrc3BhY2V4QDgzNWY4N2FkZTQwYmRjOGRmMjJjM2JiZDI3OGQ1N2UwNDBmYWEwOGNjNmU0MTVkNmJkMDM4NGViOWE3ZTUzY2VrcmVjb3JkZWRfYXQbAAZZWs6nJbw="
 }
 ---
@@ -54,7 +54,7 @@ Cut v0.0.1-alpha.1: first tagged prerelease — the P0 watch-and-fold spine plus
   ],
   "rev": "223mtfl5p6zct",
   "seq": 2,
-  "of": 10,
+  "of": 12,
   "text_len": 208,
   "content": "p2Rib2R5oWZSZXN1bHShZHRleHRgZWNpdGVzgdgqWCUAAXESIHDaEiOqdol2QDb6UqC7XcbNc12HMCqwqEGY/uycz8P/ZmF1dGhvcqJjZGlkeDlkaWQ6a2V5OnpEbmFlU2RCYnJNNk5lWTRpOE1veHVGaXlEdHd4M0FISjhmakVkOTRnckgzMXI4WFllYWdlbnT2Z3N1YmplY3ShZUxvY2FsZ3JlbGVhc2VpYXJ0aWZhY3RzgaFmQ29tbWl0eCgwNWJiZmMwOTc5NzJkNmMwYmFiNjhhZmI4NmQ3MDM2MGY2NmNlMTg5aXdvcmtzcGFjZaFpV29ya3NwYWNleEA4MzVmODdhZGU0MGJkYzhkZjIyYzNiYmQyNzhkNTdlMDQwZmFhMDhjYzZlNDE1ZDZiZDAzODRlYjlhN2U1M2Nla3JlY29yZGVkX2F0GwAGWVxHUnyz"
 }
@@ -75,7 +75,7 @@ Cut v0.0.1-alpha.2: Step 2, the interactive ratatui TUI for watch-repo, reviewed
   "cites": [],
   "rev": "223mtfl5pcrtp",
   "seq": 3,
-  "of": 10,
+  "of": 12,
   "content": "p2Rib2R5oWtQdWJsaWNhdGlvbqFlbGF5ZXJnR2l0VHJlZWVjaXRlc4BmYXV0aG9yomNkaWR4OWRpZDprZXk6ekRuYWVTZEJick02TmVZNGk4TW94dUZpeUR0d3gzQUhKOGZqRWQ5NGdySDMxcjhYWWVhZ2VudPZnc3ViamVjdKFlTG9jYWxncmVsZWFzZWlhcnRpZmFjdHOBoWZDb21taXR4KDA1YmJmYzA5Nzk3MmQ2YzBiYWI2OGFmYjg2ZDcwMzYwZjY2Y2UxODlpd29ya3NwYWNloWlXb3Jrc3BhY2V4QDgzNWY4N2FkZTQwYmRjOGRmMjJjM2JiZDI3OGQ1N2UwNDBmYWEwOGNjNmU0MTVkNmJkMDM4NGViOWE3ZTUzY2VrcmVjb3JkZWRfYXQbAAZZXEdUXtA="
 }
 ---
@@ -95,7 +95,7 @@ Cut v0.0.1-alpha.2: Step 2, the interactive ratatui TUI for watch-repo, reviewed
   ],
   "rev": "223mtgu5nrox6",
   "seq": 4,
-  "of": 10,
+  "of": 12,
   "text_len": 258,
   "content": "p2Rib2R5oWZSZXN1bHShZHRleHRgZWNpdGVzgdgqWCUAAXESIPX+f5Qj6KfTJWt/oeEdKdGXz8oCpgXCQVqzXeLmnn+jZmF1dGhvcqJjZGlkeDlkaWQ6a2V5OnpEbmFlU2RCYnJNNk5lWTRpOE1veHVGaXlEdHd4M0FISjhmakVkOTRnckgzMXI4WFllYWdlbnT2Z3N1YmplY3ShZUxvY2FsZ3JlbGVhc2VpYXJ0aWZhY3RzgaFmQ29tbWl0eCg1YmY1ODQ2ZGYyODFhMDhlNDA5NTQzNGI1MDNhOGRkODI3MGY0ZThiaXdvcmtzcGFjZaFpV29ya3NwYWNleEA4MzVmODdhZGU0MGJkYzhkZjIyYzNiYmQyNzhkNTdlMDQwZmFhMDhjYzZlNDE1ZDZiZDAzODRlYjlhN2U1M2Nla3JlY29yZGVkX2F0GwAGWWaHO9Mo"
 }
@@ -116,7 +116,7 @@ Cut v0.0.1-alpha.3: Step 3, the two-pane subject list + claim detail browser, re
   "cites": [],
   "rev": "223mtgu5nvycl",
   "seq": 5,
-  "of": 10,
+  "of": 12,
   "content": "p2Rib2R5oWtQdWJsaWNhdGlvbqFlbGF5ZXJnR2l0VHJlZWVjaXRlc4BmYXV0aG9yomNkaWR4OWRpZDprZXk6ekRuYWVTZEJick02TmVZNGk4TW94dUZpeUR0d3gzQUhKOGZqRWQ5NGdySDMxcjhYWWVhZ2VudPZnc3ViamVjdKFlTG9jYWxncmVsZWFzZWlhcnRpZmFjdHOBoWZDb21taXR4KDViZjU4NDZkZjI4MWEwOGU0MDk1NDM0YjUwM2E4ZGQ4MjcwZjRlOGJpd29ya3NwYWNloWlXb3Jrc3BhY2V4QDgzNWY4N2FkZTQwYmRjOGRmMjJjM2JiZDI3OGQ1N2UwNDBmYWEwOGNjNmU0MTVkNmJkMDM4NGViOWE3ZTUzY2VrcmVjb3JkZWRfYXQbAAZZZoc9+Kw="
 }
 ---
@@ -136,7 +136,7 @@ Cut v0.0.1-alpha.3: Step 3, the two-pane subject list + claim detail browser, re
   ],
   "rev": "223mtgvm6jwj5",
   "seq": 6,
-  "of": 10,
+  "of": 12,
   "text_len": 301,
   "content": "p2Rib2R5oWZSZXN1bHShZHRleHRgZWNpdGVzgdgqWCUAAXESICEouvWGEza2xUlM2VItDCOwbKQFahWtL7YL4GFWAJvTZmF1dGhvcqJjZGlkeDlkaWQ6a2V5OnpEbmFlU2RCYnJNNk5lWTRpOE1veHVGaXlEdHd4M0FISjhmakVkOTRnckgzMXI4WFllYWdlbnT2Z3N1YmplY3ShZUxvY2FsZ3JlbGVhc2VpYXJ0aWZhY3RzgaFmQ29tbWl0eChhNjg0MmRjNGIxZjJiZjExNTEyZTE4NjdlMjI3YWU5ZjMyNmQyMzhjaXdvcmtzcGFjZaFpV29ya3NwYWNleEA4MzVmODdhZGU0MGJkYzhkZjIyYzNiYmQyNzhkNTdlMDQwZmFhMDhjYzZlNDE1ZDZiZDAzODRlYjlhN2U1M2Nla3JlY29yZGVkX2F0GwAGWWbkR/F4"
 }
@@ -157,7 +157,7 @@ Cut v0.0.1-alpha.4: Step 4, the ephemeral comment sidecar with live re-localizat
   "cites": [],
   "rev": "223mtgvm6owl7",
   "seq": 7,
-  "of": 10,
+  "of": 12,
   "content": "p2Rib2R5oWtQdWJsaWNhdGlvbqFlbGF5ZXJnR2l0VHJlZWVjaXRlc4BmYXV0aG9yomNkaWR4OWRpZDprZXk6ekRuYWVTZEJick02TmVZNGk4TW94dUZpeUR0d3gzQUhKOGZqRWQ5NGdySDMxcjhYWWVhZ2VudPZnc3ViamVjdKFlTG9jYWxncmVsZWFzZWlhcnRpZmFjdHOBoWZDb21taXR4KGE2ODQyZGM0YjFmMmJmMTE1MTJlMTg2N2UyMjdhZTlmMzI2ZDIzOGNpd29ya3NwYWNloWlXb3Jrc3BhY2V4QDgzNWY4N2FkZTQwYmRjOGRmMjJjM2JiZDI3OGQ1N2UwNDBmYWEwOGNjNmU0MTVkNmJkMDM4NGViOWE3ZTUzY2VrcmVjb3JkZWRfYXQbAAZZZuRKcbo="
 }
 ---
@@ -177,7 +177,7 @@ Cut v0.0.1-alpha.4: Step 4, the ephemeral comment sidecar with live re-localizat
   ],
   "rev": "223mtgyskpgnf",
   "seq": 8,
-  "of": 10,
+  "of": 12,
   "text_len": 466,
   "content": "p2Rib2R5oWZSZXN1bHShZHRleHRgZWNpdGVzgdgqWCUAAXESID9d4SIgVHvd4ZmQi1RxSvoBPFq7enE+yoeuzOOcObbUZmF1dGhvcqJjZGlkeDlkaWQ6a2V5OnpEbmFlU2RCYnJNNk5lWTRpOE1veHVGaXlEdHd4M0FISjhmakVkOTRnckgzMXI4WFllYWdlbnT2Z3N1YmplY3ShZUxvY2FsZ3JlbGVhc2VpYXJ0aWZhY3RzgaFmQ29tbWl0eChmMmI2YjI5ZGNhZDk1ZGM5MTc1MWQwN2NhMmU1NzdlNGZiN2M0ZDVmaXdvcmtzcGFjZaFpV29ya3NwYWNleEA4MzVmODdhZGU0MGJkYzhkZjIyYzNiYmQyNzhkNTdlMDQwZmFhMDhjYzZlNDE1ZDZiZDAzODRlYjlhN2U1M2Nla3JlY29yZGVkX2F0GwAGWWexCrIJ"
 }
@@ -198,7 +198,48 @@ Cut v0.0.1-alpha.5: the UX bundle — claim detail view (three-level focus, scro
   "cites": [],
   "rev": "223mtgyskvmgn",
   "seq": 9,
-  "of": 10,
+  "of": 12,
   "content": "p2Rib2R5oWtQdWJsaWNhdGlvbqFlbGF5ZXJnR2l0VHJlZWVjaXRlc4BmYXV0aG9yomNkaWR4OWRpZDprZXk6ekRuYWVTZEJick02TmVZNGk4TW94dUZpeUR0d3gzQUhKOGZqRWQ5NGdySDMxcjhYWWVhZ2VudPZnc3ViamVjdKFlTG9jYWxncmVsZWFzZWlhcnRpZmFjdHOBoWZDb21taXR4KGYyYjZiMjlkY2FkOTVkYzkxNzUxZDA3Y2EyZTU3N2U0ZmI3YzRkNWZpd29ya3NwYWNloWlXb3Jrc3BhY2V4QDgzNWY4N2FkZTQwYmRjOGRmMjJjM2JiZDI3OGQ1N2UwNDBmYWEwOGNjNmU0MTVkNmJkMDM4NGViOWE3ZTUzY2VrcmVjb3JkZWRfYXQbAAZZZ7ENySs="
+}
+---
+***8<***
+---
+{
+  "v": 3,
+  "cid": "bafyreidxbfh7yvapnnmbj54xzsl7zlwkguja3ed7quai2hzzr734zoajwe",
+  "sig": "9c30afb831dbf27f8e16cc36ec982cb471cbbc778bb004b938858eb6dde30bce315f3f9786a33921fabf6374869e89a5ea3e357355410267619bc433b79b1e3a",
+  "author": "did:key:zDnaeSdBbrM6NeY4i8MoxuFiyDtwx3AHJ8fjEd94grH31r8XY",
+  "subject": {
+    "local": "release"
+  },
+  "kind": "result",
+  "cites": [
+    "bafyreihrh2wx7rp4zttuq4hgobmrgl3ofujtju2rras5wkn5r6nbz6b5be"
+  ],
+  "rev": "223mth3s2liye",
+  "seq": 10,
+  "of": 12,
+  "text_len": 396,
+  "content": "p2Rib2R5oWZSZXN1bHShZHRleHRgZWNpdGVzgdgqWCUAAXESIPE+rX/F/MznSHDmcFkTL24tEzTTUYgl2ym9j5oc+D0JZmF1dGhvcqJjZGlkeDlkaWQ6a2V5OnpEbmFlU2RCYnJNNk5lWTRpOE1veHVGaXlEdHd4M0FISjhmakVkOTRnckgzMXI4WFllYWdlbnT2Z3N1YmplY3ShZUxvY2FsZ3JlbGVhc2VpYXJ0aWZhY3RzgaFmQ29tbWl0eCgyZDMwYzU0NDQ0M2M4NGRiZTk2M2NkYWEyYTA2Zjg2ZWMwZTgzOThjaXdvcmtzcGFjZaFpV29ya3NwYWNleEA4MzVmODdhZGU0MGJkYzhkZjIyYzNiYmQyNzhkNTdlMDQwZmFhMDhjYzZlNDE1ZDZiZDAzODRlYjlhN2U1M2Nla3JlY29yZGVkX2F0GwAGWWhwCLtb"
+}
+---
+
+Cut v0.0.1-alpha.6: the unified-fold performance refactor — the whole TUI derives from one kan show --all --json per tick, eliminating the per-keystroke kan spawns that made the browser sluggish. Reviewed APPROVE-WITH-FOLLOW-UPS; subject-set + ordering parity verified byte-identical against the live store, one spawn per changed tick / zero on a quiet tick. All follow-ups addressed. 45 tests.
+***8<***
+---
+{
+  "v": 3,
+  "cid": "bafyreihjvgxjkpbpikq6d2lsd5lhcekqi6yszd6zityat2mm6hlppj2vge",
+  "sig": "66576c7bc88266f3994dba593919ad4df406c8c2eb1eaa69fc5d4eade4fdb7cf2e00d82ecfc0b05fba225f15a00017a18c885622897b42e19d1b2c127e3a5166",
+  "author": "did:key:zDnaeSdBbrM6NeY4i8MoxuFiyDtwx3AHJ8fjEd94grH31r8XY",
+  "subject": {
+    "local": "release"
+  },
+  "kind": "publication",
+  "cites": [],
+  "rev": "223mth3s2rryh",
+  "seq": 11,
+  "of": 12,
+  "content": "p2Rib2R5oWtQdWJsaWNhdGlvbqFlbGF5ZXJnR2l0VHJlZWVjaXRlc4BmYXV0aG9yomNkaWR4OWRpZDprZXk6ekRuYWVTZEJick02TmVZNGk4TW94dUZpeUR0d3gzQUhKOGZqRWQ5NGdySDMxcjhYWWVhZ2VudPZnc3ViamVjdKFlTG9jYWxncmVsZWFzZWlhcnRpZmFjdHOBoWZDb21taXR4KDJkMzBjNTQ0NDQzYzg0ZGJlOTYzY2RhYTJhMDZmODZlYzBlODM5OGNpd29ya3NwYWNloWlXb3Jrc3BhY2V4QDgzNWY4N2FkZTQwYmRjOGRmMjJjM2JiZDI3OGQ1N2UwNDBmYWEwOGNjNmU0MTVkNmJkMDM4NGViOWE3ZTUzY2VrcmVjb3JkZWRfYXQbAAZZaHAL318="
 }
 ---
