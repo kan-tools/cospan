@@ -23,6 +23,7 @@
 //! the whole file — but the fingerprint search below is the source of truth.
 
 pub mod substrate;
+pub mod tui;
 
 /// A comment's fingerprint into a file: the text it sits on, plus the context
 /// that disambiguates it from lookalikes elsewhere in the file.

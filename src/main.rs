@@ -16,10 +16,11 @@
 //! Poll, don't subscribe: the whole kan/day substrate has no push channel, so the
 //! live tool watches by polling mtime + re-folding. This mirrors that.
 
-use cospan::substrate::{self, Dashboard};
+use cospan::substrate;
+use cospan::tui;
 use cospan::{relocalize, Anchor, Localization, State};
-use std::path::{Path, PathBuf};
-use std::time::{Duration, SystemTime};
+use std::path::PathBuf;
+use std::time::Duration;
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -177,7 +178,7 @@ fn subject_cmd(args: &[String]) {
     }
 }
 
-// --- P0 spine: watch a kan/day repo and redraw on change --------------------
+// --- P0 spine: watch a kan/day repo, drawn as an interactive TUI ------------
 
 fn watch_repo(args: &[String]) {
     let repo: PathBuf = args
@@ -187,75 +188,16 @@ fn watch_repo(args: &[String]) {
         .unwrap_or_else(|| PathBuf::from("."));
     let once = args.iter().any(|a| a == "--once");
 
-    if !repo.join(".kan").is_dir() {
-        eprintln!("warning: {} has no .kan/ — is this a kan repo?", repo.display());
-    }
-    let head = repo.join(".kan/log/HEAD");
-
-    let mut last: Option<SystemTime> = None;
-    let mut tick: u64 = 0;
-    loop {
-        let m = std::fs::metadata(&head).and_then(|md| md.modified()).ok();
-        if last.is_none() || m != last {
-            tick += 1;
-            let dash = substrate::collect(&repo);
-            render_dashboard(&repo, &dash, tick);
-            last = m;
+    if once {
+        // Non-interactive single frame: scriptable, CI-friendly, testable.
+        if !repo.join(".kan").is_dir() {
+            eprintln!("warning: {} has no .kan/ — is this a kan repo?", repo.display());
         }
-        if once {
-            break;
-        }
-        std::thread::sleep(Duration::from_millis(500));
+        let dash = substrate::collect(&repo);
+        let state = tui::AppState::new(repo, dash, None);
+        print!("{}", tui::plain_frame(&state));
+    } else if let Err(e) = tui::run(repo) {
+        eprintln!("cospan: tui error: {e}");
+        std::process::exit(1);
     }
-}
-
-fn render_dashboard(repo: &Path, dash: &Dashboard, tick: u64) {
-    print!("\x1b[2J\x1b[H"); // clear screen + cursor home
-    let rule = "─".repeat(64);
-
-    println!("cospan · {}  (fold #{tick})", repo.display());
-    println!("{rule}");
-
-    // Process position — day's own honest, ambiguity-preserving text.
-    println!("PROCESS  (day status)");
-    match &dash.day_status {
-        Some(text) if !text.is_empty() => {
-            for line in text.lines().take(14) {
-                println!("  {line}");
-            }
-            if text.lines().count() > 14 {
-                println!("  … (run `day status` for the full picture)");
-            }
-        }
-        _ => println!("  (unavailable)"),
-    }
-    println!("{rule}");
-
-    // Sessions — the flat agents/handoff registry (no hierarchy yet; see 02).
-    let sessions = dash.sessions();
-    println!("SESSIONS  (agents/handoff · {} live)", sessions.len());
-    for s in &sessions {
-        let short = s.name.trim_start_matches("agents/handoff/");
-        println!("  · {:<28} [{}]", short, s.state);
-    }
-    if sessions.is_empty() {
-        println!("  (none)");
-    }
-    println!("{rule}");
-
-    // Claims by subject namespace.
-    println!("CLAIMS  ({} subjects total)", dash.subjects.len());
-    for (ns, n) in dash.namespace_counts() {
-        println!("  {n:>4}  {ns}");
-    }
-
-    if !dash.errors.is_empty() {
-        println!("{rule}");
-        println!("NOTES");
-        for e in &dash.errors {
-            println!("  ! {e}");
-        }
-    }
-    println!("{rule}");
-    println!("watching {} · Ctrl-C to stop", repo.join(".kan/log/HEAD").display());
 }
