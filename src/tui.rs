@@ -8,7 +8,8 @@
 //! tick, and the substrate is re-collected only when `.kan/log/HEAD` changes
 //! (`telos/poll-dont-subscribe`).
 
-use crate::substrate::{self, Dashboard};
+use crate::substrate::{self, Claim, Dashboard};
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
 
@@ -29,6 +30,36 @@ pub struct AppState {
     /// Index into `rows`; always points at a `Row::Subject` when any subject exists.
     pub selected: usize,
     pub last_mtime: Option<SystemTime>,
+    /// Per-subject fold outcome, keyed by subject name; cleared on re-fold.
+    pub claims: HashMap<String, Result<Vec<Claim>, String>>,
+    /// Which pane is shown in the narrow layout.
+    pub pane: Pane,
+}
+
+/// Which pane a narrow terminal is showing.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Pane {
+    List,
+    Detail,
+}
+
+/// The responsive layout mode for a given terminal width.
+#[derive(PartialEq, Eq, Debug)]
+pub enum Fit {
+    Wide,
+    Narrow,
+}
+
+/// Below this width only one pane fits; at or above it, both render side by side.
+pub const WIDE_COLS: u16 = 100;
+
+/// Pure breakpoint decision, so the responsive rule is testable.
+pub fn layout_mode(width: u16) -> Fit {
+    if width >= WIDE_COLS {
+        Fit::Wide
+    } else {
+        Fit::Narrow
+    }
 }
 
 impl AppState {
@@ -39,10 +70,40 @@ impl AppState {
             rows: Vec::new(),
             selected: 0,
             last_mtime,
+            claims: HashMap::new(),
+            pane: Pane::List,
         };
         s.rebuild_rows();
         s.selected = s.first_subject_index().unwrap_or(0);
         s
+    }
+
+    pub fn open_detail(&mut self) {
+        self.pane = Pane::Detail;
+    }
+
+    pub fn back_to_list(&mut self) {
+        self.pane = Pane::List;
+    }
+
+    /// Load the selected subject's claims into the cache if not already present.
+    /// Parameterized over the fetch so the cache behavior is testable without
+    /// shelling out; the loop passes `substrate::subject_claims`.
+    pub fn ensure_selected_loaded<F>(&mut self, fetch: F)
+    where
+        F: Fn(&Path, &str) -> Result<Vec<Claim>, String>,
+    {
+        if let Some(name) = self.selected_subject().map(str::to_string) {
+            if !self.claims.contains_key(&name) {
+                let outcome = fetch(&self.repo, &name);
+                self.claims.insert(name, outcome);
+            }
+        }
+    }
+
+    /// The cached fold outcome for the selected subject, if it has been loaded.
+    pub fn selected_claims(&self) -> Option<&Result<Vec<Claim>, String>> {
+        self.selected_subject().and_then(|n| self.claims.get(n))
     }
 
     /// Rebuild the grouped row list from the current dashboard: namespace headers
@@ -50,11 +111,21 @@ impl AppState {
     fn rebuild_rows(&mut self) {
         let mut rows = Vec::new();
         for (ns, _count) in self.dash.namespace_counts() {
-            rows.push(Row::Header(ns.clone()));
-            for s in &self.dash.subjects {
-                if s.namespace() == ns {
-                    rows.push(Row::Subject(s.name.clone()));
-                }
+            let members: Vec<&str> = self
+                .dash
+                .subjects
+                .iter()
+                .filter(|s| s.namespace() == ns)
+                .map(|s| s.name.as_str())
+                .collect();
+            // A bare subject (no `/`) is its own namespace; don't render a header
+            // line identical to the single subject beneath it.
+            let bare_solo = members.len() == 1 && members[0] == ns;
+            if !bare_solo {
+                rows.push(Row::Header(ns.clone()));
+            }
+            for name in members {
+                rows.push(Row::Subject(name.to_string()));
             }
         }
         self.rows = rows;
@@ -119,6 +190,7 @@ impl AppState {
         let prev_ordinal = self.selected_ordinal();
         self.dash = dash;
         self.last_mtime = mtime;
+        self.claims.clear(); // the log changed — stale claim detail must not persist
         self.rebuild_rows();
 
         let subjects = self.subject_indices();
@@ -166,6 +238,20 @@ pub fn clip_lines(text: &str, max: usize) -> Vec<String> {
 /// current one. Pure, so the poll loop's core decision is testable.
 pub fn should_refold(last: Option<SystemTime>, current: Option<SystemTime>) -> bool {
     last != current
+}
+
+/// The detail pane's lines for a subject, from its cached fold outcome. Each
+/// state is explicit — loading, error, empty, or the newest-first claim lines —
+/// so the pane is never blank or fabricated (`telos/honest-ambiguity`).
+pub fn detail_lines(subject: &str, claims: Option<&Result<Vec<Claim>, String>>) -> Vec<String> {
+    match claims {
+        None => vec!["(loading …)".to_string()],
+        Some(Err(e)) => vec![format!("error: {e}")],
+        Some(Ok(cs)) if cs.is_empty() => {
+            vec![format!("{subject}: (no live claims — unused, or all claims retracted)")]
+        }
+        Some(Ok(cs)) => cs.iter().map(Claim::display_line).collect(),
+    }
 }
 
 fn head_mtime(repo: &Path) -> Option<SystemTime> {
@@ -240,6 +326,7 @@ pub fn run(repo: PathBuf) -> std::io::Result<()> {
     let dash = substrate::collect(&repo);
     let mtime = head_mtime(&repo);
     let mut state = AppState::new(repo, dash, mtime);
+    state.ensure_selected_loaded(substrate::subject_claims);
     let tick = Duration::from_millis(250);
 
     let result = loop {
@@ -248,6 +335,7 @@ pub fn run(repo: PathBuf) -> std::io::Result<()> {
         if should_refold(state.last_mtime, now) {
             let fresh = substrate::collect(&state.repo);
             state.refold(fresh, now);
+            state.ensure_selected_loaded(substrate::subject_claims);
         }
 
         if let Err(e) = terminal.draw(|frame| draw(frame, &state)) {
@@ -261,8 +349,16 @@ pub fn run(repo: PathBuf) -> std::io::Result<()> {
                     KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                         break Ok(())
                     }
-                    KeyCode::Char('j') | KeyCode::Down => state.select_next(),
-                    KeyCode::Char('k') | KeyCode::Up => state.select_prev(),
+                    KeyCode::Char('j') | KeyCode::Down => {
+                        state.select_next();
+                        state.ensure_selected_loaded(substrate::subject_claims);
+                    }
+                    KeyCode::Char('k') | KeyCode::Up => {
+                        state.select_prev();
+                        state.ensure_selected_loaded(substrate::subject_claims);
+                    }
+                    KeyCode::Enter => state.open_detail(),
+                    KeyCode::Esc => state.back_to_list(),
                     _ => {}
                 },
                 Ok(_) => {}
@@ -279,21 +375,21 @@ pub fn run(repo: PathBuf) -> std::io::Result<()> {
 
 fn draw(frame: &mut ratatui::Frame, state: &AppState) {
     use ratatui::layout::{Constraint, Layout};
-    use ratatui::style::{Modifier, Style, Stylize};
+    use ratatui::style::Stylize;
     use ratatui::text::Line;
-    use ratatui::widgets::{Block, List, ListItem, ListState, Paragraph};
+    use ratatui::widgets::{Block, Paragraph};
 
-    let [header, process, sessions, claims] = Layout::vertical([
+    let area = frame.area();
+    let [header, process, body] = Layout::vertical([
         Constraint::Length(1),
-        Constraint::Max(9),
-        Constraint::Max(6),
+        Constraint::Max(8),
         Constraint::Min(3),
     ])
-    .areas(frame.area());
+    .areas(area);
 
     frame.render_widget(
         Line::from(format!(
-            "cospan · {}  ·  j/k move · q quit",
+            "cospan · {}  ·  j/k move · Enter detail · Esc back · q quit",
             state.repo.display()
         ))
         .bold(),
@@ -313,23 +409,26 @@ fn draw(frame: &mut ratatui::Frame, state: &AppState) {
         process,
     );
 
-    let session_list = state.dash.sessions();
-    let session_text = if session_list.is_empty() {
-        "(none)".to_string()
-    } else {
-        session_list
-            .iter()
-            .map(|s| format!("· {}  [{}]", s.name.trim_start_matches("agents/handoff/"), s.state))
-            .collect::<Vec<_>>()
-            .join("\n")
-    };
-    frame.render_widget(
-        Paragraph::new(session_text).block(Block::bordered().title(format!(
-            " sessions · {} live ",
-            session_list.len()
-        ))),
-        sessions,
-    );
+    // Responsive body: both panes when wide, one at a time when narrow.
+    match layout_mode(area.width) {
+        Fit::Wide => {
+            let [left, right] =
+                Layout::horizontal([Constraint::Percentage(42), Constraint::Percentage(58)])
+                    .areas(body);
+            draw_list(frame, state, left);
+            draw_detail(frame, state, right);
+        }
+        Fit::Narrow => match state.pane {
+            Pane::List => draw_list(frame, state, body),
+            Pane::Detail => draw_detail(frame, state, body),
+        },
+    }
+}
+
+fn draw_list(frame: &mut ratatui::Frame, state: &AppState, area: ratatui::layout::Rect) {
+    use ratatui::style::{Modifier, Style, Stylize};
+    use ratatui::text::Line;
+    use ratatui::widgets::{Block, List, ListItem, ListState};
 
     let items: Vec<ListItem> = state
         .rows
@@ -345,11 +444,31 @@ fn draw(frame: &mut ratatui::Frame, state: &AppState) {
     }
     frame.render_stateful_widget(
         List::new(items)
-            .block(Block::bordered().title(format!(" claims · {} subjects ", state.dash.subjects.len())))
+            .block(Block::bordered().title(format!(" subjects · {} ", state.dash.subjects.len())))
             .highlight_style(Style::new().add_modifier(Modifier::REVERSED))
             .highlight_symbol("> "),
-        claims,
+        area,
         &mut list_state,
+    );
+}
+
+fn draw_detail(frame: &mut ratatui::Frame, state: &AppState, area: ratatui::layout::Rect) {
+    use ratatui::widgets::{Block, Paragraph};
+
+    let (title, lines) = match state.selected_subject() {
+        Some(subject) => (
+            subject.to_string(),
+            detail_lines(subject, state.selected_claims()),
+        ),
+        // No subject at all (empty repo): don't imply a load is in flight.
+        None => (
+            "(no subject)".to_string(),
+            vec!["(no subject selected)".to_string()],
+        ),
+    };
+    frame.render_widget(
+        Paragraph::new(lines.join("\n")).block(Block::bordered().title(format!(" {title} "))),
+        area,
     );
 }
 
@@ -396,6 +515,21 @@ mod tests {
         assert_eq!(selectable, 3);
         // First subject is selected initially.
         assert_eq!(a.selected_subject(), Some("telos/a"));
+    }
+
+    #[test]
+    fn bare_subject_renders_without_a_redundant_header() {
+        // `release` has no namespace prefix, so its namespace is the whole name;
+        // it renders as one Subject row with no identical header above it.
+        let a = app(&["release", "telos/a"]);
+        assert_eq!(
+            a.rows,
+            vec![
+                Row::Subject("release".into()),
+                Row::Header("telos".into()),
+                Row::Subject("telos/a".into()),
+            ]
+        );
     }
 
     #[test]
@@ -459,5 +593,75 @@ mod tests {
         assert!(out.contains("telos\n"), "namespace header missing:\n{out}");
         assert!(out.contains("telos/p0-spine"), "subject missing:\n{out}");
         assert!(out.contains("Current atom: design"), "day status not verbatim:\n{out}");
+    }
+
+    fn mk_claim(kind: &str, text: &str) -> Claim {
+        Claim {
+            cid: "bafy".into(),
+            kind: kind.into(),
+            subject: "telos/a".into(),
+            author: "did:key:zABCDEFGH".into(),
+            recorded_at: Some(0),
+            text: Some(text.into()),
+            title: None,
+        }
+    }
+
+    #[test]
+    fn claims_fetched_once_per_fold_then_cache_hit_until_refold() {
+        use std::cell::Cell;
+        let calls = Cell::new(0);
+        let fetch = |_: &Path, _: &str| {
+            calls.set(calls.get() + 1);
+            Ok(Vec::<Claim>::new())
+        };
+
+        let mut a = app(&["telos/a", "telos/b"]);
+        a.ensure_selected_loaded(fetch); // telos/a fetched
+        assert_eq!(calls.get(), 1);
+        a.ensure_selected_loaded(fetch); // cache hit
+        assert_eq!(calls.get(), 1);
+        a.select_next(); // telos/b
+        a.ensure_selected_loaded(fetch);
+        assert_eq!(calls.get(), 2);
+        a.select_prev(); // back to telos/a — cache hit
+        a.ensure_selected_loaded(fetch);
+        assert_eq!(calls.get(), 2);
+        // Re-fold clears the cache: telos/a is fetched again.
+        a.refold(dash(&["telos/a", "telos/b"]), None);
+        a.ensure_selected_loaded(fetch);
+        assert_eq!(calls.get(), 3);
+    }
+
+    #[test]
+    fn layout_mode_breaks_at_100_and_pane_toggles() {
+        assert_eq!(layout_mode(100), Fit::Wide);
+        assert_eq!(layout_mode(200), Fit::Wide);
+        assert_eq!(layout_mode(99), Fit::Narrow);
+
+        let mut a = app(&["telos/a"]);
+        assert_eq!(a.pane, Pane::List);
+        a.open_detail();
+        assert_eq!(a.pane, Pane::Detail);
+        a.back_to_list();
+        assert_eq!(a.pane, Pane::List);
+    }
+
+    #[test]
+    fn detail_lines_render_loading_error_empty_and_claims() {
+        assert_eq!(detail_lines("telos/a", None), vec!["(loading …)"]);
+
+        let err: Result<Vec<Claim>, String> = Err("boom".into());
+        assert_eq!(detail_lines("telos/a", Some(&err)), vec!["error: boom"]);
+
+        let empty: Result<Vec<Claim>, String> = Ok(vec![]);
+        let out = detail_lines("telos/a", Some(&empty));
+        assert_eq!(out.len(), 1);
+        assert!(out[0].contains("no live claims"), "{out:?}");
+
+        let populated: Result<Vec<Claim>, String> = Ok(vec![mk_claim("Decision", "hello")]);
+        let out = detail_lines("telos/a", Some(&populated));
+        assert_eq!(out.len(), 1);
+        assert!(out[0].contains("Decision") && out[0].contains("hello"), "{out:?}");
     }
 }

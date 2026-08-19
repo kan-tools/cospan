@@ -180,6 +180,18 @@ impl Claim {
             None => "date unknown".to_string(),
         }
     }
+
+    /// One-line rendering: kind, short author, UTC stamp, summary. Shared by the
+    /// `cospan subject` CLI and the TUI detail pane so the two never drift.
+    pub fn display_line(&self) -> String {
+        format!(
+            "{:<11} {:<8}  {:<16}  {}",
+            self.kind,
+            self.short_author(),
+            self.recorded_utc(),
+            self.summary()
+        )
+    }
 }
 
 /// Fold one subject's live claims, newest first.
@@ -356,6 +368,24 @@ mod tests {
         assert_eq!(last.cid, "bafyNODATE");
         assert_eq!(last.recorded_at, None);
         assert_eq!(last.recorded_utc(), "date unknown");
+    }
+
+    #[test]
+    fn display_line_has_kind_author_utc_and_summary() {
+        let c = Claim {
+            cid: "bafyX".into(),
+            kind: "Decision".into(),
+            subject: "telos/a".into(),
+            author: "did:key:zABCDEFGH".into(),
+            recorded_at: Some(1_787_091_237_989_445),
+            text: Some("hello world\nmore".into()),
+            title: None,
+        };
+        let line = c.display_line();
+        assert!(line.contains("Decision"));
+        assert!(line.contains("zABCDEFG")); // short author, did:key: stripped
+        assert!(line.contains("2026-08-18 22:13"));
+        assert!(line.contains("hello world")); // first line of text
     }
 
     #[test]

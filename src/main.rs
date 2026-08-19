@@ -168,13 +168,7 @@ fn subject_cmd(args: &[String]) {
     let plural = if claims.len() == 1 { "" } else { "s" };
     println!("{subject}  ({} live claim{plural})", claims.len());
     for c in &claims {
-        println!(
-            "  {:<11} {:<8}  {:<16}  {}",
-            c.kind,
-            c.short_author(),
-            c.recorded_utc(),
-            c.summary()
-        );
+        println!("  {}", c.display_line());
     }
 }
 

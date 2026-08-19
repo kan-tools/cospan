@@ -10,12 +10,12 @@
 //! On each change we re-resolve the fingerprint against the new file contents and
 //! classify the result into one of three states:
 //!
-//!   * `Anchored`     — found it, uniquely. High confidence.
-//!   * `Drifted`      — the text changed, but a close-enough match sits somewhere;
-//!                      best guess with a confidence score. Render a "moved" marker.
+//!   * `Anchored` — found it, uniquely. High confidence.
+//!   * `Drifted` — the text changed, but a close-enough match sits somewhere;
+//!     best guess with a confidence score. Render a "moved" marker.
 //!   * `Unresolvable` — lost it, or the match is ambiguous. Goes to the list the
-//!                      human resolves by hand (same idiom `day` uses for an
-//!                      ambiguous process position).
+//!     human resolves by hand (same idiom `day` uses for an ambiguous process
+//!     position).
 //!
 //! This module is pure `std` and pure function: `relocalize(anchor, new_content)`.
 //! The live tool wraps it in the poll-and-refold watch loop and, as an
