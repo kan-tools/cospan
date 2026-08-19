@@ -11,7 +11,7 @@
   "cites": [],
   "rev": "223mtfagbk4mx",
   "seq": 0,
-  "of": 17,
+  "of": 21,
   "text_len": 197,
   "content": "p2Rib2R5oWtPYnNlcnZhdGlvbqFkdGV4dGBlY2l0ZXOAZmF1dGhvcqJjZGlkeDlkaWQ6a2V5OnpEbmFlU2RCYnJNNk5lWTRpOE1veHVGaXlEdHd4M0FISjhmakVkOTRnckgzMXI4WFllYWdlbnT2Z3N1YmplY3ShZUxvY2FsdWF0b20vZ2VuZXJhdGl2ZS1idWlsZGlhcnRpZmFjdHOBoWZDb21taXR4KGMzMDVkOTE5ZDc1NzgwYWYyOTQzZDdlOGMxMDA0MzA2YTQxMTIyMGFpd29ya3NwYWNloWlXb3Jrc3BhY2V4QDgzNWY4N2FkZTQwYmRjOGRmMjJjM2JiZDI3OGQ1N2UwNDBmYWEwOGNjNmU0MTVkNmJkMDM4NGViOWE3ZTUzY2VrcmVjb3JkZWRfYXQbAAZZWZh4CfE="
 }
@@ -37,7 +37,7 @@ An agent session turns an accepted design into code that builds and tests green.
   "cites": [],
   "rev": "223mtfaruqcn6",
   "seq": 1,
-  "of": 17,
+  "of": 21,
   "content": "p2Rib2R5oWtQdWJsaWNhdGlvbqFlbGF5ZXJnR2l0VHJlZWVjaXRlc4BmYXV0aG9yomNkaWR4OWRpZDprZXk6ekRuYWVTZEJick02TmVZNGk4TW94dUZpeUR0d3gzQUhKOGZqRWQ5NGdySDMxcjhYWWVhZ2VudPZnc3ViamVjdKFlTG9jYWx1YXRvbS9nZW5lcmF0aXZlLWJ1aWxkaWFydGlmYWN0c4GhZkNvbW1pdHgoZjEzMzc2NGMxMTI1OTgwYjYwZmJlZWYzNTFkODNjMWZjZjA3NzE4M2l3b3Jrc3BhY2WhaVdvcmtzcGFjZXhAODM1Zjg3YWRlNDBiZGM4ZGYyMmMzYmJkMjc4ZDU3ZTA0MGZhYTA4Y2M2ZTQxNWQ2YmQwMzg0ZWI5YTdlNTNjZWtyZWNvcmRlZF9hdBsABllZr6sh/A=="
 }
 ---
@@ -57,7 +57,7 @@ An agent session turns an accepted design into code that builds and tests green.
   ],
   "rev": "223mtfco6qppb",
   "seq": 2,
-  "of": 17,
+  "of": 21,
   "text_len": 613,
   "content": "p2Rib2R5oWZSZXN1bHShZHRleHRgZWNpdGVzgdgqWCUAAXESILSMxPQm75MW158RmGlt+lyqySQ2V477QQI3+VGHbd5FZmF1dGhvcqJjZGlkeDlkaWQ6a2V5OnpEbmFlU2RCYnJNNk5lWTRpOE1veHVGaXlEdHd4M0FISjhmakVkOTRnckgzMXI4WFllYWdlbnT2Z3N1YmplY3ShZUxvY2FsdWF0b20vZ2VuZXJhdGl2ZS1idWlsZGlhcnRpZmFjdHOBoWZDb21taXR4KGYxMzM3NjRjMTEyNTk4MGI2MGZiZWVmMzUxZDgzYzFmY2YwNzcxODNpd29ya3NwYWNloWlXb3Jrc3BhY2V4QDgzNWY4N2FkZTQwYmRjOGRmMjJjM2JiZDI3OGQ1N2UwNDBmYWEwOGNjNmU0MTVkNmJkMDM4NGViOWE3ZTUzY2VrcmVjb3JkZWRfYXQbAAZZWihLVjg="
 }
@@ -80,7 +80,7 @@ Built subject-claim-drill-in per .design/subject-claim-drill-in.md: added substr
   ],
   "rev": "223mtfegrdcmt",
   "seq": 3,
-  "of": 17,
+  "of": 21,
   "text_len": 560,
   "content": "p2Rib2R5oWZSZXN1bHShZHRleHRgZWNpdGVzgdgqWCUAAXESIKuVWY8LaRhMsfrgFHujE7Ojd2yyBOflibyWUuJsOqAKZmF1dGhvcqJjZGlkeDlkaWQ6a2V5OnpEbmFlU2RCYnJNNk5lWTRpOE1veHVGaXlEdHd4M0FISjhmakVkOTRnckgzMXI4WFllYWdlbnT2Z3N1YmplY3ShZUxvY2FsdWF0b20vZ2VuZXJhdGl2ZS1idWlsZGlhcnRpZmFjdHOBoWZDb21taXR4KGYxMzM3NjRjMTEyNTk4MGI2MGZiZWVmMzUxZDgzYzFmY2YwNzcxODNpd29ya3NwYWNloWlXb3Jrc3BhY2V4QDgzNWY4N2FkZTQwYmRjOGRmMjJjM2JiZDI3OGQ1N2UwNDBmYWEwOGNjNmU0MTVkNmJkMDM4NGViOWE3ZTUzY2VrcmVjb3JkZWRfYXQbAAZZWpl0oe8="
 }
@@ -103,7 +103,7 @@ Addressed adversarial-review follow-ups 1-3 (verdict APPROVE-WITH-FOLLOW-UPS): (
   ],
   "rev": "223mtfhjvpecb",
   "seq": 4,
-  "of": 17,
+  "of": 21,
   "text_len": 602,
   "content": "p2Rib2R5oWZSZXN1bHShZHRleHRgZWNpdGVzgdgqWCUAAXESIDMQjzpwhF4CURxHQN9DLK43oIEl1OVPPkVwyG1/Gd5yZmF1dGhvcqJjZGlkeDlkaWQ6a2V5OnpEbmFlU2RCYnJNNk5lWTRpOE1veHVGaXlEdHd4M0FISjhmakVkOTRnckgzMXI4WFllYWdlbnT2Z3N1YmplY3ShZUxvY2FsdWF0b20vZ2VuZXJhdGl2ZS1idWlsZGlhcnRpZmFjdHOBoWZDb21taXR4KGI5Y2ZmMzYwYTY1NjM1YTE3YmZiZTM2YmY3NTZkOGMyMDg0NGM0M2Jpd29ya3NwYWNloWlXb3Jrc3BhY2V4QDgzNWY4N2FkZTQwYmRjOGRmMjJjM2JiZDI3OGQ1N2UwNDBmYWEwOGNjNmU0MTVkNmJkMDM4NGViOWE3ZTUzY2VrcmVjb3JkZWRfYXQbAAZZW1+6qKA="
 }
@@ -126,7 +126,7 @@ Built Step 2 (ratatui-interactive-tui) per .design/ratatui-interactive-tui.md: n
   ],
   "rev": "223mtfjuyvv3s",
   "seq": 5,
-  "of": 17,
+  "of": 21,
   "text_len": 595,
   "content": "p2Rib2R5oWZSZXN1bHShZHRleHRgZWNpdGVzgdgqWCUAAXESIHDaEiOqdol2QDb6UqC7XcbNc12HMCqwqEGY/uycz8P/ZmF1dGhvcqJjZGlkeDlkaWQ6a2V5OnpEbmFlU2RCYnJNNk5lWTRpOE1veHVGaXlEdHd4M0FISjhmakVkOTRnckgzMXI4WFllYWdlbnT2Z3N1YmplY3ShZUxvY2FsdWF0b20vZ2VuZXJhdGl2ZS1idWlsZGlhcnRpZmFjdHOBoWZDb21taXR4KGI5Y2ZmMzYwYTY1NjM1YTE3YmZiZTM2YmY3NTZkOGMyMDg0NGM0M2Jpd29ya3NwYWNloWlXb3Jrc3BhY2V4QDgzNWY4N2FkZTQwYmRjOGRmMjJjM2JiZDI3OGQ1N2UwNDBmYWEwOGNjNmU0MTVkNmJkMDM4NGViOWE3ZTUzY2VrcmVjb3JkZWRfYXQbAAZZW/Xt6wU="
 }
@@ -149,7 +149,7 @@ Addressed Step-2 adversarial-review follow-ups (verdict APPROVE-WITH-FOLLOW-UPS)
   ],
   "rev": "223mtfmfl2eyq",
   "seq": 6,
-  "of": 17,
+  "of": 21,
   "text_len": 735,
   "content": "p2Rib2R5oWZSZXN1bHShZHRleHRgZWNpdGVzgdgqWCUAAXESILqzrKBJImDtBb4GSBY49HkrBAdsY/d0RMkKyROa/TlHZmF1dGhvcqJjZGlkeDlkaWQ6a2V5OnpEbmFlU2RCYnJNNk5lWTRpOE1veHVGaXlEdHd4M0FISjhmakVkOTRnckgzMXI4WFllYWdlbnT2Z3N1YmplY3ShZUxvY2FsdWF0b20vZ2VuZXJhdGl2ZS1idWlsZGlhcnRpZmFjdHOBoWZDb21taXR4KDg4ZWRlMGI2M2I5ZWQ5NDE1M2ViZjA5YTdlZmQxYWNjMjk2ZTc1NzNpd29ya3NwYWNloWlXb3Jrc3BhY2V4QDgzNWY4N2FkZTQwYmRjOGRmMjJjM2JiZDI3OGQ1N2UwNDBmYWEwOGNjNmU0MTVkNmJkMDM4NGViOWE3ZTUzY2VrcmVjb3JkZWRfYXQbAAZZXJcQK1k="
 }
@@ -172,7 +172,7 @@ Built Step 3 (two-pane-claim-browser) per .design/two-pane-claim-browser.md: ext
   ],
   "rev": "223mtgu4j67cf",
   "seq": 7,
-  "of": 17,
+  "of": 21,
   "text_len": 501,
   "content": "p2Rib2R5oWZSZXN1bHShZHRleHRgZWNpdGVzgdgqWCUAAXESIPX+f5Qj6KfTJWt/oeEdKdGXz8oCpgXCQVqzXeLmnn+jZmF1dGhvcqJjZGlkeDlkaWQ6a2V5OnpEbmFlU2RCYnJNNk5lWTRpOE1veHVGaXlEdHd4M0FISjhmakVkOTRnckgzMXI4WFllYWdlbnT2Z3N1YmplY3ShZUxvY2FsdWF0b20vZ2VuZXJhdGl2ZS1idWlsZGlhcnRpZmFjdHOBoWZDb21taXR4KDg4ZWRlMGI2M2I5ZWQ5NDE1M2ViZjA5YTdlZmQxYWNjMjk2ZTc1NzNpd29ya3NwYWNloWlXb3Jrc3BhY2V4QDgzNWY4N2FkZTQwYmRjOGRmMjJjM2JiZDI3OGQ1N2UwNDBmYWEwOGNjNmU0MTVkNmJkMDM4NGViOWE3ZTUzY2VrcmVjb3JkZWRfYXQbAAZZZoTyE8Y="
 }
@@ -193,7 +193,7 @@ Addressed Step-3 adversarial-review follow-ups (verdict APPROVE-WITH-FOLLOW-UPS)
   "cites": [],
   "rev": "223mtgum2eoyb",
   "seq": 8,
-  "of": 17,
+  "of": 21,
   "content": "p2Rib2R5oWpSZXRyYWN0aW9uoWpzdXBlcnNlZGVz2CpYJQABcRIgzqWrt7UUPgjvUg1uGB8kIEfGdlmUa/BKj7sJBinubE9lY2l0ZXOAZmF1dGhvcqJjZGlkeDlkaWQ6a2V5OnpEbmFlU2RCYnJNNk5lWTRpOE1veHVGaXlEdHd4M0FISjhmakVkOTRnckgzMXI4WFllYWdlbnT2Z3N1YmplY3ShZUxvY2FsdWF0b20vZ2VuZXJhdGl2ZS1idWlsZGlhcnRpZmFjdHOBoWZDb21taXR4KDcyYTk4N2IyNDllZTJiNmZmZDE4M2Q3MDI4MTc2OTFmYjIyZjY4ODFpd29ya3NwYWNloWlXb3Jrc3BhY2V4QDgzNWY4N2FkZTQwYmRjOGRmMjJjM2JiZDI3OGQ1N2UwNDBmYWEwOGNjNmU0MTVkNmJkMDM4NGViOWE3ZTUzY2VrcmVjb3JkZWRfYXQbAAZZZqQFU18="
 }
 ---
@@ -213,7 +213,7 @@ Addressed Step-3 adversarial-review follow-ups (verdict APPROVE-WITH-FOLLOW-UPS)
   ],
   "rev": "223mtgum2iujk",
   "seq": 9,
-  "of": 17,
+  "of": 21,
   "text_len": 807,
   "content": "p2Rib2R5oWZSZXN1bHShZHRleHRgZWNpdGVzgdgqWCUAAXESIHT89VOJ0FRzLVITBO3V+O3F7dGoAO6fBXyE3VZRzFBiZmF1dGhvcqJjZGlkeDlkaWQ6a2V5OnpEbmFlU2RCYnJNNk5lWTRpOE1veHVGaXlEdHd4M0FISjhmakVkOTRnckgzMXI4WFllYWdlbnT2Z3N1YmplY3ShZUxvY2FsdWF0b20vZ2VuZXJhdGl2ZS1idWlsZGlhcnRpZmFjdHOBoWZDb21taXR4KDcyYTk4N2IyNDllZTJiNmZmZDE4M2Q3MDI4MTc2OTFmYjIyZjY4ODFpd29ya3NwYWNloWlXb3Jrc3BhY2V4QDgzNWY4N2FkZTQwYmRjOGRmMjJjM2JiZDI3OGQ1N2UwNDBmYWEwOGNjNmU0MTVkNmJkMDM4NGViOWE3ZTUzY2VrcmVjb3JkZWRfYXQbAAZZZqQHaYU="
 }
@@ -236,7 +236,7 @@ Built Step 4 (comment-sidecar-store) per .design/comment-sidecar-store.md: new s
   ],
   "rev": "223mtgvks6goo",
   "seq": 10,
-  "of": 17,
+  "of": 21,
   "text_len": 1011,
   "content": "p2Rib2R5oWZSZXN1bHShZHRleHRgZWNpdGVzgdgqWCUAAXESICEouvWGEza2xUlM2VItDCOwbKQFahWtL7YL4GFWAJvTZmF1dGhvcqJjZGlkeDlkaWQ6a2V5OnpEbmFlU2RCYnJNNk5lWTRpOE1veHVGaXlEdHd4M0FISjhmakVkOTRnckgzMXI4WFllYWdlbnT2Z3N1YmplY3ShZUxvY2FsdWF0b20vZ2VuZXJhdGl2ZS1idWlsZGlhcnRpZmFjdHOBoWZDb21taXR4KDcyYTk4N2IyNDllZTJiNmZmZDE4M2Q3MDI4MTc2OTFmYjIyZjY4ODFpd29ya3NwYWNloWlXb3Jrc3BhY2V4QDgzNWY4N2FkZTQwYmRjOGRmMjJjM2JiZDI3OGQ1N2UwNDBmYWEwOGNjNmU0MTVkNmJkMDM4NGViOWE3ZTUzY2VrcmVjb3JkZWRfYXQbAAZZZuGCMi4="
 }
@@ -259,7 +259,7 @@ Addressed all Step-4 adversarial-review follow-ups (verdict APPROVE-WITH-FOLLOW-
   ],
   "rev": "223mtgwmd7c3j",
   "seq": 11,
-  "of": 17,
+  "of": 21,
   "text_len": 1074,
   "content": "p2Rib2R5oWZSZXN1bHShZHRleHRgZWNpdGVzgdgqWCUAAXESIMZebGUWJ5Ynhu9+r/fvZbY+kV6AQOBQngIRbHKXqAkyZmF1dGhvcqJjZGlkeDlkaWQ6a2V5OnpEbmFlU2RCYnJNNk5lWTRpOE1veHVGaXlEdHd4M0FISjhmakVkOTRnckgzMXI4WFllYWdlbnT2Z3N1YmplY3ShZUxvY2FsdWF0b20vZ2VuZXJhdGl2ZS1idWlsZGlhcnRpZmFjdHOBoWZDb21taXR4KDBhMTI5YWJjODczN2ZhZjRlNjJjNDE4ZTBhYTM5M2EyZjkxOWE0Y2Vpd29ya3NwYWNloWlXb3Jrc3BhY2V4QDgzNWY4N2FkZTQwYmRjOGRmMjJjM2JiZDI3OGQ1N2UwNDBmYWEwOGNjNmU0MTVkNmJkMDM4NGViOWE3ZTUzY2VrcmVjb3JkZWRfYXQbAAZZZySSn8Y="
 }
@@ -282,7 +282,7 @@ Built the claim detail view (claim-detail-view) per .design/claim-detail-view.md
   ],
   "rev": "223mtgxnhelph",
   "seq": 12,
-  "of": 17,
+  "of": 21,
   "text_len": 817,
   "content": "p2Rib2R5oWZSZXN1bHShZHRleHRgZWNpdGVzgdgqWCUAAXESILnBHrtI9V1W50APzQk7mChGpU6essCeA9qrmNW5T5tIZmF1dGhvcqJjZGlkeDlkaWQ6a2V5OnpEbmFlU2RCYnJNNk5lWTRpOE1veHVGaXlEdHd4M0FISjhmakVkOTRnckgzMXI4WFllYWdlbnT2Z3N1YmplY3ShZUxvY2FsdWF0b20vZ2VuZXJhdGl2ZS1idWlsZGlhcnRpZmFjdHOBoWZDb21taXR4KDBhMTI5YWJjODczN2ZhZjRlNjJjNDE4ZTBhYTM5M2EyZjkxOWE0Y2Vpd29ya3NwYWNloWlXb3Jrc3BhY2V4QDgzNWY4N2FkZTQwYmRjOGRmMjJjM2JiZDI3OGQ1N2UwNDBmYWEwOGNjNmU0MTVkNmJkMDM4NGViOWE3ZTUzY2VrcmVjb3JkZWRfYXQbAAZZZ2bVRjQ="
 }
@@ -305,7 +305,7 @@ Built claim-visual-formatting (bundle feature 2/3) per .design/claim-visual-form
   ],
   "rev": "223mtgxxvefba",
   "seq": 13,
-  "of": 17,
+  "of": 21,
   "text_len": 1011,
   "content": "p2Rib2R5oWZSZXN1bHShZHRleHRgZWNpdGVzgdgqWCUAAXESIPcZ9TY3bv+q5jf81dlEEQBqor91CDOFCWPa2qW0yhg/ZmF1dGhvcqJjZGlkeDlkaWQ6a2V5OnpEbmFlU2RCYnJNNk5lWTRpOE1veHVGaXlEdHd4M0FISjhmakVkOTRnckgzMXI4WFllYWdlbnT2Z3N1YmplY3ShZUxvY2FsdWF0b20vZ2VuZXJhdGl2ZS1idWlsZGlhcnRpZmFjdHOBoWZDb21taXR4KDBhMTI5YWJjODczN2ZhZjRlNjJjNDE4ZTBhYTM5M2EyZjkxOWE0Y2Vpd29ya3NwYWNloWlXb3Jrc3BhY2V4QDgzNWY4N2FkZTQwYmRjOGRmMjJjM2JiZDI3OGQ1N2UwNDBmYWEwOGNjNmU0MTVkNmJkMDM4NGViOWE3ZTUzY2VrcmVjb3JkZWRfYXQbAAZZZ3u1KYE="
 }
@@ -328,7 +328,7 @@ Built process-atom-telos-views (bundle feature 3/3) per .design/process-atom-tel
   ],
   "rev": "223mtgypziuwg",
   "seq": 14,
-  "of": 17,
+  "of": 21,
   "text_len": 811,
   "content": "p2Rib2R5oWZSZXN1bHShZHRleHRgZWNpdGVzgdgqWCUAAXESID9d4SIgVHvd4ZmQi1RxSvoBPFq7enE+yoeuzOOcObbUZmF1dGhvcqJjZGlkeDlkaWQ6a2V5OnpEbmFlU2RCYnJNNk5lWTRpOE1veHVGaXlEdHd4M0FISjhmakVkOTRnckgzMXI4WFllYWdlbnT2Z3N1YmplY3ShZUxvY2FsdWF0b20vZ2VuZXJhdGl2ZS1idWlsZGlhcnRpZmFjdHOBoWZDb21taXR4KDBhMTI5YWJjODczN2ZhZjRlNjJjNDE4ZTBhYTM5M2EyZjkxOWE0Y2Vpd29ya3NwYWNloWlXb3Jrc3BhY2V4QDgzNWY4N2FkZTQwYmRjOGRmMjJjM2JiZDI3OGQ1N2UwNDBmYWEwOGNjNmU0MTVkNmJkMDM4NGViOWE3ZTUzY2VrcmVjb3JkZWRfYXQbAAZZZ6v3ayE="
 }
@@ -351,7 +351,7 @@ Addressed the UX-bundle adversarial-review follow-ups (verdict APPROVE-WITH-FOLL
   ],
   "rev": "223mth37ydw2l",
   "seq": 15,
-  "of": 17,
+  "of": 21,
   "text_len": 932,
   "content": "p2Rib2R5oWZSZXN1bHShZHRleHRgZWNpdGVzgdgqWCUAAXESIGyQlbJenDrS3ZK88aYULiOeyMnB7qcZhc6RHTsm/lgZZmF1dGhvcqJjZGlkeDlkaWQ6a2V5OnpEbmFlU2RCYnJNNk5lWTRpOE1veHVGaXlEdHd4M0FISjhmakVkOTRnckgzMXI4WFllYWdlbnT2Z3N1YmplY3ShZUxvY2FsdWF0b20vZ2VuZXJhdGl2ZS1idWlsZGlhcnRpZmFjdHOBoWZDb21taXR4KGRmZjc4MDQyZGFlZjlmMjM3MTgwMjRjMmI0NTZkOWE3ZmVkNWE3MjFpd29ya3NwYWNloWlXb3Jrc3BhY2V4QDgzNWY4N2FkZTQwYmRjOGRmMjJjM2JiZDI3OGQ1N2UwNDBmYWEwOGNjNmU0MTVkNmJkMDM4NGViOWE3ZTUzY2VrcmVjb3JkZWRfYXQbAAZZaEvk7No="
 }
@@ -374,10 +374,102 @@ Built unified-fold (bundle item 4, perf) per .design/unified-fold.md. substrate:
   ],
   "rev": "223mth3qeep3c",
   "seq": 16,
-  "of": 17,
+  "of": 21,
   "text_len": 591,
   "content": "p2Rib2R5oWZSZXN1bHShZHRleHRgZWNpdGVzgdgqWCUAAXESIPE+rX/F/MznSHDmcFkTL24tEzTTUYgl2ym9j5oc+D0JZmF1dGhvcqJjZGlkeDlkaWQ6a2V5OnpEbmFlU2RCYnJNNk5lWTRpOE1veHVGaXlEdHd4M0FISjhmakVkOTRnckgzMXI4WFllYWdlbnT2Z3N1YmplY3ShZUxvY2FsdWF0b20vZ2VuZXJhdGl2ZS1idWlsZGlhcnRpZmFjdHOBoWZDb21taXR4KGRmZjc4MDQyZGFlZjlmMjM3MTgwMjRjMmI0NTZkOWE3ZmVkNWE3MjFpd29ya3NwYWNloWlXb3Jrc3BhY2V4QDgzNWY4N2FkZTQwYmRjOGRmMjJjM2JiZDI3OGQ1N2UwNDBmYWEwOGNjNmU0MTVkNmJkMDM4NGViOWE3ZTUzY2VrcmVjb3JkZWRfYXQbAAZZaGylU7M="
 }
 ---
 
 Addressed unified-fold review follow-ups (verdict APPROVE-WITH-FOLLOW-UPS): (1) the fold test now asserts newest-first order within a subject (bafy3 before bafy2), not just count; (2) added a dedicated Fold::{namespace_counts, sessions} test with real agents/handoff subjects; (3) Fold.errors are now rendered — plain_frame gets a NOTES section and the TUI process pane prepends '! error' lines — so a failed kan show --all is not mistaken for an empty repo (honest-ambiguity; this was a carried-over gap, not a regression). cargo test 45/45, build + clippy -D warnings clean, fmt clean.
+***8<***
+---
+{
+  "v": 3,
+  "cid": "bafyreic6chojd6z6lmdqhgwij2zgb3e3hcutuxatfz3dtwa5q6nign2x5e",
+  "sig": "60499e082d40f21eec75ea3e697b855f424ea8c309e48dbb9a092b37bff2b81b106b1e515af03d54bd2c7840ad4da95a0fa422f1d7245f7f372ad8902e5c1155",
+  "author": "did:key:zDnaeSdBbrM6NeY4i8MoxuFiyDtwx3AHJ8fjEd94grH31r8XY",
+  "subject": {
+    "local": "atom/generative-build"
+  },
+  "kind": "result",
+  "cites": [
+    "bafyreicoqg5k43jit27gxjegbcje4cocrzwrgbajo27quvl2l3stykjcmy"
+  ],
+  "rev": "223mth476heis",
+  "seq": 17,
+  "of": 21,
+  "text_len": 901,
+  "content": "p2Rib2R5oWZSZXN1bHShZHRleHRgZWNpdGVzgdgqWCUAAXESIE6Buq5tKJ6+a6SGCJJOCcKObRMECXa/ClV6XuU8KSJmZmF1dGhvcqJjZGlkeDlkaWQ6a2V5OnpEbmFlU2RCYnJNNk5lWTRpOE1veHVGaXlEdHd4M0FISjhmakVkOTRnckgzMXI4WFllYWdlbnT2Z3N1YmplY3ShZUxvY2FsdWF0b20vZ2VuZXJhdGl2ZS1idWlsZGlhcnRpZmFjdHOBoWZDb21taXR4KGY1YWE2YmJjMWRkNTgyZGRhYThkY2ZiMzU2MDU2Y2JjYzQ1YzQ3ODVpd29ya3NwYWNloWlXb3Jrc3BhY2V4QDgzNWY4N2FkZTQwYmRjOGRmMjJjM2JiZDI3OGQ1N2UwNDBmYWEwOGNjNmU0MTVkNmJkMDM4NGViOWE3ZTUzY2VrcmVjb3JkZWRfYXQbAAZZaIpGqW4="
+}
+---
+
+Built tree-left-pane (bundle-2 feature) per .design/tree-left-pane.md. tui: Row is now Section/Group/Subject; the left pane is a collapsible tree with two top sections — [my work] (bare non-day subjects) and [day] (namespace groups telos/atom/bridge/tension/schema, then bare day subjects like practice), via substrate::is_day_subject. AppState.collapsed (HashSet) holds collapsed node keys; rebuild_rows emits only visible rows. Navigation moves over all visible rows; Enter (activate) toggles a Section/Group or descends a Subject into claims; refold + toggle preserve the cursor by row identity (sec:/grp:/sub:). draw_list renders the tree with ▸/▾ markers + indentation. plain_frame (--once) stays a flat namespace listing, decoupled from the tree. cargo test 47/47, build + clippy -D warnings clean; --once flat listing verified. Interactive tree/collapse render pending a live-TTY eyeball.
+***8<***
+---
+{
+  "v": 3,
+  "cid": "bafyreicp35aq3a66scirzf4yqsr5pnb5tbhsfk6fadpzsik6lgsdntgq6u",
+  "sig": "8c78f38cc278b3522f98d19be75cf5a44d62374b1e33596698ee4a4c1c02f46e1dcb4e0d659464bfb79583d6079709032423fcd071ae1381f4c6d7ad88888f41",
+  "author": "did:key:zDnaeSdBbrM6NeY4i8MoxuFiyDtwx3AHJ8fjEd94grH31r8XY",
+  "subject": {
+    "local": "atom/generative-build"
+  },
+  "kind": "result",
+  "cites": [
+    "bafyreifnkyfbqfsygbkrycsxloypjwvdnqif6l5vst6egjkg6rflhvpz7a"
+  ],
+  "rev": "223mtha7oihld",
+  "seq": 18,
+  "of": 21,
+  "text_len": 1024,
+  "content": "p2Rib2R5oWZSZXN1bHShZHRleHRgZWNpdGVzgdgqWCUAAXESIK1WChgWWDBVHApXW7D02qNsEF8vtZT8QyVG9Eqz1fn4ZmF1dGhvcqJjZGlkeDlkaWQ6a2V5OnpEbmFlU2RCYnJNNk5lWTRpOE1veHVGaXlEdHd4M0FISjhmakVkOTRnckgzMXI4WFllYWdlbnT2Z3N1YmplY3ShZUxvY2FsdWF0b20vZ2VuZXJhdGl2ZS1idWlsZGlhcnRpZmFjdHOBoWZDb21taXR4KGY1YWE2YmJjMWRkNTgyZGRhYThkY2ZiMzU2MDU2Y2JjYzQ1YzQ3ODVpd29ya3NwYWNloWlXb3Jrc3BhY2V4QDgzNWY4N2FkZTQwYmRjOGRmMjJjM2JiZDI3OGQ1N2UwNDBmYWEwOGNjNmU0MTVkNmJkMDM4NGViOWE3ZTUzY2VrcmVjb3JkZWRfYXQbAAZZaYtHNNM="
+}
+---
+
+Built markdown-and-block-views (bundle-2 feature) per .design/markdown-and-block-views.md. New src/markdown.rs: render(md) parses claim bodies with pulldown-cmark into styled ratatui lines (headings bold, strong/emph, inline+fenced code in a distinct style, list bullets). substrate::block_summary gives a human view of supported fenced blocks (day-atom in/out/next, day-telos witnesses, day-tension pair, day-witness types, cospan-comment body). tui: detail_view became claim_detail -> Vec<Line>, splitting the body into prose (markdown-rendered) and named fenced blocks (human summary if supported, else labeled code); draw_claim_detail renders with Wrap so nothing is cut off; scroll/line-count work over the styled lines. cargo test 51/51 (4 new incl. markdown render, block_summary, supported-block-summarized, unsupported-block-as-code), build + clippy -D warnings clean; --once and subject stay plain one-liners. Interactive markdown/block render pending a live-TTY eyeball. Added pulldown-cmark dep (cached offline).
+***8<***
+---
+{
+  "v": 3,
+  "cid": "bafyreibyjgajw4fpqxupagtmeb6pm43hdhqfyomsjx2althnwkyuncxlz4",
+  "sig": "25036aa62de26d947c78cb25bc98c4b7658b5d98b7c51fa8546dde7c012bfd6458f629d579e1ac95a3de12993d50446b8cf01a4d390b7bd58ce8359e88f286e6",
+  "author": "did:key:zDnaeSdBbrM6NeY4i8MoxuFiyDtwx3AHJ8fjEd94grH31r8XY",
+  "subject": {
+    "local": "atom/generative-build"
+  },
+  "kind": "result",
+  "cites": [
+    "bafyreie3ilytrcalehwo6pwthqguxvxkrb3cllk5uac5rpkn2ne7nz57i4"
+  ],
+  "rev": "223mthasqonkp",
+  "seq": 19,
+  "of": 21,
+  "text_len": 919,
+  "content": "p2Rib2R5oWZSZXN1bHShZHRleHRgZWNpdGVzgdgqWCUAAXESIJtC8TiICyHs7z7TPA1L1uqIdiWtXaAF2L1N00n2579HZmF1dGhvcqJjZGlkeDlkaWQ6a2V5OnpEbmFlU2RCYnJNNk5lWTRpOE1veHVGaXlEdHd4M0FISjhmakVkOTRnckgzMXI4WFllYWdlbnT2Z3N1YmplY3ShZUxvY2FsdWF0b20vZ2VuZXJhdGl2ZS1idWlsZGlhcnRpZmFjdHOBoWZDb21taXR4KGY1YWE2YmJjMWRkNTgyZGRhYThkY2ZiMzU2MDU2Y2JjYzQ1YzQ3ODVpd29ya3NwYWNloWlXb3Jrc3BhY2V4QDgzNWY4N2FkZTQwYmRjOGRmMjJjM2JiZDI3OGQ1N2UwNDBmYWEwOGNjNmU0MTVkNmJkMDM4NGViOWE3ZTUzY2VrcmVjb3JkZWRfYXQbAAZZabFqTaE="
+}
+---
+
+Fixed the BLOCK from the tree+markdown bundle review (verdict bafyreie3ilytrcalehwo6pwthqguxvxkrb3cllk5uac5rpkn2ne7nz57i4). #1 (BLOCK): markdown::render now handles Event::InlineHtml and Event::Html, rendering the raw text instead of dropping it — pulldown-cmark classifies <tag>-shaped tokens as HTML, so Vec<Line>, Option<i64>, <slug>, <path> were being silently deleted from claim prose. Added a regression test asserting the reviewer's exact cases survive. #5: render now tracks heading/strong/emph as flags composed into one style, so **strong** inside a heading no longer clears the heading bold (+ test). #4: day-witness block_summary now shows the probe kind (type: probe). #3: a bare subject literally named a group word (e.g. 'telos') renders once (under its group), not duplicated in bare_day. #6: --once restores bare-solo header suppression. cargo test 53/53, build + clippy -D warnings clean, fmt clean.
+***8<***
+---
+{
+  "v": 3,
+  "cid": "bafyreihbpastxh7amfbq5cdwsqj4afmr2px5nao64pukehjm7f4sw6pmay",
+  "sig": "b25a1082a16cf78e0a69c4c4a6b026c75123ff4eff4ca6aedcf2b81df52d9a471d4187a32e6eacf50b5428a7b16847409830e1e04de7741ba5105c38befdf625",
+  "author": "did:key:zDnaeSdBbrM6NeY4i8MoxuFiyDtwx3AHJ8fjEd94grH31r8XY",
+  "subject": {
+    "local": "atom/generative-build"
+  },
+  "kind": "result",
+  "cites": [
+    "bafyreif35ibgwxxywwvqha5mf7wopiztn5ezowwf74gnuw7nfu5vmoailu"
+  ],
+  "rev": "223mthbbmwzop",
+  "seq": 20,
+  "of": 21,
+  "text_len": 733,
+  "content": "p2Rib2R5oWZSZXN1bHShZHRleHRgZWNpdGVzgdgqWCUAAXESILvqAmte+LWrA4OsL+znozNvSZdaxf8M2lvtLTtWOAhdZmF1dGhvcqJjZGlkeDlkaWQ6a2V5OnpEbmFlU2RCYnJNNk5lWTRpOE1veHVGaXlEdHd4M0FISjhmakVkOTRnckgzMXI4WFllYWdlbnT2Z3N1YmplY3ShZUxvY2FsdWF0b20vZ2VuZXJhdGl2ZS1idWlsZGlhcnRpZmFjdHOBoWZDb21taXR4KGY1YWE2YmJjMWRkNTgyZGRhYThkY2ZiMzU2MDU2Y2JjYzQ1YzQ3ODVpd29ya3NwYWNloWlXb3Jrc3BhY2V4QDgzNWY4N2FkZTQwYmRjOGRmMjJjM2JiZDI3OGQ1N2UwNDBmYWEwOGNjNmU0MTVkNmJkMDM4NGViOWE3ZTUzY2VrcmVjb3JkZWRfYXQbAAZZac8ufS8="
+}
+---
+
+Addressed the re-review follow-up (verdict APPROVE-WITH-FOLLOW-UPS, bafyreif35ibgwxxywwvqha5mf7wopiztn5ezowwf74gnuw7nfu5vmoailu): block_summary no longer hides a recognized block's extra author-provided keys. Added append_extra_keys, which surfaces every top-level key a block arm does not special-case (e.g. day-atom done/note, day-telos description/scope, cospan-comment author/resolved) as 'key: value', skipping _version markers — honoring telos/honest-ambiguity (nothing hidden). Test now asserts day-atom 'done: passing-tests' shows. The trivial block-HTML newline-collapse (finding 2) is left as noted (cosmetic, block HTML in claim bodies is vanishingly rare). cargo test 53/53, build + clippy -D warnings clean, fmt clean.
