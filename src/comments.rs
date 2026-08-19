@@ -176,7 +176,10 @@ mod tests {
             id: "c_1".into(),
             anchor: StoredAnchor::capture(content, line, 1),
             body: "is this cached?".into(),
-            author: Author { who: "human".into(), id: "local".into() },
+            author: Author {
+                who: "human".into(),
+                id: "local".into(),
+            },
             created_at: 1_700_000_000_000_000,
             resolved: false,
         }
@@ -277,7 +280,11 @@ mod tests {
         let good = serde_json::to_string(&comment_at(V0, 1)).unwrap();
         std::fs::write(&path, format!("{good}\nthis is not json\n")).unwrap();
         let loaded = load(&path).unwrap();
-        assert_eq!(loaded.len(), 1, "the readable comment must survive a torn line");
+        assert_eq!(
+            loaded.len(),
+            1,
+            "the readable comment must survive a torn line"
+        );
         std::fs::remove_dir_all(&dir).ok();
     }
 

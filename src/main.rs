@@ -330,7 +330,10 @@ fn watch_repo(args: &[String]) {
     if once {
         // Non-interactive single frame: scriptable, CI-friendly, testable.
         if !repo.join(".kan").is_dir() {
-            eprintln!("warning: {} has no .kan/ — is this a kan repo?", repo.display());
+            eprintln!(
+                "warning: {} has no .kan/ — is this a kan repo?",
+                repo.display()
+            );
         }
         let dash = substrate::collect(&repo);
         let state = tui::AppState::new(repo, dash, None);

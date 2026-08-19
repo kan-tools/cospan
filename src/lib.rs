@@ -93,7 +93,11 @@ pub fn relocalize(anchor: &Anchor, new_content: &str) -> Localization {
     let lines: Vec<&str> = new_content.lines().collect();
     let target_lines: Vec<&str> = anchor.target.lines().collect();
     if target_lines.is_empty() || lines.is_empty() {
-        return Localization { state: State::Unresolvable, span: None, confidence: 0.0 };
+        return Localization {
+            state: State::Unresolvable,
+            span: None,
+            confidence: 0.0,
+        };
     }
     let win = target_lines.len();
 
@@ -128,7 +132,11 @@ pub fn relocalize(anchor: &Anchor, new_content: &str) -> Localization {
             let runner_up = scored[1].1;
             // If context can't tell the copies apart, refuse to guess.
             if best - runner_up < AMBIGUITY_MARGIN {
-                return Localization { state: State::Unresolvable, span: None, confidence: best };
+                return Localization {
+                    state: State::Unresolvable,
+                    span: None,
+                    confidence: best,
+                };
             }
             return Localization {
                 state: State::Anchored,
@@ -171,7 +179,11 @@ pub fn relocalize(anchor: &Anchor, new_content: &str) -> Localization {
         }
     } else {
         // Lost it, or too many equally-weak candidates to responsibly pick one.
-        Localization { state: State::Unresolvable, span: None, confidence: best.max(0.0) }
+        Localization {
+            state: State::Unresolvable,
+            span: None,
+            confidence: best.max(0.0),
+        }
     }
 }
 
@@ -278,13 +290,18 @@ fn login(user: &str) -> bool {
     fn edited_target_drifts_with_confidence() {
         // Agent renames the local: exact match gone, but it's clearly the line.
         let a = Anchor::from_file(ORIG, 1, 1);
-        let edited = ORIG.replace("let token = fetch_token(user);",
-                                  "let token = fetch_token_cached(user);");
+        let edited = ORIG.replace(
+            "let token = fetch_token(user);",
+            "let token = fetch_token_cached(user);",
+        );
         let loc = relocalize(&a, &edited);
         assert_eq!(loc.state, State::Drifted);
         assert_eq!(loc.span, Some((1, 1)));
-        assert!(loc.confidence > FUZZY_FLOOR && loc.confidence < 1.0,
-                "confidence was {}", loc.confidence);
+        assert!(
+            loc.confidence > FUZZY_FLOOR && loc.confidence < 1.0,
+            "confidence was {}",
+            loc.confidence
+        );
     }
 
     #[test]
