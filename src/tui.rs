@@ -1,14 +1,13 @@
 //! L3 — the interactive view layer.
 //!
-//! Step 2 of the P0 arc: the `watch-repo` dashboard, drawn with ratatui instead
-//! of ANSI escapes, driven by one poll-and-fold loop. Everything rendered is a
-//! projection of the folded `substrate::Dashboard` — the only state this layer
-//! owns is the selection cursor (`telos/kan-is-truth`). The loop never
-//! subscribes: a single `event::poll(tick)` is both the key wait and the re-fold
-//! tick, and the substrate is re-collected only when `.kan/log/HEAD` changes
+//! The `watch-repo` browser, drawn with ratatui and driven by one poll-and-fold
+//! loop. Everything rendered is a projection of the `substrate::Fold` — the only
+//! state this layer owns is the selection cursor (`telos/kan-is-truth`). The loop
+//! never subscribes: a single `event::poll(tick)` is both the key wait and the
+//! re-fold tick, and the fold is rebuilt only when `.kan/log/HEAD` changes
 //! (`telos/poll-dont-subscribe`).
 
-use crate::substrate::{self, short_cid, Claim, Dashboard, ProcessSnapshot};
+use crate::substrate::{self, namespace, short_cid, Claim, Fold, ProcessSnapshot};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
@@ -25,25 +24,20 @@ pub enum Row {
 /// so they can be unit-tested without a terminal.
 pub struct AppState {
     pub repo: PathBuf,
-    pub dash: Dashboard,
+    /// The whole in-memory model, folded from one `kan show --all` per tick.
+    pub fold: Fold,
     pub rows: Vec<Row>,
     /// Index into `rows`; always points at a `Row::Subject` when any subject exists.
     pub selected: usize,
     pub last_mtime: Option<SystemTime>,
-    /// Per-subject fold outcome, keyed by subject name; cleared on re-fold.
-    pub claims: HashMap<String, Result<Vec<Claim>, String>>,
     /// Which of the three levels currently has focus.
     pub focus: Focus,
     /// Index into the selected subject's claim list (Claims focus).
     pub claim_selected: usize,
     /// Scroll offset into the claim-detail text (Detail focus).
     pub detail_scroll: usize,
-    /// Lazily-folded `cid -> Claim` index for resolving cites; cleared on re-fold.
-    pub cite_index: Option<HashMap<String, Claim>>,
     /// The active top-level view.
     pub view: View,
-    /// Lazily-folded declared process structure; cleared on re-fold.
-    pub process: Option<ProcessSnapshot>,
     pub atom_scroll: usize,
     pub telos_scroll: usize,
 }
@@ -104,20 +98,17 @@ pub fn layout_mode(width: u16) -> Fit {
 }
 
 impl AppState {
-    pub fn new(repo: PathBuf, dash: Dashboard, last_mtime: Option<SystemTime>) -> Self {
+    pub fn new(repo: PathBuf, fold: Fold, last_mtime: Option<SystemTime>) -> Self {
         let mut s = AppState {
             repo,
-            dash,
+            fold,
             rows: Vec::new(),
             selected: 0,
             last_mtime,
-            claims: HashMap::new(),
             focus: Focus::Subjects,
             claim_selected: 0,
             detail_scroll: 0,
-            cite_index: None,
             view: View::Browser,
-            process: None,
             atom_scroll: 0,
             telos_scroll: 0,
         };
@@ -180,81 +171,41 @@ impl AppState {
     }
 
     fn claim_count(&self) -> usize {
-        match self.selected_claims() {
-            Some(Ok(cs)) => cs.len(),
-            _ => 0,
-        }
+        self.selected_claims().len()
     }
 
-    /// The claim currently selected in the claim list, if the fold is loaded.
+    /// The claim currently selected in the claim list.
     pub fn selected_claim(&self) -> Option<&Claim> {
-        match self.selected_claims() {
-            Some(Ok(cs)) => cs.get(self.claim_selected),
-            _ => None,
-        }
+        self.selected_claims().get(self.claim_selected)
     }
 
     fn detail_line_count(&self) -> usize {
         match self.selected_claim() {
-            Some(c) => detail_view(c, self.cite_index.as_ref()).len(),
+            Some(c) => detail_view(c, Some(&self.fold.by_cid)).len(),
             None => 0,
         }
     }
 
-    /// Fold the `cid -> Claim` index once (for cite previews) if not yet loaded.
-    /// Parameterized over the fold so it is testable without shelling out.
-    pub fn ensure_cite_index<F>(&mut self, fold: F)
-    where
-        F: Fn(&Path) -> Result<HashMap<String, Claim>, String>,
-    {
-        if self.cite_index.is_none() {
-            // On error, cache an empty index so we don't re-fold every tick.
-            self.cite_index = Some(fold(&self.repo).unwrap_or_default());
+    /// The selected subject's claims (newest first) — a direct read from the
+    /// fold, no fetch.
+    pub fn selected_claims(&self) -> &[Claim] {
+        match self.selected_subject() {
+            Some(name) => self.fold.claims_for(name),
+            None => &[],
         }
     }
 
-    /// Fold the declared process structure once (for the Atoms/Telos views) if
-    /// not yet loaded. Parameterized over the fold so it is testable.
-    pub fn ensure_process<F>(&mut self, fold: F)
-    where
-        F: Fn(&Path) -> Result<ProcessSnapshot, String>,
-    {
-        if self.process.is_none() {
-            self.process = Some(fold(&self.repo).unwrap_or_default());
-        }
-    }
-
-    /// Load the selected subject's claims into the cache if not already present.
-    /// Parameterized over the fetch so the cache behavior is testable without
-    /// shelling out; the loop passes `substrate::subject_claims`.
-    pub fn ensure_selected_loaded<F>(&mut self, fetch: F)
-    where
-        F: Fn(&Path, &str) -> Result<Vec<Claim>, String>,
-    {
-        if let Some(name) = self.selected_subject().map(str::to_string) {
-            if !self.claims.contains_key(&name) {
-                let outcome = fetch(&self.repo, &name);
-                self.claims.insert(name, outcome);
-            }
-        }
-    }
-
-    /// The cached fold outcome for the selected subject, if it has been loaded.
-    pub fn selected_claims(&self) -> Option<&Result<Vec<Claim>, String>> {
-        self.selected_subject().and_then(|n| self.claims.get(n))
-    }
-
-    /// Rebuild the grouped row list from the current dashboard: namespace headers
-    /// in `namespace_counts` order, each followed by its subjects.
+    /// Rebuild the grouped row list from the fold: namespace headers in
+    /// `namespace_counts` order, each followed by its subjects.
     fn rebuild_rows(&mut self) {
         let mut rows = Vec::new();
-        for (ns, _count) in self.dash.namespace_counts() {
+        for (ns, _count) in self.fold.namespace_counts() {
             let members: Vec<&str> = self
-                .dash
+                .fold
                 .subjects
                 .iter()
-                .filter(|s| s.namespace() == ns)
-                .map(|s| s.name.as_str())
+                .filter(|n| namespace(n) == ns)
+                .map(String::as_str)
                 .collect();
             // A bare subject (no `/`) is its own namespace; don't render a header
             // line identical to the single subject beneath it.
@@ -325,16 +276,13 @@ impl AppState {
     /// Replace the fold with a fresh one, preserving the selection **by subject
     /// name** so a background edit to the log never jumps the cursor. If the
     /// selected subject is gone, the index clamps into the new range.
-    pub fn refold(&mut self, dash: Dashboard, mtime: Option<SystemTime>) {
+    pub fn refold(&mut self, fold: Fold, mtime: Option<SystemTime>) {
         let prev = self.selected_subject().map(str::to_string);
         let prev_ordinal = self.selected_ordinal();
-        self.dash = dash;
+        self.fold = fold;
         self.last_mtime = mtime;
-        self.claims.clear(); // the log changed — stale claim detail must not persist
-        self.cite_index = None;
         self.claim_selected = 0;
         self.detail_scroll = 0;
-        self.process = None;
         self.atom_scroll = 0;
         self.telos_scroll = 0;
         self.rebuild_rows();
@@ -389,16 +337,13 @@ pub fn should_refold(last: Option<SystemTime>, current: Option<SystemTime>) -> b
 /// The detail pane's lines for a subject, from its cached fold outcome. Each
 /// state is explicit — loading, error, empty, or the newest-first claim lines —
 /// so the pane is never blank or fabricated (`telos/honest-ambiguity`).
-pub fn detail_lines(subject: &str, claims: Option<&Result<Vec<Claim>, String>>) -> Vec<String> {
-    match claims {
-        None => vec!["(loading …)".to_string()],
-        Some(Err(e)) => vec![format!("error: {e}")],
-        Some(Ok(cs)) if cs.is_empty() => {
-            vec![format!(
-                "{subject}: (no live claims — unused, or all claims retracted)"
-            )]
-        }
-        Some(Ok(cs)) => cs.iter().map(Claim::display_line).collect(),
+pub fn detail_lines(subject: &str, claims: &[Claim]) -> Vec<String> {
+    if claims.is_empty() {
+        vec![format!(
+            "{subject}: (no live claims — unused, or all claims retracted)"
+        )]
+    } else {
+        claims.iter().map(Claim::display_line).collect()
     }
 }
 
@@ -472,7 +417,7 @@ pub fn plain_frame(state: &AppState) -> String {
     out.push_str(&format!("cospan · {}\n{rule}\n", state.repo.display()));
 
     out.push_str("PROCESS  (day status)\n");
-    match &state.dash.day_status {
+    match &state.fold.day_status {
         Some(text) if !text.is_empty() => {
             for line in text.lines() {
                 out.push_str(&format!("  {line}\n"));
@@ -482,7 +427,7 @@ pub fn plain_frame(state: &AppState) -> String {
     }
     out.push_str(&format!("{rule}\n"));
 
-    let sessions = state.dash.sessions();
+    let sessions = state.fold.sessions();
     out.push_str(&format!(
         "SESSIONS  (agents/handoff · {} live)\n",
         sessions.len()
@@ -491,14 +436,14 @@ pub fn plain_frame(state: &AppState) -> String {
         out.push_str("  (none)\n");
     }
     for s in &sessions {
-        let short = s.name.trim_start_matches("agents/handoff/");
-        out.push_str(&format!("  · {short}  [{}]\n", s.state));
+        let short = s.trim_start_matches("agents/handoff/");
+        out.push_str(&format!("  · {short}\n"));
     }
     out.push_str(&format!("{rule}\n"));
 
     out.push_str(&format!(
         "CLAIMS  ({} subjects)\n",
-        state.dash.subjects.len()
+        state.fold.subjects.len()
     ));
     if state.rows.is_empty() {
         out.push_str("  (none)\n");
@@ -510,6 +455,12 @@ pub fn plain_frame(state: &AppState) -> String {
                 let marker = if i == state.selected { ">" } else { " " };
                 out.push_str(&format!("  {marker} {name}\n"));
             }
+        }
+    }
+    if !state.fold.errors.is_empty() {
+        out.push_str(&format!("{rule}\nNOTES\n"));
+        for e in &state.fold.errors {
+            out.push_str(&format!("  ! {e}\n"));
         }
     }
     out
@@ -531,19 +482,17 @@ pub fn run(repo: PathBuf) -> std::io::Result<()> {
     }
 
     let mut terminal = ratatui::init();
-    let dash = substrate::collect(&repo);
     let mtime = head_mtime(&repo);
-    let mut state = AppState::new(repo, dash, mtime);
-    state.ensure_selected_loaded(substrate::subject_claims);
+    let fold = substrate::fold(&repo);
+    let mut state = AppState::new(repo, fold, mtime);
     let tick = Duration::from_millis(250);
 
     let result = loop {
-        // Poll-and-fold: re-collect only when HEAD's mtime changed.
+        // Poll-and-fold: re-fold only when HEAD's mtime changed.
         let now = head_mtime(&state.repo);
         if should_refold(state.last_mtime, now) {
-            let fresh = substrate::collect(&state.repo);
+            let fresh = substrate::fold(&state.repo);
             state.refold(fresh, now);
-            state.ensure_selected_loaded(substrate::subject_claims);
         }
 
         if let Err(e) = terminal.draw(|frame| draw(frame, &state)) {
@@ -560,57 +509,30 @@ pub fn run(repo: PathBuf) -> std::io::Result<()> {
                     KeyCode::Char(d @ '1'..='3') => {
                         if let Some(v) = View::from_digit(d) {
                             state.view = v;
-                            if v != View::Browser {
-                                state.ensure_process(substrate::process_snapshot);
-                            }
                         }
                     }
-                    KeyCode::Tab => {
-                        state.view = state.view.next();
-                        if state.view != View::Browser {
-                            state.ensure_process(substrate::process_snapshot);
-                        }
-                    }
+                    KeyCode::Tab => state.view = state.view.next(),
                     KeyCode::Char('j') | KeyCode::Down => match state.view {
-                        View::Browser => {
-                            state.move_down();
-                            if state.focus == Focus::Subjects {
-                                state.ensure_selected_loaded(substrate::subject_claims);
-                            }
-                        }
+                        View::Browser => state.move_down(),
                         View::Atoms => {
-                            let max = process_view_lines(state.process.as_ref(), View::Atoms)
+                            let max = process_view_lines(&state.fold.process, View::Atoms)
                                 .len()
                                 .saturating_sub(1);
                             state.atom_scroll = (state.atom_scroll + 1).min(max);
                         }
                         View::Telos => {
-                            let max = process_view_lines(state.process.as_ref(), View::Telos)
+                            let max = process_view_lines(&state.fold.process, View::Telos)
                                 .len()
                                 .saturating_sub(1);
                             state.telos_scroll = (state.telos_scroll + 1).min(max);
                         }
                     },
                     KeyCode::Char('k') | KeyCode::Up => match state.view {
-                        View::Browser => {
-                            state.move_up();
-                            if state.focus == Focus::Subjects {
-                                state.ensure_selected_loaded(substrate::subject_claims);
-                            }
-                        }
+                        View::Browser => state.move_up(),
                         View::Atoms => state.atom_scroll = state.atom_scroll.saturating_sub(1),
                         View::Telos => state.telos_scroll = state.telos_scroll.saturating_sub(1),
                     },
-                    KeyCode::Enter if state.view == View::Browser => {
-                        state.descend();
-                        match state.focus {
-                            Focus::Claims => {
-                                state.ensure_selected_loaded(substrate::subject_claims)
-                            }
-                            Focus::Detail => state.ensure_cite_index(substrate::claim_index),
-                            Focus::Subjects => {}
-                        }
-                    }
+                    KeyCode::Enter if state.view == View::Browser => state.descend(),
                     KeyCode::Esc if state.view == View::Browser => state.ascend(),
                     _ => {}
                 },
@@ -642,10 +564,22 @@ fn draw(frame: &mut ratatui::Frame, state: &AppState) {
 
     frame.render_widget(Line::from(view_header(state.view)).bold(), header);
 
-    let process_text = match &state.dash.day_status {
+    let mut process_text = match &state.fold.day_status {
         Some(t) if !t.is_empty() => t.clone(),
         _ => "(day status unavailable)".to_string(),
     };
+    // Surface fold errors so a failed `kan show --all` is not mistaken for an
+    // empty repo (telos/honest-ambiguity).
+    if !state.fold.errors.is_empty() {
+        let errs = state
+            .fold
+            .errors
+            .iter()
+            .map(|e| format!("! {e}"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        process_text = format!("{errs}\n{process_text}");
+    }
     // Clip to the pane height with an explicit overflow cue; no wrap, so the
     // line count is exact and day's candidate list is never silently truncated.
     let process_lines = clip_lines(&process_text, (process.height as usize).saturating_sub(2));
@@ -711,14 +645,14 @@ fn draw_browser(
 /// The full rendered lines (deferral note + declared structure) for a process
 /// view. Shared by the renderer and the scroll clamp, so a held `j` cannot
 /// inflate the offset past the content.
-pub fn process_view_lines(process: Option<&ProcessSnapshot>, view: View) -> Vec<String> {
+pub fn process_view_lines(p: &ProcessSnapshot, view: View) -> Vec<String> {
     let mut lines = vec![
         "(live position & witness state need machine-readable day — declared structure only)"
             .to_string(),
         String::new(),
     ];
-    match (process, view) {
-        (Some(p), View::Atoms) => {
+    match view {
+        View::Atoms => {
             if p.atoms.is_empty() {
                 lines.push("(no atoms declared)".to_string());
             }
@@ -732,7 +666,7 @@ pub fn process_view_lines(process: Option<&ProcessSnapshot>, view: View) -> Vec<
                 ));
             }
         }
-        (Some(p), View::Telos) => {
+        View::Telos => {
             for t in &p.teloi {
                 lines.push(format!("{}  ({})", t.title, t.slug));
                 lines.push(format!("  {}", t.statement));
@@ -749,8 +683,7 @@ pub fn process_view_lines(process: Option<&ProcessSnapshot>, view: View) -> Vec<
                 lines.push("(no teloi declared)".to_string());
             }
         }
-        // Not yet folded, or the Browser view (which never routes here).
-        _ => lines.push("(loading …)".to_string()),
+        View::Browser => {} // never routes here
     }
     lines
 }
@@ -772,12 +705,12 @@ fn render_scrolled(
 }
 
 fn draw_atoms(frame: &mut ratatui::Frame, state: &AppState, area: ratatui::layout::Rect) {
-    let lines = process_view_lines(state.process.as_ref(), View::Atoms);
+    let lines = process_view_lines(&state.fold.process, View::Atoms);
     render_scrolled(frame, area, " atoms ", &lines, state.atom_scroll);
 }
 
 fn draw_telos(frame: &mut ratatui::Frame, state: &AppState, area: ratatui::layout::Rect) {
-    let lines = process_view_lines(state.process.as_ref(), View::Telos);
+    let lines = process_view_lines(&state.fold.process, View::Telos);
     render_scrolled(frame, area, " teloi ", &lines, state.telos_scroll);
 }
 
@@ -800,7 +733,7 @@ fn draw_list(frame: &mut ratatui::Frame, state: &AppState, area: ratatui::layout
     }
     frame.render_stateful_widget(
         List::new(items)
-            .block(Block::bordered().title(format!(" subjects · {} ", state.dash.subjects.len())))
+            .block(Block::bordered().title(format!(" subjects · {} ", state.fold.subjects.len())))
             .highlight_style(Style::new().add_modifier(Modifier::REVERSED))
             .highlight_symbol("> "),
         area,
@@ -831,22 +764,24 @@ fn draw_claims(frame: &mut ratatui::Frame, state: &AppState, area: ratatui::layo
     use ratatui::widgets::{Block, List, ListItem, ListState};
 
     let subject = state.selected_subject().unwrap_or("(no subject)");
-    // One list row per claim, colored by kind; the row order matches
-    // subject_claims, so claim_selected maps 1:1. Non-populated states fall back
-    // to detail_lines' single info line, uncolored.
-    let items: Vec<ListItem> = match state.selected_claims() {
-        Some(Ok(cs)) if !cs.is_empty() => cs
-            .iter()
-            .map(|c| ListItem::new(c.display_line()).style(kind_style(&c.kind)))
-            .collect(),
-        other => detail_lines(subject, other)
+    let claims = state.selected_claims();
+    // One list row per claim, colored by kind; the row order matches the fold, so
+    // claim_selected maps 1:1. An empty subject falls back to detail_lines' single
+    // info line, uncolored.
+    let items: Vec<ListItem> = if claims.is_empty() {
+        detail_lines(subject, claims)
             .into_iter()
             .map(ListItem::new)
-            .collect(),
+            .collect()
+    } else {
+        claims
+            .iter()
+            .map(|c| ListItem::new(c.display_line()).style(kind_style(&c.kind)))
+            .collect()
     };
 
     let mut ls = ListState::default();
-    let populated = matches!(state.selected_claims(), Some(Ok(cs)) if !cs.is_empty());
+    let populated = !claims.is_empty();
     let active = matches!(state.focus, Focus::Claims | Focus::Detail);
     if populated && active {
         ls.select(Some(
@@ -872,7 +807,7 @@ fn draw_claim_detail(frame: &mut ratatui::Frame, state: &AppState, area: ratatui
         Some(c) => (
             short_cid(&c.cid),
             kind_style(&c.kind),
-            detail_view(c, state.cite_index.as_ref()),
+            detail_view(c, Some(&state.fold.by_cid)),
         ),
         None => (
             "(no claim)".to_string(),
@@ -892,26 +827,24 @@ fn draw_claim_detail(frame: &mut ratatui::Frame, state: &AppState, area: ratatui
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::substrate::Subject;
 
-    fn subj(name: &str) -> Subject {
-        Subject {
-            name: name.to_string(),
-            state: "open".to_string(),
-            durability: "local".to_string(),
-        }
-    }
-
-    fn dash(names: &[&str]) -> Dashboard {
-        Dashboard {
-            subjects: names.iter().map(|n| subj(n)).collect(),
+    /// A minimal fold with the given subject names (each with no claims) and a
+    /// stub day_status.
+    fn fold_of(names: &[&str]) -> Fold {
+        let mut f = Fold {
             day_status: Some("Current atom: design".to_string()),
-            errors: vec![],
+            ..Default::default()
+        };
+        for n in names {
+            f.subjects.push(n.to_string());
+            f.claims.insert(n.to_string(), Vec::new());
         }
+        f.subjects.sort();
+        f
     }
 
     fn app(names: &[&str]) -> AppState {
-        AppState::new(PathBuf::from("."), dash(names), None)
+        AppState::new(PathBuf::from("."), fold_of(names), None)
     }
 
     #[test]
@@ -969,7 +902,7 @@ mod tests {
         assert_eq!(a.selected_subject(), Some("telos/b"));
 
         // telos/a vanishes but telos/b remains: cursor stays on telos/b by name.
-        a.refold(dash(&["telos/b", "atom/x"]), None);
+        a.refold(fold_of(&["telos/b", "atom/x"]), None);
         assert_eq!(a.selected_subject(), Some("telos/b"));
 
         // Remove the *selected* subject. Using one namespace keeps ordering
@@ -978,7 +911,7 @@ mod tests {
         // real clamp from a jump-to-top.
         let mut b = app(&["telos/a", "telos/b", "telos/c"]);
         b.select_next(); // telos/b at ordinal 1
-        b.refold(dash(&["telos/a", "telos/c"]), None);
+        b.refold(fold_of(&["telos/a", "telos/c"]), None);
         assert_eq!(b.selected_subject(), Some("telos/c"));
     }
 
@@ -1031,29 +964,20 @@ mod tests {
     }
 
     #[test]
-    fn claims_fetched_once_per_fold_then_cache_hit_until_refold() {
-        use std::cell::Cell;
-        let calls = Cell::new(0);
-        let fetch = |_: &Path, _: &str| {
-            calls.set(calls.get() + 1);
-            Ok(Vec::<Claim>::new())
-        };
-
-        let mut a = app(&["telos/a", "telos/b"]);
-        a.ensure_selected_loaded(fetch); // telos/a fetched
-        assert_eq!(calls.get(), 1);
-        a.ensure_selected_loaded(fetch); // cache hit
-        assert_eq!(calls.get(), 1);
-        a.select_next(); // telos/b
-        a.ensure_selected_loaded(fetch);
-        assert_eq!(calls.get(), 2);
-        a.select_prev(); // back to telos/a — cache hit
-        a.ensure_selected_loaded(fetch);
-        assert_eq!(calls.get(), 2);
-        // Re-fold clears the cache: telos/a is fetched again.
-        a.refold(dash(&["telos/a", "telos/b"]), None);
-        a.ensure_selected_loaded(fetch);
-        assert_eq!(calls.get(), 3);
+    fn selected_claims_read_directly_from_the_fold() {
+        let mut f = fold_of(&["telos/a", "telos/b"]);
+        f.claims
+            .insert("telos/a".into(), vec![mk_claim("Decision", "hello")]);
+        let mut a = AppState::new(PathBuf::from("."), f, None);
+        // telos/a is first; its claims resolve with no fetch closure.
+        assert_eq!(a.selected_subject(), Some("telos/a"));
+        assert_eq!(a.selected_claims().len(), 1);
+        assert_eq!(
+            a.selected_claim().map(|c| c.kind.as_str()),
+            Some("Decision")
+        );
+        a.select_next(); // telos/b has no claims
+        assert!(a.selected_claims().is_empty());
     }
 
     #[test]
@@ -1137,10 +1061,10 @@ mod tests {
 
     #[test]
     fn process_view_lines_are_note_led_and_bound_the_scroll() {
-        // Not yet folded: note + a loading line.
-        let none = process_view_lines(None, View::Atoms);
-        assert!(none[0].contains("machine-readable day"), "{:?}", none[0]);
-        assert!(none.iter().any(|l| l.contains("loading")));
+        // Empty snapshot: note + the "no atoms" line.
+        let empty = process_view_lines(&ProcessSnapshot::default(), View::Atoms);
+        assert!(empty[0].contains("machine-readable day"), "{:?}", empty[0]);
+        assert!(empty.iter().any(|l| l.contains("no atoms")));
 
         let snap = ProcessSnapshot {
             atoms: vec![substrate::Atom {
@@ -1152,7 +1076,7 @@ mod tests {
             teloi: vec![],
             tensions: vec![],
         };
-        let lines = process_view_lines(Some(&snap), View::Atoms);
+        let lines = process_view_lines(&snap, View::Atoms);
         assert!(lines.iter().any(|l| l.contains("build")));
         // The clamp the key handler applies can never slice past the end.
         let max = lines.len().saturating_sub(1);
@@ -1160,19 +1084,15 @@ mod tests {
     }
 
     #[test]
-    fn detail_lines_render_loading_error_empty_and_claims() {
-        assert_eq!(detail_lines("telos/a", None), vec!["(loading …)"]);
-
-        let err: Result<Vec<Claim>, String> = Err("boom".into());
-        assert_eq!(detail_lines("telos/a", Some(&err)), vec!["error: boom"]);
-
-        let empty: Result<Vec<Claim>, String> = Ok(vec![]);
-        let out = detail_lines("telos/a", Some(&empty));
+    fn detail_lines_empty_and_populated() {
+        // Empty subject -> the honest empty-state line.
+        let out = detail_lines("telos/a", &[]);
         assert_eq!(out.len(), 1);
         assert!(out[0].contains("no live claims"), "{out:?}");
 
-        let populated: Result<Vec<Claim>, String> = Ok(vec![mk_claim("Decision", "hello")]);
-        let out = detail_lines("telos/a", Some(&populated));
+        // Populated -> one display_line per claim.
+        let cs = vec![mk_claim("Decision", "hello")];
+        let out = detail_lines("telos/a", &cs);
         assert_eq!(out.len(), 1);
         assert!(
             out[0].contains("Decision") && out[0].contains("hello"),

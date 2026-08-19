@@ -15,99 +15,6 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::process::Command;
 
-/// One kan subject as it appears in the cheap `kan status --json` manifest.
-#[derive(Clone, Debug)]
-pub struct Subject {
-    pub name: String,
-    pub state: String,
-    pub durability: String,
-}
-
-impl Subject {
-    /// The top-level namespace, e.g. `atom/foo` -> "atom", used for grouping.
-    pub fn namespace(&self) -> &str {
-        // agents/handoff/* is really one logical group; collapse it.
-        if self.name.starts_with("agents/handoff/") {
-            return "agents/handoff";
-        }
-        self.name.split('/').next().unwrap_or(&self.name)
-    }
-}
-
-/// A folded snapshot of a repo's substrate at one tick.
-#[derive(Clone, Debug, Default)]
-pub struct Dashboard {
-    pub subjects: Vec<Subject>,
-    /// The `day status` process-position text (rendered verbatim — it already
-    /// expresses ambiguity honestly, and re-implementing its inference would be a
-    /// mistake). `None` if `day` is unavailable.
-    pub day_status: Option<String>,
-    pub errors: Vec<String>,
-}
-
-impl Dashboard {
-    /// Sessions = the flat `agents/handoff/*` registry (day's real multi-agent
-    /// surface; there is no parent/child hierarchy yet — see 02).
-    pub fn sessions(&self) -> Vec<&Subject> {
-        self.subjects
-            .iter()
-            .filter(|s| s.name.starts_with("agents/handoff/"))
-            .collect()
-    }
-
-    /// (namespace, count) pairs, most-populous first.
-    pub fn namespace_counts(&self) -> Vec<(String, usize)> {
-        let mut map: std::collections::BTreeMap<String, usize> = Default::default();
-        for s in &self.subjects {
-            *map.entry(s.namespace().to_string()).or_default() += 1;
-        }
-        let mut v: Vec<_> = map.into_iter().collect();
-        v.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
-        v
-    }
-}
-
-/// Collect a fresh dashboard by querying kan + day in `repo`.
-pub fn collect(repo: &Path) -> Dashboard {
-    let mut dash = Dashboard::default();
-
-    match kan_status(repo) {
-        Ok(subjects) => dash.subjects = subjects,
-        Err(e) => dash.errors.push(format!("kan status: {e}")),
-    }
-    match day_status(repo) {
-        Ok(text) => dash.day_status = Some(text),
-        Err(e) => dash.errors.push(format!("day status: {e}")),
-    }
-    dash
-}
-
-fn kan_status(repo: &Path) -> Result<Vec<Subject>, String> {
-    let out = Command::new("kan")
-        .args(["status", "--json"])
-        .current_dir(repo)
-        .output()
-        .map_err(|e| format!("spawn failed: {e}"))?;
-    if !out.status.success() {
-        return Err(String::from_utf8_lossy(&out.stderr).trim().to_string());
-    }
-    let json: Value = serde_json::from_slice(&out.stdout).map_err(|e| e.to_string())?;
-    let arr = json
-        .get("subjects")
-        .and_then(Value::as_array)
-        .ok_or("no `subjects` array")?;
-    let mut subjects: Vec<Subject> = arr
-        .iter()
-        .map(|s| Subject {
-            name: str_at(s, "subject"),
-            state: str_at(s, "state"),
-            durability: str_at(s, "durability"),
-        })
-        .collect();
-    subjects.sort_by(|a, b| a.name.cmp(&b.name));
-    Ok(subjects)
-}
-
 fn day_status(repo: &Path) -> Result<String, String> {
     let out = Command::new("day")
         .arg("status")
@@ -236,15 +143,28 @@ fn claims_from_json(json: &Value) -> Vec<Claim> {
         .and_then(Value::as_array)
         .map(|arr| arr.iter().map(claim_from_value).collect())
         .unwrap_or_default();
-    // Newest first; undated claims sort last (they cannot be placed in time);
-    // ties broken by cid so the order is fully deterministic (kan emits no `rev`).
+    sort_newest_first(&mut claims);
+    claims
+}
+
+/// Newest first; undated claims sort last (they cannot be placed in time); ties
+/// broken by cid so the order is fully deterministic (kan emits no `rev`).
+fn sort_newest_first(claims: &mut [Claim]) {
     claims.sort_by(|a, b| match (a.recorded_at, b.recorded_at) {
         (Some(at), Some(bt)) => bt.cmp(&at).then_with(|| a.cid.cmp(&b.cid)),
         (Some(_), None) => Ordering::Less,
         (None, Some(_)) => Ordering::Greater,
         (None, None) => a.cid.cmp(&b.cid),
     });
-    claims
+}
+
+/// The top-level namespace of a subject name, e.g. `atom/foo` -> "atom", with the
+/// `agents/handoff/*` registry collapsed to one group.
+pub fn namespace(name: &str) -> &str {
+    if name.starts_with("agents/handoff/") {
+        return "agents/handoff";
+    }
+    name.split('/').next().unwrap_or(name)
 }
 
 fn claim_from_value(v: &Value) -> Claim {
@@ -281,40 +201,6 @@ pub fn short_cid(cid: &str) -> String {
     let rest = cid.strip_prefix("bafyrei").unwrap_or(cid);
     let take: String = rest.chars().take(7).collect();
     format!("@{take}…")
-}
-
-/// Fold every subject's live claims into a `cid -> Claim` map, so a cited CID can
-/// be resolved to its claim across subjects. Reads `kan show --all --json`, whose
-/// claims are nested under `subjects[].claims[]` (not the top-level `claims`), in
-/// one process spawn (kan#123).
-pub fn claim_index(repo: &Path) -> Result<HashMap<String, Claim>, String> {
-    let out = Command::new("kan")
-        .args(["show", "--all", "--json"])
-        .current_dir(repo)
-        .output()
-        .map_err(|e| format!("spawn failed: {e}"))?;
-    if !out.status.success() {
-        return Err(String::from_utf8_lossy(&out.stderr).trim().to_string());
-    }
-    let json: Value = serde_json::from_slice(&out.stdout).map_err(|e| e.to_string())?;
-    Ok(index_from_all_json(&json))
-}
-
-/// Build the `cid -> Claim` map from an `--all`-shaped payload. Split out so it
-/// is unit-testable without shelling out.
-fn index_from_all_json(json: &Value) -> HashMap<String, Claim> {
-    let mut map = HashMap::new();
-    if let Some(subjects) = json.get("subjects").and_then(Value::as_array) {
-        for s in subjects {
-            if let Some(claims) = s.get("claims").and_then(Value::as_array) {
-                for c in claims {
-                    let claim = claim_from_value(c);
-                    map.insert(claim.cid.clone(), claim);
-                }
-            }
-        }
-    }
-    map
 }
 
 // --- The declared process structure: atoms, teloi, tensions ------------------
@@ -361,53 +247,6 @@ pub struct ProcessSnapshot {
     pub atoms: Vec<Atom>,
     pub teloi: Vec<TelosView>,
     pub tensions: Vec<String>,
-}
-
-/// Fold the declared atoms, teloi, and tensions from `kan show --all --json`.
-pub fn process_snapshot(repo: &Path) -> Result<ProcessSnapshot, String> {
-    let out = Command::new("kan")
-        .args(["show", "--all", "--json"])
-        .current_dir(repo)
-        .output()
-        .map_err(|e| format!("spawn failed: {e}"))?;
-    if !out.status.success() {
-        return Err(String::from_utf8_lossy(&out.stderr).trim().to_string());
-    }
-    let json: Value = serde_json::from_slice(&out.stdout).map_err(|e| e.to_string())?;
-    Ok(snapshot_from_all_json(&json))
-}
-
-/// Parse a `ProcessSnapshot` from an `--all`-shaped payload. Split out so it is
-/// unit-testable without shelling out.
-fn snapshot_from_all_json(json: &Value) -> ProcessSnapshot {
-    let mut snap = ProcessSnapshot::default();
-    let Some(subjects) = json.get("subjects").and_then(Value::as_array) else {
-        return snap;
-    };
-    for s in subjects {
-        let name = str_at(s, "subject");
-        let claims: Vec<Claim> = s
-            .get("claims")
-            .and_then(Value::as_array)
-            .map(|a| a.iter().map(claim_from_value).collect())
-            .unwrap_or_default();
-
-        if let Some(slug) = name.strip_prefix("atom/") {
-            if let Some(atom) = parse_atom(slug, &claims) {
-                snap.atoms.push(atom);
-            }
-        } else if let Some(slug) = name.strip_prefix("telos/") {
-            snap.teloi.push(parse_telos(slug, &claims));
-        } else if name.starts_with("tension/") {
-            if let Some(t) = parse_tension(&claims) {
-                snap.tensions.push(t);
-            }
-        }
-    }
-    snap.atoms.sort_by(|a, b| a.slug.cmp(&b.slug));
-    snap.teloi.sort_by(|a, b| a.slug.cmp(&b.slug));
-    snap.tensions.sort();
-    snap
 }
 
 /// The body of the newest claim carrying a `name` fenced block, if any.
@@ -484,6 +323,117 @@ fn parse_tension(claims: &[Claim]) -> Option<String> {
     let j: Value = serde_json::from_str(&newest_block(claims, "day-tension")?).ok()?;
     let between = str_array_at(&j, "between");
     (between.len() == 2).then(|| format!("{} <-> {}", between[0], between[1]))
+}
+
+// --- The unified fold: everything from one `kan show --all --json` -----------
+
+/// Everything one `kan show --all --json` yields, folded once and read from
+/// memory: the subjects, each subject's newest-first claims, a `cid -> Claim`
+/// index for cite resolution, and the declared process structure — plus the
+/// `day status` text and any errors. Rebuilt only when the log changes.
+#[derive(Clone, Debug, Default)]
+pub struct Fold {
+    pub subjects: Vec<String>,
+    pub claims: HashMap<String, Vec<Claim>>,
+    pub by_cid: HashMap<String, Claim>,
+    pub process: ProcessSnapshot,
+    pub day_status: Option<String>,
+    pub errors: Vec<String>,
+}
+
+impl Fold {
+    /// The selected subject's claims (newest first), or an empty slice.
+    pub fn claims_for(&self, subject: &str) -> &[Claim] {
+        self.claims.get(subject).map(Vec::as_slice).unwrap_or(&[])
+    }
+
+    /// (namespace, count) pairs over the folded subjects, most-populous first.
+    pub fn namespace_counts(&self) -> Vec<(String, usize)> {
+        let mut map: std::collections::BTreeMap<String, usize> = Default::default();
+        for name in &self.subjects {
+            *map.entry(namespace(name).to_string()).or_default() += 1;
+        }
+        let mut v: Vec<_> = map.into_iter().collect();
+        v.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
+        v
+    }
+
+    /// The flat `agents/handoff/*` session registry.
+    pub fn sessions(&self) -> Vec<&str> {
+        self.subjects
+            .iter()
+            .filter(|n| n.starts_with("agents/handoff/"))
+            .map(String::as_str)
+            .collect()
+    }
+}
+
+/// Build the whole in-memory model with one `kan show --all --json` spawn (plus
+/// one `day status` for the process pane — day has no machine-readable output).
+pub fn fold(repo: &Path) -> Fold {
+    let mut f = Fold::default();
+    match all_json(repo) {
+        Ok(json) => populate_fold(&mut f, &json),
+        Err(e) => f.errors.push(format!("kan show --all: {e}")),
+    }
+    match day_status(repo) {
+        Ok(text) => f.day_status = Some(text),
+        Err(e) => f.errors.push(format!("day status: {e}")),
+    }
+    f
+}
+
+fn all_json(repo: &Path) -> Result<Value, String> {
+    let out = Command::new("kan")
+        .args(["show", "--all", "--json"])
+        .current_dir(repo)
+        .output()
+        .map_err(|e| format!("spawn failed: {e}"))?;
+    if !out.status.success() {
+        return Err(String::from_utf8_lossy(&out.stderr).trim().to_string());
+    }
+    serde_json::from_slice(&out.stdout).map_err(|e| e.to_string())
+}
+
+/// Fold an `--all`-shaped payload into `f`. Split out so it is unit-testable
+/// without shelling out.
+fn populate_fold(f: &mut Fold, json: &Value) {
+    let Some(subjects) = json.get("subjects").and_then(Value::as_array) else {
+        return;
+    };
+    for s in subjects {
+        let name = str_at(s, "subject");
+        if name.is_empty() {
+            continue;
+        }
+        let mut claims: Vec<Claim> = s
+            .get("claims")
+            .and_then(Value::as_array)
+            .map(|a| a.iter().map(claim_from_value).collect())
+            .unwrap_or_default();
+        sort_newest_first(&mut claims);
+
+        for c in &claims {
+            f.by_cid.insert(c.cid.clone(), c.clone());
+        }
+        if let Some(slug) = name.strip_prefix("atom/") {
+            if let Some(atom) = parse_atom(slug, &claims) {
+                f.process.atoms.push(atom);
+            }
+        } else if let Some(slug) = name.strip_prefix("telos/") {
+            f.process.teloi.push(parse_telos(slug, &claims));
+        } else if name.starts_with("tension/") {
+            if let Some(t) = parse_tension(&claims) {
+                f.process.tensions.push(t);
+            }
+        }
+        f.subjects.push(name.clone());
+        f.claims.insert(name, claims);
+    }
+    f.subjects.sort();
+    f.process.atoms.sort_by(|a, b| a.slug.cmp(&b.slug));
+    f.process.teloi.sort_by(|a, b| a.slug.cmp(&b.slug));
+    f.process.tensions.sort();
 }
 
 /// Format microseconds-since-epoch as a compact UTC stamp `YYYY-MM-DD HH:MM`.
@@ -718,7 +668,9 @@ mod tests {
             ]}"#,
         )
         .unwrap();
-        let snap = snapshot_from_all_json(&json);
+        let mut snap = Fold::default();
+        populate_fold(&mut snap, &json);
+        let snap = snap.process;
         assert_eq!(snap.atoms.len(), 1);
         assert_eq!(snap.atoms[0].slug, "build");
         assert_eq!(snap.atoms[0].inputs, vec!["design-doc"]);
@@ -730,7 +682,7 @@ mod tests {
     }
 
     #[test]
-    fn claim_index_folds_the_nested_all_shape() {
+    fn fold_indexes_every_claim_by_cid_across_subjects() {
         // `kan show --all --json` nests claims under subjects[].claims[].
         let json: Value = serde_json::from_str(
             r#"{"v":1,"subjects":[
@@ -744,10 +696,32 @@ mod tests {
             ]}"#,
         )
         .unwrap();
-        let idx = index_from_all_json(&json);
-        assert_eq!(idx.len(), 3);
-        assert_eq!(idx.get("bafy2").unwrap().kind, "Result");
-        assert_eq!(idx.get("bafy1").unwrap().subject, "telos/a");
+        let mut f = Fold::default();
+        populate_fold(&mut f, &json);
+        assert_eq!(f.by_cid.len(), 3);
+        assert_eq!(f.by_cid.get("bafy2").unwrap().kind, "Result");
+        assert_eq!(f.by_cid.get("bafy1").unwrap().subject, "telos/a");
+        // And the subjects + per-subject claims are present from the same fold.
+        assert_eq!(f.subjects, vec!["telos/a", "telos/b"]);
+        // Newest-first within a subject: bafy3 (recorded_at 3) before bafy2 (2).
+        let b = f.claims_for("telos/b");
+        assert_eq!(b.len(), 2);
+        assert_eq!(b[0].cid, "bafy3");
+        assert_eq!(b[1].cid, "bafy2");
+    }
+
+    #[test]
+    fn fold_namespace_counts_and_sessions() {
+        let mut f = Fold::default();
+        for n in ["telos/a", "telos/b", "atom/x", "agents/handoff/thread-1"] {
+            f.subjects.push(n.to_string());
+        }
+        let counts = f.namespace_counts();
+        // Most-populous first, then alphabetical: telos(2), then agents/handoff(1), atom(1).
+        assert_eq!(counts[0], ("telos".to_string(), 2));
+        assert!(counts.contains(&("atom".to_string(), 1)));
+        assert!(counts.contains(&("agents/handoff".to_string(), 1)));
+        assert_eq!(f.sessions(), vec!["agents/handoff/thread-1"]);
     }
 
     #[test]

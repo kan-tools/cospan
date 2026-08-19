@@ -335,8 +335,8 @@ fn watch_repo(args: &[String]) {
                 repo.display()
             );
         }
-        let dash = substrate::collect(&repo);
-        let state = tui::AppState::new(repo, dash, None);
+        let fold = substrate::fold(&repo);
+        let state = tui::AppState::new(repo, fold, None);
         print!("{}", tui::plain_frame(&state));
     } else if let Err(e) = tui::run(repo) {
         eprintln!("cospan: tui error: {e}");
