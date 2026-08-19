@@ -11,7 +11,7 @@
   "cites": [],
   "rev": "223mtfaharv7h",
   "seq": 0,
-  "of": 3,
+  "of": 4,
   "text_len": 220,
   "content": "p2Rib2R5oWhEZWNpc2lvbqFkdGV4dGBlY2l0ZXOAZmF1dGhvcqJjZGlkeDlkaWQ6a2V5OnpEbmFlU2RCYnJNNk5lWTRpOE1veHVGaXlEdHd4M0FISjhmakVkOTRnckgzMXI4WFllYWdlbnT2Z3N1YmplY3ShZUxvY2FsbnRlbG9zL3AwLXNwaW5laWFydGlmYWN0c4GhZkNvbW1pdHgoZjEzMzc2NGMxMTI1OTgwYjYwZmJlZWYzNTFkODNjMWZjZjA3NzE4M2l3b3Jrc3BhY2WhaVdvcmtzcGFjZXhAODM1Zjg3YWRlNDBiZGM4ZGYyMmMzYmJkMjc4ZDU3ZTA0MGZhYTA4Y2M2ZTQxNWQ2YmQwMzg0ZWI5YTdlNTNjZWtyZWNvcmRlZF9hdBsABllZmmvsRQ=="
 }
@@ -37,7 +37,7 @@ cospan's L1->L2->render spine runs: one debounced watch loop folds a real .kan/l
   "cites": [],
   "rev": "223mtfahasyro",
   "seq": 1,
-  "of": 3,
+  "of": 4,
   "content": "p2Rib2R5oWdTdWJqZWN0omV0aXRsZXgcUDA6IHRoZSB3YXRjaC1hbmQtZm9sZCBzcGluZWxzdWJqZWN0X2tpbmRkSWRlYWVjaXRlc4BmYXV0aG9yomNkaWR4OWRpZDprZXk6ekRuYWVTZEJick02TmVZNGk4TW94dUZpeUR0d3gzQUhKOGZqRWQ5NGdySDMxcjhYWWVhZ2VudPZnc3ViamVjdKFlTG9jYWxudGVsb3MvcDAtc3BpbmVpYXJ0aWZhY3RzgaFmQ29tbWl0eChmMTMzNzY0YzExMjU5ODBiNjBmYmVlZjM1MWQ4M2MxZmNmMDc3MTgzaXdvcmtzcGFjZaFpV29ya3NwYWNleEA4MzVmODdhZGU0MGJkYzhkZjIyYzNiYmQyNzhkNTdlMDQwZmFhMDhjYzZlNDE1ZDZiZDAzODRlYjlhN2U1M2Nla3JlY29yZGVkX2F0GwAGWVmabHqI"
 }
 ---
@@ -55,7 +55,30 @@ cospan's L1->L2->render spine runs: one debounced watch loop folds a real .kan/l
   "cites": [],
   "rev": "223mtfaruhess",
   "seq": 2,
-  "of": 3,
+  "of": 4,
   "content": "p2Rib2R5oWtQdWJsaWNhdGlvbqFlbGF5ZXJnR2l0VHJlZWVjaXRlc4BmYXV0aG9yomNkaWR4OWRpZDprZXk6ekRuYWVTZEJick02TmVZNGk4TW94dUZpeUR0d3gzQUhKOGZqRWQ5NGdySDMxcjhYWWVhZ2VudPZnc3ViamVjdKFlTG9jYWxudGVsb3MvcDAtc3BpbmVpYXJ0aWZhY3RzgaFmQ29tbWl0eChmMTMzNzY0YzExMjU5ODBiNjBmYmVlZjM1MWQ4M2MxZmNmMDc3MTgzaXdvcmtzcGFjZaFpV29ya3NwYWNleEA4MzVmODdhZGU0MGJkYzhkZjIyYzNiYmQyNzhkNTdlMDQwZmFhMDhjYzZlNDE1ZDZiZDAzODRlYjlhN2U1M2Nla3JlY29yZGVkX2F0GwAGWVmvpqq1"
 }
 ---
+***8<***
+---
+{
+  "v": 3,
+  "cid": "bafyreidoveekcdqjzukkqprtj4thl76vw32fpzk236nblbjsvzahsn3bya",
+  "sig": "62850eec3f91f9ff84d66b52bbefdabbabf07ab70732a3ffab6d3d4b65055b8c2f97ce04e23324857f6f7272846484168719d727192349256353d6b4cafe5c13",
+  "author": "did:key:zDnaeSdBbrM6NeY4i8MoxuFiyDtwx3AHJ8fjEd94grH31r8XY",
+  "subject": {
+    "local": "telos/p0-spine"
+  },
+  "kind": "result",
+  "cites": [
+    "bafyreidq3ijchktwrf3eanx2kkqlwxogzvzv3bzqfkykqqmy73wjzt6d74"
+  ],
+  "rev": "223mtflppdlkq",
+  "seq": 3,
+  "of": 4,
+  "text_len": 238,
+  "content": "p2Rib2R5oWZSZXN1bHShZHRleHRgZWNpdGVzgdgqWCUAAXESIHDaEiOqdol2QDb6UqC7XcbNc12HMCqwqEGY/uycz8P/ZmF1dGhvcqJjZGlkeDlkaWQ6a2V5OnpEbmFlU2RCYnJNNk5lWTRpOE1veHVGaXlEdHd4M0FISjhmakVkOTRnckgzMXI4WFllYWdlbnT2Z3N1YmplY3ShZUxvY2FsbnRlbG9zL3AwLXNwaW5laWFydGlmYWN0c4GhZkNvbW1pdHgoODhlZGUwYjYzYjllZDk0MTUzZWJmMDlhN2VmZDFhY2MyOTZlNzU3M2l3b3Jrc3BhY2WhaVdvcmtzcGFjZXhAODM1Zjg3YWRlNDBiZGM4ZGYyMmMzYmJkMjc4ZDU3ZTA0MGZhYTA4Y2M2ZTQxNWQ2YmQwMzg0ZWI5YTdlNTNjZWtyZWNvcmRlZF9hdBsABllca1TFrA=="
+}
+---
+
+Interactive TUI human-verified: the operator ran `cargo run -- watch-repo .` in a real terminal and confirmed it renders and that q/j/k work — closing the one acceptance criterion (AC-6 live behavior) that could not be checked headless.

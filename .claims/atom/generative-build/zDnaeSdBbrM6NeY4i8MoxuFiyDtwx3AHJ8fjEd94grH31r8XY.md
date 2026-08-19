@@ -11,7 +11,7 @@
   "cites": [],
   "rev": "223mtfagbk4mx",
   "seq": 0,
-  "of": 6,
+  "of": 8,
   "text_len": 197,
   "content": "p2Rib2R5oWtPYnNlcnZhdGlvbqFkdGV4dGBlY2l0ZXOAZmF1dGhvcqJjZGlkeDlkaWQ6a2V5OnpEbmFlU2RCYnJNNk5lWTRpOE1veHVGaXlEdHd4M0FISjhmakVkOTRnckgzMXI4WFllYWdlbnT2Z3N1YmplY3ShZUxvY2FsdWF0b20vZ2VuZXJhdGl2ZS1idWlsZGlhcnRpZmFjdHOBoWZDb21taXR4KGMzMDVkOTE5ZDc1NzgwYWYyOTQzZDdlOGMxMDA0MzA2YTQxMTIyMGFpd29ya3NwYWNloWlXb3Jrc3BhY2V4QDgzNWY4N2FkZTQwYmRjOGRmMjJjM2JiZDI3OGQ1N2UwNDBmYWEwOGNjNmU0MTVkNmJkMDM4NGViOWE3ZTUzY2VrcmVjb3JkZWRfYXQbAAZZWZh4CfE="
 }
@@ -37,7 +37,7 @@ An agent session turns an accepted design into code that builds and tests green.
   "cites": [],
   "rev": "223mtfaruqcn6",
   "seq": 1,
-  "of": 6,
+  "of": 8,
   "content": "p2Rib2R5oWtQdWJsaWNhdGlvbqFlbGF5ZXJnR2l0VHJlZWVjaXRlc4BmYXV0aG9yomNkaWR4OWRpZDprZXk6ekRuYWVTZEJick02TmVZNGk4TW94dUZpeUR0d3gzQUhKOGZqRWQ5NGdySDMxcjhYWWVhZ2VudPZnc3ViamVjdKFlTG9jYWx1YXRvbS9nZW5lcmF0aXZlLWJ1aWxkaWFydGlmYWN0c4GhZkNvbW1pdHgoZjEzMzc2NGMxMTI1OTgwYjYwZmJlZWYzNTFkODNjMWZjZjA3NzE4M2l3b3Jrc3BhY2WhaVdvcmtzcGFjZXhAODM1Zjg3YWRlNDBiZGM4ZGYyMmMzYmJkMjc4ZDU3ZTA0MGZhYTA4Y2M2ZTQxNWQ2YmQwMzg0ZWI5YTdlNTNjZWtyZWNvcmRlZF9hdBsABllZr6sh/A=="
 }
 ---
@@ -57,7 +57,7 @@ An agent session turns an accepted design into code that builds and tests green.
   ],
   "rev": "223mtfco6qppb",
   "seq": 2,
-  "of": 6,
+  "of": 8,
   "text_len": 613,
   "content": "p2Rib2R5oWZSZXN1bHShZHRleHRgZWNpdGVzgdgqWCUAAXESILSMxPQm75MW158RmGlt+lyqySQ2V477QQI3+VGHbd5FZmF1dGhvcqJjZGlkeDlkaWQ6a2V5OnpEbmFlU2RCYnJNNk5lWTRpOE1veHVGaXlEdHd4M0FISjhmakVkOTRnckgzMXI4WFllYWdlbnT2Z3N1YmplY3ShZUxvY2FsdWF0b20vZ2VuZXJhdGl2ZS1idWlsZGlhcnRpZmFjdHOBoWZDb21taXR4KGYxMzM3NjRjMTEyNTk4MGI2MGZiZWVmMzUxZDgzYzFmY2YwNzcxODNpd29ya3NwYWNloWlXb3Jrc3BhY2V4QDgzNWY4N2FkZTQwYmRjOGRmMjJjM2JiZDI3OGQ1N2UwNDBmYWEwOGNjNmU0MTVkNmJkMDM4NGViOWE3ZTUzY2VrcmVjb3JkZWRfYXQbAAZZWihLVjg="
 }
@@ -80,7 +80,7 @@ Built subject-claim-drill-in per .design/subject-claim-drill-in.md: added substr
   ],
   "rev": "223mtfegrdcmt",
   "seq": 3,
-  "of": 6,
+  "of": 8,
   "text_len": 560,
   "content": "p2Rib2R5oWZSZXN1bHShZHRleHRgZWNpdGVzgdgqWCUAAXESIKuVWY8LaRhMsfrgFHujE7Ojd2yyBOflibyWUuJsOqAKZmF1dGhvcqJjZGlkeDlkaWQ6a2V5OnpEbmFlU2RCYnJNNk5lWTRpOE1veHVGaXlEdHd4M0FISjhmakVkOTRnckgzMXI4WFllYWdlbnT2Z3N1YmplY3ShZUxvY2FsdWF0b20vZ2VuZXJhdGl2ZS1idWlsZGlhcnRpZmFjdHOBoWZDb21taXR4KGYxMzM3NjRjMTEyNTk4MGI2MGZiZWVmMzUxZDgzYzFmY2YwNzcxODNpd29ya3NwYWNloWlXb3Jrc3BhY2V4QDgzNWY4N2FkZTQwYmRjOGRmMjJjM2JiZDI3OGQ1N2UwNDBmYWEwOGNjNmU0MTVkNmJkMDM4NGViOWE3ZTUzY2VrcmVjb3JkZWRfYXQbAAZZWpl0oe8="
 }
@@ -103,7 +103,7 @@ Addressed adversarial-review follow-ups 1-3 (verdict APPROVE-WITH-FOLLOW-UPS): (
   ],
   "rev": "223mtfhjvpecb",
   "seq": 4,
-  "of": 6,
+  "of": 8,
   "text_len": 602,
   "content": "p2Rib2R5oWZSZXN1bHShZHRleHRgZWNpdGVzgdgqWCUAAXESIDMQjzpwhF4CURxHQN9DLK43oIEl1OVPPkVwyG1/Gd5yZmF1dGhvcqJjZGlkeDlkaWQ6a2V5OnpEbmFlU2RCYnJNNk5lWTRpOE1veHVGaXlEdHd4M0FISjhmakVkOTRnckgzMXI4WFllYWdlbnT2Z3N1YmplY3ShZUxvY2FsdWF0b20vZ2VuZXJhdGl2ZS1idWlsZGlhcnRpZmFjdHOBoWZDb21taXR4KGI5Y2ZmMzYwYTY1NjM1YTE3YmZiZTM2YmY3NTZkOGMyMDg0NGM0M2Jpd29ya3NwYWNloWlXb3Jrc3BhY2V4QDgzNWY4N2FkZTQwYmRjOGRmMjJjM2JiZDI3OGQ1N2UwNDBmYWEwOGNjNmU0MTVkNmJkMDM4NGViOWE3ZTUzY2VrcmVjb3JkZWRfYXQbAAZZW1+6qKA="
 }
@@ -126,10 +126,56 @@ Built Step 2 (ratatui-interactive-tui) per .design/ratatui-interactive-tui.md: n
   ],
   "rev": "223mtfjuyvv3s",
   "seq": 5,
-  "of": 6,
+  "of": 8,
   "text_len": 595,
   "content": "p2Rib2R5oWZSZXN1bHShZHRleHRgZWNpdGVzgdgqWCUAAXESIHDaEiOqdol2QDb6UqC7XcbNc12HMCqwqEGY/uycz8P/ZmF1dGhvcqJjZGlkeDlkaWQ6a2V5OnpEbmFlU2RCYnJNNk5lWTRpOE1veHVGaXlEdHd4M0FISjhmakVkOTRnckgzMXI4WFllYWdlbnT2Z3N1YmplY3ShZUxvY2FsdWF0b20vZ2VuZXJhdGl2ZS1idWlsZGlhcnRpZmFjdHOBoWZDb21taXR4KGI5Y2ZmMzYwYTY1NjM1YTE3YmZiZTM2YmY3NTZkOGMyMDg0NGM0M2Jpd29ya3NwYWNloWlXb3Jrc3BhY2V4QDgzNWY4N2FkZTQwYmRjOGRmMjJjM2JiZDI3OGQ1N2UwNDBmYWEwOGNjNmU0MTVkNmJkMDM4NGViOWE3ZTUzY2VrcmVjb3JkZWRfYXQbAAZZW/Xt6wU="
 }
 ---
 
 Addressed Step-2 adversarial-review follow-ups (verdict APPROVE-WITH-FOLLOW-UPS): (1) the interactive process pane now clips day status with an explicit overflow cue via a tested clip_lines() helper, so day's candidate list/warnings are never silently truncated (telos/honest-ambiguity); (2) refold now clamps a lost selection to the same subject ordinal rather than jumping to the top, with a discriminating test; (3) removed the invented 'ticks' fold counter, so the view holds no state but the selection cursor (telos/kan-is-truth), matching the design. cargo test 19/19, tui.rs clippy-clean.
+***8<***
+---
+{
+  "v": 3,
+  "cid": "bafyreidjmxlbdcydwkrv5gczazcbecadrlgjn4ndltsgkt5rthet4s5exu",
+  "sig": "a855aa3c5c13a1caff711c74fce0febf31131f5dca9caa011a99dca030ec60d079c86e61f0b64d2b5b02d71ef2ac050e9f05ac7e634beebbc71719fd0b5b3dd8",
+  "author": "did:key:zDnaeSdBbrM6NeY4i8MoxuFiyDtwx3AHJ8fjEd94grH31r8XY",
+  "subject": {
+    "local": "atom/generative-build"
+  },
+  "kind": "result",
+  "cites": [
+    "bafyreif2wowkasjcmdwqlpqgjaldr5dzfmcao3dd652ejsikzejzv7jzi4"
+  ],
+  "rev": "223mtfmfl2eyq",
+  "seq": 6,
+  "of": 8,
+  "text_len": 735,
+  "content": "p2Rib2R5oWZSZXN1bHShZHRleHRgZWNpdGVzgdgqWCUAAXESILqzrKBJImDtBb4GSBY49HkrBAdsY/d0RMkKyROa/TlHZmF1dGhvcqJjZGlkeDlkaWQ6a2V5OnpEbmFlU2RCYnJNNk5lWTRpOE1veHVGaXlEdHd4M0FISjhmakVkOTRnckgzMXI4WFllYWdlbnT2Z3N1YmplY3ShZUxvY2FsdWF0b20vZ2VuZXJhdGl2ZS1idWlsZGlhcnRpZmFjdHOBoWZDb21taXR4KDg4ZWRlMGI2M2I5ZWQ5NDE1M2ViZjA5YTdlZmQxYWNjMjk2ZTc1NzNpd29ya3NwYWNloWlXb3Jrc3BhY2V4QDgzNWY4N2FkZTQwYmRjOGRmMjJjM2JiZDI3OGQ1N2UwNDBmYWEwOGNjNmU0MTVkNmJkMDM4NGViOWE3ZTUzY2VrcmVjb3JkZWRfYXQbAAZZXJcQK1k="
+}
+---
+
+Built Step 3 (two-pane-claim-browser) per .design/two-pane-claim-browser.md: extended src/tui.rs with a per-subject claims cache (cleared on re-fold), a Pane flag, ensure_selected_loaded (fetch-on-select, memoized, parameterized for tests), detail_lines, layout_mode (WIDE_COLS=100), and a two-pane draw (process pane on top; wide=list|detail side by side, narrow=one pane with Enter/Esc switch). Factored the claim line into substrate::Claim::display_line, shared by the subject subcommand and the detail pane. cargo test 23/23 (4 new), clippy-clean. watch-repo --once unchanged (exit 0). Interactive two-pane render pending a live-TTY eyeball. Minor: bare subjects with no '/' render a namespace header identical to the subject line.
+***8<***
+---
+{
+  "v": 3,
+  "cid": "bafyreibud7heteoytm6g2swbmeuanssimh6e6cb2hacuzhwudorspm5pqe",
+  "sig": "1e2c4d30678b97fbda70c4f351d8c1ac0fae24e9a88ba5c0fd365a64dec31f63290246b3b398722f23ca786b5bb32cfbfc6d27d548d1c2d5070fc0a8a89b922e",
+  "author": "did:key:zDnaeSdBbrM6NeY4i8MoxuFiyDtwx3AHJ8fjEd94grH31r8XY",
+  "subject": {
+    "local": "atom/generative-build"
+  },
+  "kind": "result",
+  "cites": [
+    "bafyreihv7z7zii7iu7jsk237uhqr2kors7h4uavgaxbecwvtlxronht7um"
+  ],
+  "rev": "223mtgu4j67cf",
+  "seq": 7,
+  "of": 8,
+  "text_len": 501,
+  "content": "p2Rib2R5oWZSZXN1bHShZHRleHRgZWNpdGVzgdgqWCUAAXESIPX+f5Qj6KfTJWt/oeEdKdGXz8oCpgXCQVqzXeLmnn+jZmF1dGhvcqJjZGlkeDlkaWQ6a2V5OnpEbmFlU2RCYnJNNk5lWTRpOE1veHVGaXlEdHd4M0FISjhmakVkOTRnckgzMXI4WFllYWdlbnT2Z3N1YmplY3ShZUxvY2FsdWF0b20vZ2VuZXJhdGl2ZS1idWlsZGlhcnRpZmFjdHOBoWZDb21taXR4KDg4ZWRlMGI2M2I5ZWQ5NDE1M2ViZjA5YTdlZmQxYWNjMjk2ZTc1NzNpd29ya3NwYWNloWlXb3Jrc3BhY2V4QDgzNWY4N2FkZTQwYmRjOGRmMjJjM2JiZDI3OGQ1N2UwNDBmYWEwOGNjNmU0MTVkNmJkMDM4NGViOWE3ZTUzY2VrcmVjb3JkZWRfYXQbAAZZZoTyE8Y="
+}
+---
+
+Addressed Step-3 adversarial-review follow-ups (verdict APPROVE-WITH-FOLLOW-UPS): (1) dropped the needless &fetch borrow in the cache test — cargo clippy --all-targets -- -D warnings now passes project-wide (also fixed the 3 pre-existing lib.rs doc-overindent nits, so the whole tree is clippy-clean for the first time); (2) draw_detail no longer shows '(loading …)' when no subject is selected; (3) bare subjects with no '/' render without a redundant namespace header (+ test). cargo test 24/24.
