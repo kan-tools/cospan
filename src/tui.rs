@@ -8,7 +8,9 @@
 //! (`telos/poll-dont-subscribe`).
 
 use crate::comments::{self, Comment};
-use crate::substrate::{self, is_day_subject, namespace, short_cid, Claim, Fold, ProcessSnapshot};
+use crate::substrate::{
+    self, is_day_subject, namespace, short_cid, Atom, Claim, Fold, ProcessSnapshot,
+};
 use crate::{Localization, State};
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -98,6 +100,10 @@ pub struct AppState {
     pub view: View,
     /// Which sub-pane the Process tab shows.
     pub process_pane: ProcessPane,
+    /// The highlighted atom box in the flowchart.
+    pub atom_selected: usize,
+    /// Whether the Process atoms pane is drilled into an atom's detail.
+    pub process_detail: bool,
     pub atom_scroll: usize,
     pub telos_scroll: usize,
     /// Keys of collapsed tree nodes (`sec:<label>` / `path:<prefix>`).
@@ -217,6 +223,8 @@ impl AppState {
             detail_scroll: 0,
             view: View::Comments,
             process_pane: ProcessPane::Atoms,
+            atom_selected: 0,
+            process_detail: false,
             atom_scroll: 0,
             telos_scroll: 0,
             collapsed: HashSet::new(),
@@ -533,16 +541,49 @@ impl AppState {
         }
     }
 
-    /// Scroll the active Process sub-pane (atoms or telos), clamped to its length.
-    pub fn process_scroll(&mut self, delta: isize) {
-        let max = process_view_lines(&self.fold.process, self.process_pane)
-            .len()
-            .saturating_sub(1);
-        let scroll = match self.process_pane {
-            ProcessPane::Atoms => &mut self.atom_scroll,
-            ProcessPane::Telos => &mut self.telos_scroll,
-        };
-        *scroll = (*scroll as isize + delta).clamp(0, max as isize) as usize;
+    /// Move within the active Process sub-pane: select an atom box (atoms graph),
+    /// scroll the atom detail (atoms drill-down), or scroll the telos list.
+    pub fn process_move(&mut self, delta: isize) {
+        match (self.process_pane, self.process_detail) {
+            (ProcessPane::Atoms, false) => self.atom_select(delta),
+            (ProcessPane::Atoms, true) => {
+                let max = self
+                    .fold
+                    .process
+                    .atoms
+                    .get(self.atom_selected)
+                    .map(|a| atom_detail(a).len())
+                    .unwrap_or(1)
+                    .saturating_sub(1);
+                self.atom_scroll =
+                    (self.atom_scroll as isize + delta).clamp(0, max as isize) as usize;
+            }
+            (ProcessPane::Telos, _) => {
+                let max = process_view_lines(&self.fold.process, ProcessPane::Telos)
+                    .len()
+                    .saturating_sub(1);
+                self.telos_scroll =
+                    (self.telos_scroll as isize + delta).clamp(0, max as isize) as usize;
+            }
+        }
+    }
+
+    /// Move the highlighted atom box in the flowchart, clamped.
+    pub fn atom_select(&mut self, delta: isize) {
+        let n = self.fold.process.atoms.len();
+        if n == 0 {
+            return;
+        }
+        self.atom_selected =
+            (self.atom_selected as isize + delta).clamp(0, n as isize - 1) as usize;
+    }
+
+    /// Enter/leave the atom drill-down detail (Enter/Esc in the Process atoms pane).
+    pub fn process_drill(&mut self, into: bool) {
+        if self.process_pane == ProcessPane::Atoms {
+            self.process_detail = into;
+            self.atom_scroll = 0;
+        }
     }
 
     /// Switch the selected commented file, resetting the per-file re-read gate.
@@ -1025,15 +1066,16 @@ pub fn run(repo: PathBuf) -> std::io::Result<()> {
                         if state.view == View::Process =>
                     {
                         state.process_pane = state.process_pane.toggled();
+                        state.process_detail = false; // leave any drill-down on a pane switch
                     }
                     KeyCode::Char('j') | KeyCode::Down => match state.view {
                         View::Ledger => state.move_down(),
-                        View::Process => state.process_scroll(1),
+                        View::Process => state.process_move(1),
                         View::Comments => state.select_comment(1),
                     },
                     KeyCode::Char('k') | KeyCode::Up => match state.view {
                         View::Ledger => state.move_up(),
-                        View::Process => state.process_scroll(-1),
+                        View::Process => state.process_move(-1),
                         View::Comments => state.select_comment(-1),
                     },
                     KeyCode::Enter if state.view == View::Ledger => {
@@ -1042,6 +1084,11 @@ pub fn run(repo: PathBuf) -> std::io::Result<()> {
                         } else {
                             state.descend();
                         }
+                    }
+                    // Drill the selected atom's detail in/out of view in Process.
+                    KeyCode::Enter if state.view == View::Process => state.process_drill(true),
+                    KeyCode::Esc if state.view == View::Process && state.process_detail => {
+                        state.process_drill(false)
                     }
                     KeyCode::Esc if state.view == View::Ledger => state.ascend(),
                     _ => {}
@@ -1487,6 +1534,171 @@ pub fn process_view_lines(p: &ProcessSnapshot, pane: ProcessPane) -> Vec<String>
     lines
 }
 
+/// An atom's grid position in the flowchart: column (DAG depth) and row (stack
+/// position within the column).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Placed {
+    pub col: usize,
+    pub row: usize,
+}
+
+/// Lay atoms out by longest-path column (bounded relaxation, so a back-edge or
+/// cycle cannot loop forever) and by row within a column (input order).
+pub fn layout_atoms(atoms: &[Atom]) -> Vec<Placed> {
+    let n = atoms.len();
+    let idx_of: HashMap<&str, usize> = atoms
+        .iter()
+        .enumerate()
+        .map(|(i, a)| (a.slug.as_str(), i))
+        .collect();
+    let edges: Vec<(usize, usize)> = atoms
+        .iter()
+        .enumerate()
+        .flat_map(|(u, a)| {
+            a.next
+                .iter()
+                .filter_map(|s| idx_of.get(s.as_str()).map(|&v| (u, v)))
+                .collect::<Vec<_>>()
+        })
+        .collect();
+    let mut col = vec![0usize; n];
+    for _ in 0..n {
+        let mut changed = false;
+        for &(u, v) in &edges {
+            if col[v] < col[u] + 1 {
+                col[v] = col[u] + 1;
+                changed = true;
+            }
+        }
+        if !changed {
+            break;
+        }
+    }
+    let mut used: HashMap<usize, usize> = HashMap::new();
+    (0..n)
+        .map(|i| {
+            let c = col[i];
+            let r = used.entry(c).or_insert(0);
+            let placed = Placed { col: c, row: *r };
+            *r += 1;
+            placed
+        })
+        .collect()
+}
+
+/// Render the atom DAG as an ASCII box-and-arrow flowchart. The `selected` atom's
+/// box uses a double border; a `──▶` arrow is drawn for every `next` edge landing
+/// one column right on the same row; other `next` edges and every `revisits`
+/// back-edge are listed below the grid rather than drawn (`telos/honest-ambiguity`).
+pub fn atom_flowchart(atoms: &[Atom], selected: usize) -> Vec<String> {
+    if atoms.is_empty() {
+        return vec!["(no atoms declared)".to_string()];
+    }
+    let placed = layout_atoms(atoms);
+    let n = atoms.len();
+    let box_w = |i: usize| atoms[i].slug.chars().count() + 4;
+    let n_cols = placed.iter().map(|p| p.col).max().unwrap_or(0) + 1;
+    let mut col_w = vec![0usize; n_cols];
+    for i in 0..n {
+        col_w[placed[i].col] = col_w[placed[i].col].max(box_w(i));
+    }
+    const GAP: usize = 5;
+    let mut col_x = vec![0usize; n_cols];
+    for c in 1..n_cols {
+        col_x[c] = col_x[c - 1] + col_w[c - 1] + GAP;
+    }
+    const ROW_H: usize = 4;
+    let n_rows = placed.iter().map(|p| p.row).max().unwrap_or(0) + 1;
+    let grid_h = n_rows * ROW_H - 1;
+    let grid_w = col_x[n_cols - 1] + col_w[n_cols - 1];
+    let mut grid = vec![vec![' '; grid_w]; grid_h];
+
+    for i in 0..n {
+        let (c, r) = (placed[i].col, placed[i].row);
+        let x = col_x[c];
+        let y = r * ROW_H;
+        let w = box_w(i);
+        let (tl, tr, bl, br, h, v) = if i == selected {
+            ('╔', '╗', '╚', '╝', '═', '║')
+        } else {
+            ('┌', '┐', '└', '┘', '─', '│')
+        };
+        grid[y][x] = tl;
+        grid[y][x + w - 1] = tr;
+        grid[y + 2][x] = bl;
+        grid[y + 2][x + w - 1] = br;
+        for k in 1..w - 1 {
+            grid[y][x + k] = h;
+            grid[y + 2][x + k] = h;
+        }
+        grid[y + 1][x] = v;
+        grid[y + 1][x + w - 1] = v;
+        for (k, ch) in atoms[i].slug.chars().enumerate() {
+            grid[y + 1][x + 2 + k] = ch;
+        }
+    }
+
+    let idx_of: HashMap<&str, usize> = atoms
+        .iter()
+        .enumerate()
+        .map(|(i, a)| (a.slug.as_str(), i))
+        .collect();
+    let mut annotations: Vec<String> = Vec::new();
+    for u in 0..n {
+        for s in &atoms[u].next {
+            match idx_of.get(s.as_str()) {
+                Some(&vv)
+                    if placed[vv].row == placed[u].row && placed[vv].col == placed[u].col + 1 =>
+                {
+                    let y = placed[u].row * ROW_H + 1;
+                    let x0 = col_x[placed[u].col] + box_w(u);
+                    let x1 = col_x[placed[vv].col];
+                    if x1 > x0 {
+                        for x in grid[y].iter_mut().take(x1 - 1).skip(x0) {
+                            *x = '─';
+                        }
+                        grid[y][x1 - 1] = '▶';
+                    }
+                }
+                Some(_) => annotations.push(format!("{} ⇢ {}", atoms[u].slug, s)),
+                None => annotations.push(format!("{} ⇢ {} (unknown)", atoms[u].slug, s)),
+            }
+        }
+        for rv in &atoms[u].revisits {
+            annotations.push(format!("{} ↻ {}", atoms[u].slug, rv));
+        }
+    }
+
+    let mut out: Vec<String> = grid
+        .into_iter()
+        .map(|row| row.into_iter().collect::<String>().trim_end().to_string())
+        .collect();
+    if !annotations.is_empty() {
+        out.push(String::new());
+        out.push("edges not drawn:".to_string());
+        for a in annotations {
+            out.push(format!("  {a}"));
+        }
+    }
+    out
+}
+
+/// The drill-down detail lines for one atom.
+pub fn atom_detail(a: &Atom) -> Vec<String> {
+    let field = |k: &str, v: &[String]| format!("{k:<10}{}", v.join(", "));
+    let mut out = vec![format!("atom/{}", a.slug), String::new()];
+    out.push(field("in:", &a.inputs));
+    out.push(field("out:", &a.outputs));
+    out.push(field("next:", &a.next));
+    if !a.done.is_empty() {
+        out.push(field("done:", &a.done));
+    }
+    if !a.revisits.is_empty() {
+        out.push(field("revisits:", &a.revisits));
+    }
+    out
+}
+
 fn render_scrolled(
     frame: &mut ratatui::Frame,
     area: ratatui::layout::Rect,
@@ -1504,14 +1716,29 @@ fn render_scrolled(
 }
 
 fn draw_atoms(frame: &mut ratatui::Frame, state: &AppState, area: ratatui::layout::Rect) {
-    let lines = process_view_lines(&state.fold.process, ProcessPane::Atoms);
-    render_scrolled(
-        frame,
-        area,
-        " process · atoms · ←→ telos ",
-        &lines,
-        state.atom_scroll,
-    );
+    let atoms = &state.fold.process.atoms;
+    if state.process_detail {
+        let lines = atoms
+            .get(state.atom_selected)
+            .map(atom_detail)
+            .unwrap_or_else(|| vec!["(no atom selected)".to_string()]);
+        render_scrolled(
+            frame,
+            area,
+            " process · atom · Esc back ",
+            &lines,
+            state.atom_scroll,
+        );
+    } else {
+        let lines = atom_flowchart(atoms, state.atom_selected);
+        render_scrolled(
+            frame,
+            area,
+            " process · atoms · ←→ telos · ↵ detail ",
+            &lines,
+            state.atom_scroll,
+        );
+    }
 }
 
 fn draw_telos(frame: &mut ratatui::Frame, state: &AppState, area: ratatui::layout::Rect) {
@@ -2517,6 +2744,7 @@ mod tests {
                 inputs: vec!["d".into()],
                 outputs: vec!["c".into()],
                 next: vec!["r".into()],
+                ..Default::default()
             }],
             teloi: vec![],
             tensions: vec![],
@@ -2540,6 +2768,119 @@ mod tests {
         // The clamp the key handler applies can never slice past the end.
         let max = lines.len().saturating_sub(1);
         assert!((999usize).min(max) < lines.len());
+    }
+
+    fn atom_with(slug: &str, next: &[&str]) -> Atom {
+        Atom {
+            slug: slug.into(),
+            next: next.iter().map(|s| s.to_string()).collect(),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn layout_atoms_columns_by_depth_and_rows_by_fan() {
+        // (AC-1) a linear chain lays out in one row across columns.
+        let chain = vec![
+            atom_with("a", &["b"]),
+            atom_with("b", &["c"]),
+            atom_with("c", &[]),
+        ];
+        assert_eq!(
+            layout_atoms(&chain),
+            vec![
+                Placed { col: 0, row: 0 },
+                Placed { col: 1, row: 0 },
+                Placed { col: 2, row: 0 },
+            ]
+        );
+        // A fan puts the two targets in the same column, stacked in rows.
+        let fan = vec![
+            atom_with("a", &["b", "c"]),
+            atom_with("b", &[]),
+            atom_with("c", &[]),
+        ];
+        let p = layout_atoms(&fan);
+        assert_eq!(p[0], Placed { col: 0, row: 0 });
+        assert_eq!(p[1], Placed { col: 1, row: 0 });
+        assert_eq!(p[2], Placed { col: 1, row: 1 });
+    }
+
+    #[test]
+    fn atom_flowchart_boxes_arrows_selection_and_backedges() {
+        // (AC-2) a→b, b revisits a; b is selected.
+        let atoms = vec![
+            atom_with("a", &["b"]),
+            Atom {
+                slug: "b".into(),
+                revisits: vec!["a".into()],
+                ..Default::default()
+            },
+        ];
+        let out = atom_flowchart(&atoms, 1).join("\n");
+        assert!(out.contains("▶"), "no forward arrow: {out}");
+        assert!(out.contains('╔'), "selected box not double-bordered: {out}");
+        assert!(
+            out.contains('┌'),
+            "unselected box not single-bordered: {out}"
+        );
+        assert!(out.contains("b ↻ a"), "back-edge not listed: {out}");
+        // Empty atoms: the declared-empty note, not a panic.
+        assert_eq!(
+            atom_flowchart(&[], 0),
+            vec!["(no atoms declared)".to_string()]
+        );
+
+        // A next-edge that is next-column but a different row is listed (⇢), not
+        // drawn: a fan a→b, a→c puts c at row 1 while a is row 0.
+        let fan = vec![
+            atom_with("a", &["b", "c"]),
+            atom_with("b", &[]),
+            atom_with("c", &[]),
+        ];
+        let fout = atom_flowchart(&fan, 0).join("\n");
+        assert!(fout.contains("a ⇢ c"), "off-row edge not listed: {fout}");
+    }
+
+    #[test]
+    fn atom_select_clamps_within_the_atom_set() {
+        // (AC-3)
+        let mut a = app(&[]);
+        a.fold.process.atoms = vec![atom_with("x", &["y"]), atom_with("y", &[])];
+        a.view = View::Process;
+        a.atom_select(-1);
+        assert_eq!(a.atom_selected, 0);
+        a.atom_select(1);
+        a.atom_select(1); // clamps at the last
+        assert_eq!(a.atom_selected, 1);
+        // The re-render carries the selection (a double-bordered box).
+        assert!(atom_flowchart(&a.fold.process.atoms, a.atom_selected)
+            .join("\n")
+            .contains('╔'));
+    }
+
+    #[test]
+    fn atom_detail_shows_every_field() {
+        // (AC-4)
+        let a = Atom {
+            slug: "build".into(),
+            inputs: vec!["design-doc".into()],
+            outputs: vec!["code-change".into()],
+            next: vec!["review".into()],
+            done: vec!["passing-tests".into()],
+            revisits: vec!["design".into()],
+        };
+        let out = atom_detail(&a).join("\n");
+        for needle in [
+            "build",
+            "design-doc",
+            "code-change",
+            "review",
+            "passing-tests",
+            "design",
+        ] {
+            assert!(out.contains(needle), "missing {needle}: {out}");
+        }
     }
 
     #[test]
