@@ -106,11 +106,19 @@ pub fn render(md: &str) -> Vec<Line<'static>> {
             // is silently truncated).
             Event::InlineHtml(h) => cur.push(Span::styled(h.to_string(), style)),
             Event::Html(h) => {
-                for (i, l) in h.trim_end_matches('\n').split('\n').enumerate() {
-                    if i > 0 {
+                // pulldown-cmark emits an HTML block as one `Event::Html` per line,
+                // each ending in `\n`. Treat every `\n` as a line break — including
+                // the trailing one — so consecutive events do not collapse onto one
+                // line (each `\n` flushes; an empty segment adds no span).
+                let mut first = true;
+                for seg in h.split('\n') {
+                    if !first {
                         flush(&mut lines, &mut cur);
                     }
-                    cur.push(Span::styled(l.to_string(), style));
+                    first = false;
+                    if !seg.is_empty() {
+                        cur.push(Span::styled(seg.to_string(), style));
+                    }
                 }
             }
             Event::SoftBreak => cur.push(Span::raw(" ")),
@@ -194,5 +202,26 @@ mod tests {
             .spans
             .iter()
             .all(|s| s.style.add_modifier.contains(Modifier::BOLD)));
+    }
+
+    #[test]
+    fn block_html_keeps_its_lines_separate() {
+        // pulldown-cmark emits an HTML block one Event::Html per line; the lines
+        // must not collapse onto one row (they used to).
+        let lines = render("<div>\n<p>alpha</p>\n<p>beta</p>\n</div>\n");
+        let texts: Vec<String> = lines.iter().map(text_of).collect();
+        assert!(
+            texts.iter().any(|t| t == "<p>alpha</p>"),
+            "alpha not on its own line: {texts:?}"
+        );
+        assert!(
+            texts.iter().any(|t| t == "<p>beta</p>"),
+            "beta not on its own line: {texts:?}"
+        );
+        // And nothing is collapsed into a single mega-line.
+        assert!(
+            !texts.iter().any(|t| t.contains("alpha</p><p>beta")),
+            "lines collapsed: {texts:?}"
+        );
     }
 }

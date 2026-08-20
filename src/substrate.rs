@@ -65,7 +65,16 @@ impl Claim {
     /// to tell signers apart without spending a line on a full key.
     pub fn short_author(&self) -> String {
         let a = self.author.strip_prefix("did:key:").unwrap_or(&self.author);
-        a.chars().take(8).collect()
+        let chars: Vec<char> = a.chars().collect();
+        // Front truncation alone collides once two signers share a key prefix
+        // (roles, cross-repo authors). Show head + tail so both ends distinguish.
+        if chars.len() > 11 {
+            let head: String = chars[..6].iter().collect();
+            let tail: String = chars[chars.len() - 4..].iter().collect();
+            format!("{head}…{tail}")
+        } else {
+            a.to_string()
+        }
     }
 
     /// A one-line human summary: the first non-empty line of `text`, else the
@@ -105,7 +114,7 @@ impl Claim {
     /// `cospan subject` CLI and the TUI detail pane so the two never drift.
     pub fn display_line(&self) -> String {
         format!(
-            "{:<11} {:<8}  {:<16}  {}",
+            "{:<11} {:<12}  {:<16}  {}",
             self.kind,
             self.short_author(),
             self.recorded_utc(),
@@ -675,8 +684,25 @@ mod tests {
     }
 
     #[test]
-    fn short_author_strips_and_truncates() {
-        assert_eq!(parsed()[0].short_author(), "zAAAAAAA");
+    fn short_author_strips_and_abbreviates_head_and_tail() {
+        // A short key (<= 11 chars) is shown whole, prefix stripped.
+        assert_eq!(parsed()[0].short_author(), "zAAAAAAAAA");
+        // A real-length key abbreviates to head6…tail4, so both ends distinguish.
+        let long = Claim {
+            author: "did:key:zDnaeSdBbrM6NeY4i8MoxuFiyDtwx3AHJ8fjEd94grH31r8XY".into(),
+            ..parsed()[0].clone()
+        };
+        assert_eq!(long.short_author(), "zDnaeS…r8XY");
+        // Two keys sharing the first 8 chars but differing later no longer collide.
+        let a = Claim {
+            author: "did:key:zSAMEPREFIXaaaaaaaaaaaaaaaaEND1".into(),
+            ..parsed()[0].clone()
+        };
+        let b = Claim {
+            author: "did:key:zSAMEPREFIXbbbbbbbbbbbbbbbbEND2".into(),
+            ..parsed()[0].clone()
+        };
+        assert_ne!(a.short_author(), b.short_author());
     }
 
     #[test]
