@@ -374,6 +374,45 @@ fn flatten_plan(node: &Value) -> String {
     node.to_string()
 }
 
+/// The probe-kind keywords day's untagged witness-probe union uses. A `day-witness`
+/// block whose top-level keys are all in this set is a single probe, not a
+/// witness-name -> probe map. day emits no discriminator, so cospan shape-sniffs
+/// (see the `kan-tools/day` issue on `day-witness` overloading).
+const PROBE_KINDS: [&str; 7] = [
+    "path", "command", "claim", "tag", "material", "record", "every",
+];
+
+/// True when `j` is a non-empty object whose every key names a probe kind — i.e.
+/// the whole block is one probe rather than a witness-name -> probe map.
+fn is_probe(j: &Value) -> bool {
+    j.as_object()
+        .is_some_and(|o| !o.is_empty() && o.keys().all(|k| PROBE_KINDS.contains(&k.as_str())))
+}
+
+/// The kind(s) of a probe value for a schema-map line: an object's keys joined
+/// with `+` (a nested `{material, record}` is `material+record`), a bare string is
+/// `(inline)`, else compact JSON — so a probe never renders as `?`.
+fn probe_kind(v: &Value) -> String {
+    match v {
+        Value::Object(o) if !o.is_empty() => o.keys().cloned().collect::<Vec<_>>().join("+"),
+        Value::String(_) => "(inline)".to_string(),
+        other => other.to_string(),
+    }
+}
+
+/// A lone probe as one line: `kind: value` when it is a single string-valued key
+/// (e.g. `command: cargo test`), else its `probe_kind`.
+fn describe_probe(j: &Value) -> String {
+    if let Value::Object(o) = j {
+        if o.len() == 1 {
+            if let Some((k, Value::String(s))) = o.iter().next() {
+                return format!("{k}: {s}");
+            }
+        }
+    }
+    probe_kind(j)
+}
+
 /// A human-readable view of a supported fenced block's parsed JSON, or `None`
 /// for a block type this does not know (which the caller shows as raw code).
 pub fn block_summary(fence: &str, j: &Value) -> Option<Vec<String>> {
@@ -400,19 +439,16 @@ pub fn block_summary(fence: &str, j: &Value) -> Option<Vec<String>> {
             Some(out)
         }
         "day-witness" => {
+            // The fence carries two shapes: a single probe (`{"command":"…"}`),
+            // or a witness-name -> probe map (`schema/witness`). Render both.
             let mut out = Vec::new();
-            if let Some(map) = j.as_object() {
+            if is_probe(j) {
+                out.push(describe_probe(j));
+            } else if let Some(map) = j.as_object() {
                 let mut keys: Vec<&String> = map.keys().collect();
                 keys.sort();
                 for k in keys {
-                    // Show the probe kind (the first key of the probe object).
-                    let probe = map
-                        .get(k)
-                        .and_then(Value::as_object)
-                        .and_then(|o| o.keys().next())
-                        .map(String::as_str)
-                        .unwrap_or("?");
-                    out.push(format!("{k}: {probe}"));
+                    out.push(format!("{k}: {}", probe_kind(&map[k])));
                 }
             }
             Some(out)
@@ -437,9 +473,9 @@ pub fn block_summary(fence: &str, j: &Value) -> Option<Vec<String>> {
             append_extra_keys(&mut out, j, &["telos", "have", "plan"]);
             Some(out)
         }
-        "day-schema" => {
+        "day-schema" | "day-docs" | "day-injection" => {
             // Every field rendered generically, so the view never falls behind
-            // the schema's vocabulary — a new rule shows up without a code change.
+            // the block's vocabulary — a new key shows up without a code change.
             let mut out = Vec::new();
             append_extra_keys(&mut out, j, &[]);
             Some(out)
@@ -929,6 +965,58 @@ mod tests {
         );
         // Still None for a fence with no arm.
         assert!(block_summary("day-unknown", &schema).is_none());
+    }
+
+    #[test]
+    fn block_summary_day_witness_single_probe_shows_value_not_question_mark() {
+        // The bug: a lone probe's key IS the kind; its value is a string.
+        let cmd: Value = serde_json::from_str(r#"{"command":"cargo test"}"#).unwrap();
+        assert_eq!(
+            block_summary("day-witness", &cmd).unwrap(),
+            vec!["command: cargo test"]
+        );
+        let path: Value = serde_json::from_str(r#"{"path":"src/*.rs"}"#).unwrap();
+        assert_eq!(
+            block_summary("day-witness", &path).unwrap(),
+            vec!["path: src/*.rs"]
+        );
+        // A lone composite probe (day's `every`) names its kind, not `?`.
+        let every: Value = serde_json::from_str(r#"{"every":{"witness":"telos"}}"#).unwrap();
+        assert_eq!(block_summary("day-witness", &every).unwrap(), vec!["every"]);
+    }
+
+    #[test]
+    fn block_summary_day_witness_schema_map_names_each_probe_kind() {
+        let map: Value = serde_json::from_str(
+            r#"{"design-doc":{"path":"src/*.rs"},
+                "code-change":{"material":{"path":"x"},"record":{"claim":{}}},
+                "passing-tests":{"command":"cargo test"}}"#,
+        )
+        .unwrap();
+        let out = block_summary("day-witness", &map).unwrap();
+        assert_eq!(
+            out,
+            vec![
+                "code-change: material+record",
+                "design-doc: path",
+                "passing-tests: command",
+            ]
+        );
+    }
+
+    #[test]
+    fn block_summary_day_docs_and_injection_render_generically() {
+        let docs: Value =
+            serde_json::from_str(r#"{"doc_files":["README.md"],"version_key":"version"}"#).unwrap();
+        let joined = block_summary("day-docs", &docs).unwrap().join("\n");
+        assert!(joined.contains("doc_files: README.md"), "{joined}");
+        assert!(joined.contains("version_key: version"), "{joined}");
+
+        let inj: Value =
+            serde_json::from_str(r#"{"cadence":"turn","max_practice_items":3}"#).unwrap();
+        let joined = block_summary("day-injection", &inj).unwrap().join("\n");
+        assert!(joined.contains("cadence: turn"), "{joined}");
+        assert!(joined.contains("max_practice_items: 3"), "{joined}");
     }
 
     #[test]
