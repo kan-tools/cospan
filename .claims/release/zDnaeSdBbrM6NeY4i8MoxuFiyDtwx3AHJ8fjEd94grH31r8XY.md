@@ -13,7 +13,7 @@
   ],
   "rev": "223mtffbedd2h",
   "seq": 0,
-  "of": 14,
+  "of": 16,
   "text_len": 236,
   "content": "p2Rib2R5oWZSZXN1bHShZHRleHRgZWNpdGVzgdgqWCUAAXESIKuVWY8LaRhMsfrgFHujE7Ojd2yyBOflibyWUuJsOqAKZmF1dGhvcqJjZGlkeDlkaWQ6a2V5OnpEbmFlU2RCYnJNNk5lWTRpOE1veHVGaXlEdHd4M0FISjhmakVkOTRnckgzMXI4WFllYWdlbnT2Z3N1YmplY3ShZUxvY2FsZ3JlbGVhc2VpYXJ0aWZhY3RzgaFmQ29tbWl0eChlODUwNGRlM2IwMWU1ZjRhMWQ5YjYxNGUzYjg2NDE5MzI5MjNiOGEyaXdvcmtzcGFjZaFpV29ya3NwYWNleEA4MzVmODdhZGU0MGJkYzhkZjIyYzNiYmQyNzhkNTdlMDQwZmFhMDhjYzZlNDE1ZDZiZDAzODRlYjlhN2U1M2Nla3JlY29yZGVkX2F0GwAGWVrOpKOf"
 }
@@ -34,7 +34,7 @@ Cut v0.0.1-alpha.1: first tagged prerelease — the P0 watch-and-fold spine plus
   "cites": [],
   "rev": "223mtffbeidl2",
   "seq": 1,
-  "of": 14,
+  "of": 16,
   "content": "p2Rib2R5oWtQdWJsaWNhdGlvbqFlbGF5ZXJnR2l0VHJlZWVjaXRlc4BmYXV0aG9yomNkaWR4OWRpZDprZXk6ekRuYWVTZEJick02TmVZNGk4TW94dUZpeUR0d3gzQUhKOGZqRWQ5NGdySDMxcjhYWWVhZ2VudPZnc3ViamVjdKFlTG9jYWxncmVsZWFzZWlhcnRpZmFjdHOBoWZDb21taXR4KGU4NTA0ZGUzYjAxZTVmNGExZDliNjE0ZTNiODY0MTkzMjkyM2I4YTJpd29ya3NwYWNloWlXb3Jrc3BhY2V4QDgzNWY4N2FkZTQwYmRjOGRmMjJjM2JiZDI3OGQ1N2UwNDBmYWEwOGNjNmU0MTVkNmJkMDM4NGViOWE3ZTUzY2VrcmVjb3JkZWRfYXQbAAZZWs6nJbw="
 }
 ---
@@ -54,7 +54,7 @@ Cut v0.0.1-alpha.1: first tagged prerelease — the P0 watch-and-fold spine plus
   ],
   "rev": "223mtfl5p6zct",
   "seq": 2,
-  "of": 14,
+  "of": 16,
   "text_len": 208,
   "content": "p2Rib2R5oWZSZXN1bHShZHRleHRgZWNpdGVzgdgqWCUAAXESIHDaEiOqdol2QDb6UqC7XcbNc12HMCqwqEGY/uycz8P/ZmF1dGhvcqJjZGlkeDlkaWQ6a2V5OnpEbmFlU2RCYnJNNk5lWTRpOE1veHVGaXlEdHd4M0FISjhmakVkOTRnckgzMXI4WFllYWdlbnT2Z3N1YmplY3ShZUxvY2FsZ3JlbGVhc2VpYXJ0aWZhY3RzgaFmQ29tbWl0eCgwNWJiZmMwOTc5NzJkNmMwYmFiNjhhZmI4NmQ3MDM2MGY2NmNlMTg5aXdvcmtzcGFjZaFpV29ya3NwYWNleEA4MzVmODdhZGU0MGJkYzhkZjIyYzNiYmQyNzhkNTdlMDQwZmFhMDhjYzZlNDE1ZDZiZDAzODRlYjlhN2U1M2Nla3JlY29yZGVkX2F0GwAGWVxHUnyz"
 }
@@ -75,7 +75,7 @@ Cut v0.0.1-alpha.2: Step 2, the interactive ratatui TUI for watch-repo, reviewed
   "cites": [],
   "rev": "223mtfl5pcrtp",
   "seq": 3,
-  "of": 14,
+  "of": 16,
   "content": "p2Rib2R5oWtQdWJsaWNhdGlvbqFlbGF5ZXJnR2l0VHJlZWVjaXRlc4BmYXV0aG9yomNkaWR4OWRpZDprZXk6ekRuYWVTZEJick02TmVZNGk4TW94dUZpeUR0d3gzQUhKOGZqRWQ5NGdySDMxcjhYWWVhZ2VudPZnc3ViamVjdKFlTG9jYWxncmVsZWFzZWlhcnRpZmFjdHOBoWZDb21taXR4KDA1YmJmYzA5Nzk3MmQ2YzBiYWI2OGFmYjg2ZDcwMzYwZjY2Y2UxODlpd29ya3NwYWNloWlXb3Jrc3BhY2V4QDgzNWY4N2FkZTQwYmRjOGRmMjJjM2JiZDI3OGQ1N2UwNDBmYWEwOGNjNmU0MTVkNmJkMDM4NGViOWE3ZTUzY2VrcmVjb3JkZWRfYXQbAAZZXEdUXtA="
 }
 ---
@@ -95,7 +95,7 @@ Cut v0.0.1-alpha.2: Step 2, the interactive ratatui TUI for watch-repo, reviewed
   ],
   "rev": "223mtgu5nrox6",
   "seq": 4,
-  "of": 14,
+  "of": 16,
   "text_len": 258,
   "content": "p2Rib2R5oWZSZXN1bHShZHRleHRgZWNpdGVzgdgqWCUAAXESIPX+f5Qj6KfTJWt/oeEdKdGXz8oCpgXCQVqzXeLmnn+jZmF1dGhvcqJjZGlkeDlkaWQ6a2V5OnpEbmFlU2RCYnJNNk5lWTRpOE1veHVGaXlEdHd4M0FISjhmakVkOTRnckgzMXI4WFllYWdlbnT2Z3N1YmplY3ShZUxvY2FsZ3JlbGVhc2VpYXJ0aWZhY3RzgaFmQ29tbWl0eCg1YmY1ODQ2ZGYyODFhMDhlNDA5NTQzNGI1MDNhOGRkODI3MGY0ZThiaXdvcmtzcGFjZaFpV29ya3NwYWNleEA4MzVmODdhZGU0MGJkYzhkZjIyYzNiYmQyNzhkNTdlMDQwZmFhMDhjYzZlNDE1ZDZiZDAzODRlYjlhN2U1M2Nla3JlY29yZGVkX2F0GwAGWWaHO9Mo"
 }
@@ -116,7 +116,7 @@ Cut v0.0.1-alpha.3: Step 3, the two-pane subject list + claim detail browser, re
   "cites": [],
   "rev": "223mtgu5nvycl",
   "seq": 5,
-  "of": 14,
+  "of": 16,
   "content": "p2Rib2R5oWtQdWJsaWNhdGlvbqFlbGF5ZXJnR2l0VHJlZWVjaXRlc4BmYXV0aG9yomNkaWR4OWRpZDprZXk6ekRuYWVTZEJick02TmVZNGk4TW94dUZpeUR0d3gzQUhKOGZqRWQ5NGdySDMxcjhYWWVhZ2VudPZnc3ViamVjdKFlTG9jYWxncmVsZWFzZWlhcnRpZmFjdHOBoWZDb21taXR4KDViZjU4NDZkZjI4MWEwOGU0MDk1NDM0YjUwM2E4ZGQ4MjcwZjRlOGJpd29ya3NwYWNloWlXb3Jrc3BhY2V4QDgzNWY4N2FkZTQwYmRjOGRmMjJjM2JiZDI3OGQ1N2UwNDBmYWEwOGNjNmU0MTVkNmJkMDM4NGViOWE3ZTUzY2VrcmVjb3JkZWRfYXQbAAZZZoc9+Kw="
 }
 ---
@@ -136,7 +136,7 @@ Cut v0.0.1-alpha.3: Step 3, the two-pane subject list + claim detail browser, re
   ],
   "rev": "223mtgvm6jwj5",
   "seq": 6,
-  "of": 14,
+  "of": 16,
   "text_len": 301,
   "content": "p2Rib2R5oWZSZXN1bHShZHRleHRgZWNpdGVzgdgqWCUAAXESICEouvWGEza2xUlM2VItDCOwbKQFahWtL7YL4GFWAJvTZmF1dGhvcqJjZGlkeDlkaWQ6a2V5OnpEbmFlU2RCYnJNNk5lWTRpOE1veHVGaXlEdHd4M0FISjhmakVkOTRnckgzMXI4WFllYWdlbnT2Z3N1YmplY3ShZUxvY2FsZ3JlbGVhc2VpYXJ0aWZhY3RzgaFmQ29tbWl0eChhNjg0MmRjNGIxZjJiZjExNTEyZTE4NjdlMjI3YWU5ZjMyNmQyMzhjaXdvcmtzcGFjZaFpV29ya3NwYWNleEA4MzVmODdhZGU0MGJkYzhkZjIyYzNiYmQyNzhkNTdlMDQwZmFhMDhjYzZlNDE1ZDZiZDAzODRlYjlhN2U1M2Nla3JlY29yZGVkX2F0GwAGWWbkR/F4"
 }
@@ -157,7 +157,7 @@ Cut v0.0.1-alpha.4: Step 4, the ephemeral comment sidecar with live re-localizat
   "cites": [],
   "rev": "223mtgvm6owl7",
   "seq": 7,
-  "of": 14,
+  "of": 16,
   "content": "p2Rib2R5oWtQdWJsaWNhdGlvbqFlbGF5ZXJnR2l0VHJlZWVjaXRlc4BmYXV0aG9yomNkaWR4OWRpZDprZXk6ekRuYWVTZEJick02TmVZNGk4TW94dUZpeUR0d3gzQUhKOGZqRWQ5NGdySDMxcjhYWWVhZ2VudPZnc3ViamVjdKFlTG9jYWxncmVsZWFzZWlhcnRpZmFjdHOBoWZDb21taXR4KGE2ODQyZGM0YjFmMmJmMTE1MTJlMTg2N2UyMjdhZTlmMzI2ZDIzOGNpd29ya3NwYWNloWlXb3Jrc3BhY2V4QDgzNWY4N2FkZTQwYmRjOGRmMjJjM2JiZDI3OGQ1N2UwNDBmYWEwOGNjNmU0MTVkNmJkMDM4NGViOWE3ZTUzY2VrcmVjb3JkZWRfYXQbAAZZZuRKcbo="
 }
 ---
@@ -177,7 +177,7 @@ Cut v0.0.1-alpha.4: Step 4, the ephemeral comment sidecar with live re-localizat
   ],
   "rev": "223mtgyskpgnf",
   "seq": 8,
-  "of": 14,
+  "of": 16,
   "text_len": 466,
   "content": "p2Rib2R5oWZSZXN1bHShZHRleHRgZWNpdGVzgdgqWCUAAXESID9d4SIgVHvd4ZmQi1RxSvoBPFq7enE+yoeuzOOcObbUZmF1dGhvcqJjZGlkeDlkaWQ6a2V5OnpEbmFlU2RCYnJNNk5lWTRpOE1veHVGaXlEdHd4M0FISjhmakVkOTRnckgzMXI4WFllYWdlbnT2Z3N1YmplY3ShZUxvY2FsZ3JlbGVhc2VpYXJ0aWZhY3RzgaFmQ29tbWl0eChmMmI2YjI5ZGNhZDk1ZGM5MTc1MWQwN2NhMmU1NzdlNGZiN2M0ZDVmaXdvcmtzcGFjZaFpV29ya3NwYWNleEA4MzVmODdhZGU0MGJkYzhkZjIyYzNiYmQyNzhkNTdlMDQwZmFhMDhjYzZlNDE1ZDZiZDAzODRlYjlhN2U1M2Nla3JlY29yZGVkX2F0GwAGWWexCrIJ"
 }
@@ -198,7 +198,7 @@ Cut v0.0.1-alpha.5: the UX bundle — claim detail view (three-level focus, scro
   "cites": [],
   "rev": "223mtgyskvmgn",
   "seq": 9,
-  "of": 14,
+  "of": 16,
   "content": "p2Rib2R5oWtQdWJsaWNhdGlvbqFlbGF5ZXJnR2l0VHJlZWVjaXRlc4BmYXV0aG9yomNkaWR4OWRpZDprZXk6ekRuYWVTZEJick02TmVZNGk4TW94dUZpeUR0d3gzQUhKOGZqRWQ5NGdySDMxcjhYWWVhZ2VudPZnc3ViamVjdKFlTG9jYWxncmVsZWFzZWlhcnRpZmFjdHOBoWZDb21taXR4KGYyYjZiMjlkY2FkOTVkYzkxNzUxZDA3Y2EyZTU3N2U0ZmI3YzRkNWZpd29ya3NwYWNloWlXb3Jrc3BhY2V4QDgzNWY4N2FkZTQwYmRjOGRmMjJjM2JiZDI3OGQ1N2UwNDBmYWEwOGNjNmU0MTVkNmJkMDM4NGViOWE3ZTUzY2VrcmVjb3JkZWRfYXQbAAZZZ7ENySs="
 }
 ---
@@ -218,7 +218,7 @@ Cut v0.0.1-alpha.5: the UX bundle — claim detail view (three-level focus, scro
   ],
   "rev": "223mth3s2liye",
   "seq": 10,
-  "of": 14,
+  "of": 16,
   "text_len": 396,
   "content": "p2Rib2R5oWZSZXN1bHShZHRleHRgZWNpdGVzgdgqWCUAAXESIPE+rX/F/MznSHDmcFkTL24tEzTTUYgl2ym9j5oc+D0JZmF1dGhvcqJjZGlkeDlkaWQ6a2V5OnpEbmFlU2RCYnJNNk5lWTRpOE1veHVGaXlEdHd4M0FISjhmakVkOTRnckgzMXI4WFllYWdlbnT2Z3N1YmplY3ShZUxvY2FsZ3JlbGVhc2VpYXJ0aWZhY3RzgaFmQ29tbWl0eCgyZDMwYzU0NDQ0M2M4NGRiZTk2M2NkYWEyYTA2Zjg2ZWMwZTgzOThjaXdvcmtzcGFjZaFpV29ya3NwYWNleEA4MzVmODdhZGU0MGJkYzhkZjIyYzNiYmQyNzhkNTdlMDQwZmFhMDhjYzZlNDE1ZDZiZDAzODRlYjlhN2U1M2Nla3JlY29yZGVkX2F0GwAGWWhwCLtb"
 }
@@ -239,7 +239,7 @@ Cut v0.0.1-alpha.6: the unified-fold performance refactor — the whole TUI deri
   "cites": [],
   "rev": "223mth3s2rryh",
   "seq": 11,
-  "of": 14,
+  "of": 16,
   "content": "p2Rib2R5oWtQdWJsaWNhdGlvbqFlbGF5ZXJnR2l0VHJlZWVjaXRlc4BmYXV0aG9yomNkaWR4OWRpZDprZXk6ekRuYWVTZEJick02TmVZNGk4TW94dUZpeUR0d3gzQUhKOGZqRWQ5NGdySDMxcjhYWWVhZ2VudPZnc3ViamVjdKFlTG9jYWxncmVsZWFzZWlhcnRpZmFjdHOBoWZDb21taXR4KDJkMzBjNTQ0NDQzYzg0ZGJlOTYzY2RhYTJhMDZmODZlYzBlODM5OGNpd29ya3NwYWNloWlXb3Jrc3BhY2V4QDgzNWY4N2FkZTQwYmRjOGRmMjJjM2JiZDI3OGQ1N2UwNDBmYWEwOGNjNmU0MTVkNmJkMDM4NGViOWE3ZTUzY2VrcmVjb3JkZWRfYXQbAAZZaHAL318="
 }
 ---
@@ -259,7 +259,7 @@ Cut v0.0.1-alpha.6: the unified-fold performance refactor — the whole TUI deri
   ],
   "rev": "223mthbcuzizn",
   "seq": 12,
-  "of": 14,
+  "of": 16,
   "text_len": 502,
   "content": "p2Rib2R5oWZSZXN1bHShZHRleHRgZWNpdGVzgdgqWCUAAXESILvqAmte+LWrA4OsL+znozNvSZdaxf8M2lvtLTtWOAhdZmF1dGhvcqJjZGlkeDlkaWQ6a2V5OnpEbmFlU2RCYnJNNk5lWTRpOE1veHVGaXlEdHd4M0FISjhmakVkOTRnckgzMXI4WFllYWdlbnT2Z3N1YmplY3ShZUxvY2FsZ3JlbGVhc2VpYXJ0aWZhY3RzgaFmQ29tbWl0eChmYmFkZTMwYzI0OTU2OTczZTdlMGMyZTRlOGUxNzUwNDJjZjlkZjMxaXdvcmtzcGFjZaFpV29ya3NwYWNleEA4MzVmODdhZGU0MGJkYzhkZjIyYzNiYmQyNzhkNTdlMDQwZmFhMDhjYzZlNDE1ZDZiZDAzODRlYjlhN2U1M2Nla3JlY29yZGVkX2F0GwAGWWnRr7uJ"
 }
@@ -280,7 +280,46 @@ Cut v0.0.1-alpha.7: the collapsible tree left pane ([my work] / [day] sections),
   "cites": [],
   "rev": "223mthbcvadh2",
   "seq": 13,
-  "of": 14,
+  "of": 16,
   "content": "p2Rib2R5oWtQdWJsaWNhdGlvbqFlbGF5ZXJnR2l0VHJlZWVjaXRlc4BmYXV0aG9yomNkaWR4OWRpZDprZXk6ekRuYWVTZEJick02TmVZNGk4TW94dUZpeUR0d3gzQUhKOGZqRWQ5NGdySDMxcjhYWWVhZ2VudPZnc3ViamVjdKFlTG9jYWxncmVsZWFzZWlhcnRpZmFjdHOBoWZDb21taXR4KGZiYWRlMzBjMjQ5NTY5NzNlN2UwYzJlNGU4ZTE3NTA0MmNmOWRmMzFpd29ya3NwYWNloWlXb3Jrc3BhY2V4QDgzNWY4N2FkZTQwYmRjOGRmMjJjM2JiZDI3OGQ1N2UwNDBmYWEwOGNjNmU0MTVkNmJkMDM4NGViOWE3ZTUzY2VrcmVjb3JkZWRfYXQbAAZZadGzJTI="
+}
+---
+***8<***
+---
+{
+  "v": 3,
+  "cid": "bafyreibrxhogwvw4umrf6ynqxxqcfjuegllidnkh55h6xjd5jqdtto4ooi",
+  "sig": "b5bf57b3fe2837dae398e4730cb9334d499e8095b77787b50afedf730a539fc5401cc2c81309a75ff5831d240dc4fdcaae1fa837eada40000a57469fce7b2ddb",
+  "author": "did:key:zDnaeSdBbrM6NeY4i8MoxuFiyDtwx3AHJ8fjEd94grH31r8XY",
+  "subject": {
+    "local": "release"
+  },
+  "kind": "result",
+  "cites": [],
+  "rev": "223mthywhz5dl",
+  "seq": 14,
+  "of": 16,
+  "text_len": 841,
+  "content": "p2Rib2R5oWZSZXN1bHShZHRleHRgZWNpdGVzgGZhdXRob3KiY2RpZHg5ZGlkOmtleTp6RG5hZVNkQmJyTTZOZVk0aThNb3h1Rml5RHR3eDNBSEo4ZmpFZDk0Z3JIMzFyOFhZZWFnZW509mdzdWJqZWN0oWVMb2NhbGdyZWxlYXNlaWFydGlmYWN0c4GhZkNvbW1pdHgoZjUwYjAxZTdjODkwYTYzOGFkZGE3NzUwMGUyMjYxZDA5MjAxOWQ3MWl3b3Jrc3BhY2WhaVdvcmtzcGFjZXhAODM1Zjg3YWRlNDBiZGM4ZGYyMmMzYmJkMjc4ZDU3ZTA0MGZhYTA4Y2M2ZTQxNWQ2YmQwMzg0ZWI5YTdlNTNjZWtyZWNvcmRlZF9hdBsABllvuN+MyQ=="
+}
+---
+
+Cut v0.0.1-alpha.8: the path-aggregated left-pane tree. Subjects now render as a recursive path trie — split on '/', indented by depth — replacing the fixed Section/Group/Subject model and retiring the telos|atom|bridge|tension|schema whitelist, so agents/handoff/main nests three levels. Leaves show the full path with the prefix faded and the final segment bright; branch nodes read full-weight; the [my work] and [day] section headers are colored. A dual node (subject that is also a path-prefix) appears as both a branch header and a child leaf. is_day_subject now treats the agents/handoff namespace as day vocabulary, so handoff threads sit under [day]. Reviewed by an independent Opus adversarial pass: SHIP (latent findings only, none reachable on real subject names). 56 tests, clippy -D warnings, fmt clean. Tag v0.0.1-alpha.8.
+***8<***
+---
+{
+  "v": 3,
+  "cid": "bafyreidmjwsd2ojtchzsduaes653ztjgmmailhicte6cd7ib243qgwdkme",
+  "sig": "a22cb5969de04529962121892d15930ef88577de7646dc155d68dcb662fae9334976e4732bcbf3129c57c4f99d24569c741359733ae830055731e285ec5fd3b5",
+  "author": "did:key:zDnaeSdBbrM6NeY4i8MoxuFiyDtwx3AHJ8fjEd94grH31r8XY",
+  "subject": {
+    "local": "release"
+  },
+  "kind": "publication",
+  "cites": [],
+  "rev": "223mthyyme6v4",
+  "seq": 15,
+  "of": 16,
+  "content": "p2Rib2R5oWtQdWJsaWNhdGlvbqFlbGF5ZXJnR2l0VHJlZWVjaXRlc4BmYXV0aG9yomNkaWR4OWRpZDprZXk6ekRuYWVTZEJick02TmVZNGk4TW94dUZpeUR0d3gzQUhKOGZqRWQ5NGdySDMxcjhYWWVhZ2VudPZnc3ViamVjdKFlTG9jYWxncmVsZWFzZWlhcnRpZmFjdHOBoWZDb21taXR4KGY1MGIwMWU3Yzg5MGE2MzhhZGRhNzc1MDBlMjI2MWQwOTIwMTlkNzFpd29ya3NwYWNloWlXb3Jrc3BhY2V4QDgzNWY4N2FkZTQwYmRjOGRmMjJjM2JiZDI3OGQ1N2UwNDBmYWEwOGNjNmU0MTVkNmJkMDM4NGViOWE3ZTUzY2VrcmVjb3JkZWRfYXQbAAZZb70lEvM="
 }
 ---
