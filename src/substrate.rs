@@ -25,6 +25,82 @@ fn day_status(repo: &Path) -> Result<String, String> {
     Ok(String::from_utf8_lossy(&out.stdout).trim_end().to_string())
 }
 
+/// day's status-line cache path — the width/style variants day writes for its
+/// harness footer (`.day/statusline.variants`).
+pub fn footer_cache_path(repo: &Path) -> std::path::PathBuf {
+    repo.join(".day/statusline.variants")
+}
+
+/// Pick the best footer variant from day's `.day/statusline.variants` cache: each
+/// variant is a `#day-footer <style> <width>` header followed by its lines
+/// (`style` = `emoji`/`plain`). Prefers the requested style, then the widest
+/// variant that fits `width` (else the narrowest of that style, else any). `None`
+/// when the cache holds no variant.
+pub fn pick_variant(cache: &str, width: u16, emoji: bool) -> Option<Vec<String>> {
+    struct Variant {
+        style: String,
+        w: u16,
+        lines: Vec<String>,
+    }
+    let mut variants: Vec<Variant> = Vec::new();
+    for line in cache.lines() {
+        if let Some(rest) = line.strip_prefix("#day-footer ") {
+            let mut it = rest.split_whitespace();
+            let style = it.next().unwrap_or("").to_string();
+            let w = it.next().and_then(|s| s.parse().ok()).unwrap_or(0);
+            variants.push(Variant {
+                style,
+                w,
+                lines: Vec::new(),
+            });
+        } else if let Some(v) = variants.last_mut() {
+            v.lines.push(line.to_string());
+        }
+    }
+    if variants.is_empty() {
+        return None;
+    }
+    let want = if emoji { "emoji" } else { "plain" };
+    let styled: Vec<&Variant> = variants.iter().filter(|v| v.style == want).collect();
+    let pool = if styled.is_empty() {
+        variants.iter().collect::<Vec<_>>()
+    } else {
+        styled
+    };
+    pool.iter()
+        .filter(|v| v.w <= width)
+        .max_by_key(|v| v.w)
+        .or_else(|| pool.iter().min_by_key(|v| v.w))
+        .map(|v| v.lines.clone())
+}
+
+/// The footer lines: day's width-matched status-line variant from the cache, or
+/// the `day status-line` CLI (also cache-only), or an explicit unavailable line —
+/// never empty (`telos/honest-ambiguity`).
+pub fn status_footer(repo: &Path, width: u16, emoji: bool) -> Vec<String> {
+    if let Ok(s) = std::fs::read_to_string(footer_cache_path(repo)) {
+        if let Some(lines) = pick_variant(&s, width, emoji) {
+            if !lines.is_empty() {
+                return lines;
+            }
+        }
+    }
+    if let Ok(out) = Command::new("day")
+        .arg("status-line")
+        .current_dir(repo)
+        .output()
+    {
+        if out.status.success() {
+            let text = String::from_utf8_lossy(&out.stdout);
+            let lines: Vec<String> = text.lines().map(str::to_string).collect();
+            if !lines.is_empty() {
+                return lines;
+            }
+        }
+    }
+    vec!["(day status-line unavailable)".to_string()]
+}
+
 fn str_at(v: &Value, key: &str) -> String {
     v.get(key).and_then(Value::as_str).unwrap_or("").to_string()
 }
@@ -1052,5 +1128,40 @@ mod tests {
         assert_eq!(fmt_utc(1_709_164_800_000_000), "2024-02-29 00:00");
         // One microsecond before the epoch floors into the previous day.
         assert_eq!(fmt_utc(-1), "1969-12-31 23:59");
+    }
+
+    #[test]
+    fn pick_variant_selects_by_style_and_width() {
+        // (AC-1)
+        let cache = "#day-footer emoji 43\ne1\ne2\ne3\n#day-footer plain 57\np1\np2\np3\n";
+        let e = vec!["e1".to_string(), "e2".to_string(), "e3".to_string()];
+        let p = vec!["p1".to_string(), "p2".to_string(), "p3".to_string()];
+        assert_eq!(pick_variant(cache, 50, true), Some(e.clone())); // emoji fits 50
+        assert_eq!(pick_variant(cache, 60, false), Some(p.clone())); // plain fits 60
+                                                                     // Below every variant's width: the narrowest of the preferred style.
+        assert_eq!(pick_variant(cache, 10, true), Some(e));
+        // A style with no variants falls back to any variant.
+        assert!(pick_variant("#day-footer emoji 43\nonly\n", 50, false).is_some());
+        assert_eq!(pick_variant("", 50, true), None);
+        assert_eq!(pick_variant("no header here", 50, true), None);
+    }
+
+    #[test]
+    fn status_footer_reads_cache_then_falls_back() {
+        // (AC-2)
+        let dir = std::env::temp_dir().join(format!("cospan-footer-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join(".day")).unwrap();
+        std::fs::write(footer_cache_path(&dir), "#day-footer emoji 43\nx1\nx2\n").unwrap();
+        assert_eq!(
+            status_footer(&dir, 50, true),
+            vec!["x1".to_string(), "x2".to_string()]
+        );
+        // No cache file -> a non-empty fallback, never blank.
+        let empty =
+            std::env::temp_dir().join(format!("cospan-footer-empty-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&empty);
+        std::fs::create_dir_all(&empty).unwrap();
+        assert!(!status_footer(&empty, 50, true).is_empty());
     }
 }

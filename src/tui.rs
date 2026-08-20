@@ -122,6 +122,11 @@ pub struct AppState {
     pub comment_selected: usize,
     /// Scroll offset into the file-content pane.
     pub comment_scroll: usize,
+
+    // --- Footer: day's status line, width-matched from its cache. ---
+    pub footer: Vec<String>,
+    footer_mtime: Option<SystemTime>,
+    footer_width: u16,
 }
 
 /// The top-level views, switched with `1`/`2`/`3`/`4` or `Tab`.
@@ -205,6 +210,9 @@ impl AppState {
             comment_mtime: None,
             comment_selected: 0,
             comment_scroll: 0,
+            footer: Vec::new(),
+            footer_mtime: None,
+            footer_width: 0,
         };
         s.rebuild_rows();
         s.selected = s.first_subject_index().unwrap_or(0);
@@ -474,6 +482,24 @@ impl AppState {
         self.comment_selected = self
             .comment_selected
             .min(self.comment_localized.len().saturating_sub(1));
+    }
+
+    /// Refresh the footer (day's status line) when its cache changed or the width
+    /// changed — one `stat` per tick, re-read only on change; once loaded it never
+    /// re-shells (`telos/poll-dont-subscribe`).
+    pub fn refresh_footer(&mut self, width: u16, emoji: bool) {
+        let mtime = std::fs::metadata(substrate::footer_cache_path(&self.repo))
+            .ok()
+            .and_then(|m| m.modified().ok());
+        if !self.footer.is_empty()
+            && self.footer_width == width
+            && !should_refold(self.footer_mtime, mtime)
+        {
+            return;
+        }
+        self.footer = substrate::status_footer(&self.repo, width, emoji);
+        self.footer_mtime = mtime;
+        self.footer_width = width;
     }
 
     /// Move the comment cursor and scroll the content pane to its anchored line.
@@ -928,6 +954,9 @@ pub fn run(repo: PathBuf) -> std::io::Result<()> {
         if state.view == View::Comments {
             state.refresh_comments();
         }
+        // Footer gate: refresh day's status line on a cache/width change.
+        let footer_w = terminal.size().map(|s| s.width).unwrap_or(0);
+        state.refresh_footer(footer_w, true);
 
         if let Err(e) = terminal.draw(|frame| draw(frame, &state)) {
             break Err(e);
@@ -1010,42 +1039,30 @@ fn draw(frame: &mut ratatui::Frame, state: &AppState) {
     use ratatui::layout::{Constraint, Layout};
     use ratatui::style::Stylize;
     use ratatui::text::Line;
-    use ratatui::widgets::{Block, Paragraph};
+    use ratatui::widgets::Paragraph;
 
     let area = frame.area();
-    let [header, process, body] = Layout::vertical([
+
+    // The footer: day's status line, plus any fold errors surfaced above it so a
+    // failed `kan show --all` is not mistaken for an empty repo
+    // (telos/honest-ambiguity).
+    let mut footer_lines: Vec<String> =
+        state.fold.errors.iter().map(|e| format!("! {e}")).collect();
+    if state.footer.is_empty() {
+        footer_lines.push("(day status-line unavailable)".to_string());
+    } else {
+        footer_lines.extend(state.footer.iter().cloned());
+    }
+    let footer_h = (footer_lines.len().clamp(1, 6)) as u16;
+
+    let [header, body, footer] = Layout::vertical([
         Constraint::Length(1),
-        Constraint::Max(8),
         Constraint::Min(3),
+        Constraint::Length(footer_h),
     ])
     .areas(area);
 
     frame.render_widget(Line::from(view_header(state.view)).bold(), header);
-
-    let mut process_text = match &state.fold.day_status {
-        Some(t) if !t.is_empty() => t.clone(),
-        _ => "(day status unavailable)".to_string(),
-    };
-    // Surface fold errors so a failed `kan show --all` is not mistaken for an
-    // empty repo (telos/honest-ambiguity).
-    if !state.fold.errors.is_empty() {
-        let errs = state
-            .fold
-            .errors
-            .iter()
-            .map(|e| format!("! {e}"))
-            .collect::<Vec<_>>()
-            .join("\n");
-        process_text = format!("{errs}\n{process_text}");
-    }
-    // Clip to the pane height with an explicit overflow cue; no wrap, so the
-    // line count is exact and day's candidate list is never silently truncated.
-    let process_lines = clip_lines(&process_text, (process.height as usize).saturating_sub(2));
-    frame.render_widget(
-        Paragraph::new(process_lines.join("\n"))
-            .block(Block::bordered().title(" process (day status) ")),
-        process,
-    );
 
     match state.view {
         View::Browser => draw_browser(frame, state, area.width, body),
@@ -1053,6 +1070,9 @@ fn draw(frame: &mut ratatui::Frame, state: &AppState) {
         View::Telos => draw_telos(frame, state, body),
         View::Comments => draw_comments(frame, state, area.width, body),
     }
+
+    // The thin status-bar footer (day's status line), sourced from day's cache.
+    frame.render_widget(Paragraph::new(footer_lines.join("\n")).dim(), footer);
 }
 
 fn view_header(view: View) -> String {
@@ -2248,6 +2268,25 @@ mod tests {
         let (_lines, unresolved) = gutter_lines(content, &localized, 0);
         assert_eq!(unresolved.len(), 1);
         assert_eq!(unresolved[0].body, "lost");
+    }
+
+    #[test]
+    fn refresh_footer_loads_the_cache_and_tracks_width() {
+        // (AC-3) the footer loads day's status-line variant and gates on width.
+        let repo = comments_tmp("footer");
+        std::fs::create_dir_all(repo.join(".day")).unwrap();
+        std::fs::write(
+            repo.join(".day/statusline.variants"),
+            "#day-footer emoji 43\nhello\nworld\n",
+        )
+        .unwrap();
+        let mut a = AppState::new(repo, fold_of(&[]), None);
+        a.refresh_footer(50, true);
+        assert_eq!(a.footer, vec!["hello".to_string(), "world".to_string()]);
+        assert_eq!(a.footer_width, 50);
+        // Idempotent when width and cache are unchanged.
+        a.refresh_footer(50, true);
+        assert_eq!(a.footer, vec!["hello".to_string(), "world".to_string()]);
     }
 
     #[test]
