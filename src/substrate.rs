@@ -356,6 +356,24 @@ fn append_extra_keys(out: &mut Vec<String>, j: &Value, covered: &[&str]) {
     }
 }
 
+/// Flatten a `day-bridge` plan tree into one line using day's composition
+/// operators (day's `Node` enum, serde `rename_all = "lowercase"`): a `seq`
+/// joins with ` > `, an `all` (concurrent) with ` & `, an `any` (alternatives)
+/// with ` | `, and a leaf `{ "atom": name }` is its atom name. Composites nest,
+/// so an `all` inside a `seq` renders inline. Anything unrecognized falls back to
+/// compact JSON rather than vanishing (`telos/honest-ambiguity`).
+fn flatten_plan(node: &Value) -> String {
+    for (key, sep) in [("seq", " > "), ("all", " & "), ("any", " | ")] {
+        if let Some(items) = node.get(key).and_then(Value::as_array) {
+            return items.iter().map(flatten_plan).collect::<Vec<_>>().join(sep);
+        }
+    }
+    if let Some(atom) = node.get("atom").and_then(Value::as_str) {
+        return atom.to_string();
+    }
+    node.to_string()
+}
+
 /// A human-readable view of a supported fenced block's parsed JSON, or `None`
 /// for a block type this does not know (which the caller shows as raw code).
 pub fn block_summary(fence: &str, j: &Value) -> Option<Vec<String>> {
@@ -405,6 +423,25 @@ pub fn block_summary(fence: &str, j: &Value) -> Option<Vec<String>> {
                 j.get("body").and_then(Value::as_str).unwrap_or("")
             )];
             append_extra_keys(&mut out, j, &["body"]);
+            Some(out)
+        }
+        "day-bridge" => {
+            let mut out = vec![
+                format!("telos: {}", str_at(j, "telos")),
+                format!("have:  {}", arr("have")),
+                format!(
+                    "plan:  {}",
+                    j.get("plan").map(flatten_plan).unwrap_or_default()
+                ),
+            ];
+            append_extra_keys(&mut out, j, &["telos", "have", "plan"]);
+            Some(out)
+        }
+        "day-schema" => {
+            // Every field rendered generically, so the view never falls behind
+            // the schema's vocabulary — a new rule shows up without a code change.
+            let mut out = Vec::new();
+            append_extra_keys(&mut out, j, &[]);
             Some(out)
         }
         _ => None,
@@ -837,6 +874,61 @@ mod tests {
         );
         // An unknown fence has no human view (the caller shows it as code).
         assert!(block_summary("something-else", &atom).is_none());
+    }
+
+    #[test]
+    fn block_summary_day_bridge_renders_telos_have_and_plan() {
+        let bridge: Value = serde_json::from_str(
+            r#"{"telos":"readable-claim-browser","have":["design-doc"],
+                "plan":{"seq":[{"atom":"generative-build"},{"atom":"adversarial-review"}]}}"#,
+        )
+        .unwrap();
+        let joined = block_summary("day-bridge", &bridge).unwrap().join("\n");
+        assert!(joined.contains("telos: readable-claim-browser"), "{joined}");
+        assert!(joined.contains("have:") && joined.contains("design-doc"));
+        assert!(
+            joined.contains("plan:") && joined.contains("generative-build > adversarial-review"),
+            "plan not flattened with seq operator: {joined}"
+        );
+    }
+
+    #[test]
+    fn flatten_plan_composes_seq_all_and_any() {
+        // day's real plan grammar: Node::{Atom,Seq,All,Any}, lowercase serde.
+        let plan: Value = serde_json::from_str(
+            r#"{"seq":[{"atom":"a"},{"all":[{"atom":"b"},{"atom":"c"}]},
+                {"any":[{"atom":"d"},{"atom":"e"}]}]}"#,
+        )
+        .unwrap();
+        assert_eq!(flatten_plan(&plan), "a > b & c > d | e");
+    }
+
+    #[test]
+    fn flatten_plan_renders_a_real_any_branch_not_raw_json() {
+        // A real day corpus bridge: seq with an `any` branch. Must not leak JSON.
+        let plan: Value = serde_json::from_str(
+            r#"{"seq":[{"atom":"design"},{"any":[{"atom":"build"},{"atom":"ship"}]}]}"#,
+        )
+        .unwrap();
+        assert_eq!(flatten_plan(&plan), "design > build | ship");
+    }
+
+    #[test]
+    fn block_summary_day_schema_renders_every_field() {
+        let schema: Value = serde_json::from_str(
+            r#"{"requirement_prefix":"REQ-","min_requirements":2,
+                "sections":["Summary","Requirements"]}"#,
+        )
+        .unwrap();
+        let joined = block_summary("day-schema", &schema).unwrap().join("\n");
+        assert!(joined.contains("requirement_prefix: REQ-"), "{joined}");
+        assert!(joined.contains("min_requirements: 2"), "{joined}");
+        assert!(
+            joined.contains("sections: Summary, Requirements"),
+            "array field not comma-joined: {joined}"
+        );
+        // Still None for a fence with no arm.
+        assert!(block_summary("day-unknown", &schema).is_none());
     }
 
     #[test]
