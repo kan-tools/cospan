@@ -1,7 +1,84 @@
 # 05 — Views & UX
 
-Four views over one shared domain model (L2). The user moves between them
-dynamically; layout adapts to terminal size and to which views are active.
+> **Revised structure — 2026-08-20.** The section below (## Revised tab & footer
+> structure) is the current north star; it supersedes the original four-views
+> framing that follows it, which is kept as design context. As of v0.0.1-alpha.12
+> the shipped shape is: a Browser (kan claims), Atoms and Telos views, a Comments
+> view (anchored gutter + right comment column with reflow + threads), and a top
+> `day status` process panel. The revision below renames and reshapes these.
+
+## Revised tab & footer structure
+
+**Four tabs plus an always-on footer**, over the one folded model.
+
+```
+┌───────────────────────────────────────────────┐
+│ [Chat] [Comments] [Ledger] [Process]           │  ← tab bar
+│                                                 │
+│                  active view                    │
+│                                                 │
+├───────────────────────────────────────────────┤
+│ ☀️ atom: release · 0/1 done · 🌿 main · ✔ …     │  ← footer (status bar)
+└───────────────────────────────────────────────┘
+```
+
+### The footer (status bar) — not a tab
+
+A thin, always-on, constantly-updating status bar at the **bottom**, replacing the
+current top `day status` panel. Its content is day's own status line — the exact
+text Claude Code renders — read from **`day status-line`** (a cache-only command:
+it reads a pre-rendered cache written by `day hook session-start`, never touching
+kan or git, because Claude Code cancels a status line at 300 ms). The cache lives
+at `.day/statusline` / `.day/statusline.variants`, the latter carrying width/style
+**variants** tagged `#day-footer <emoji|plain> <width>` (e.g. `emoji 43`,
+`plain 57`). cospan polls the cache each tick (or on its mtime — poll-don't-
+subscribe) and picks the variant matching its footer width and emoji support.
+This is *not* `day status` (a terse single-atom report for people) and *not* the
+`day hook session-start` banner (advisory session context) — it is the compact
+footer line.
+
+### (1) Chat
+
+Cross-harness agent chats with session hierarchy — the live **session buffers**
+themselves, not a summary. This is an open architecture question (a "tmux-ey"
+capture): candidate sources are `tmux capture-pane` against known sessions,
+cospan owning the PTYs of sessions it spawns (ties into the P3 command bus), or
+reading harness transcript files. **Decide the source in its own design pass
+before building.** Until then it is a declared-but-empty tab.
+
+### (2) Comments — the editor view
+
+The Comments view we are building, evolving toward a real editor surface:
+- The file list becomes a **collapsible tray** (toggled open/closed), showing a
+  **full filesystem tree with git state**, not just files that already carry a
+  comment. Closed by default while reading/commenting a file.
+- The editor pane shows **visual diffs** (git working-tree changes rendered),
+  live as agents rewrite files.
+- The **bottom strip is removed**; comments live only in the right column, and
+  comment overflow opens an **expanded popup** on a shortcut key rather than a
+  permanent tray.
+
+### (3) Ledger
+
+The kan claim browser — today's Browser view, renamed. Every subject's claims,
+each opening to full detail (`telos/readable-claim-browser`).
+
+### (4) Process
+
+A synthesized view of day's process structure — today's Atoms and Telos views,
+reimagined:
+- **Atoms** as a **flowchart** (the atom DAG with `next` edges) rather than a
+  flat content list, with **drill-down** into each atom's structure.
+- **Teloi** as a **list** with **drill-down** to the full statement, witnesses,
+  and tensions.
+
+The synthesized day *position* (which atom, per-witness state) still awaits
+machine-readable `day status` (kan-tools/day#240); the footer covers the compact
+live status meanwhile.
+
+---
+
+_Original framing (design context; superseded by the section above):_
 
 ## (a) Session picker
 
