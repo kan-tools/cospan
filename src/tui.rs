@@ -604,6 +604,43 @@ pub fn gutter_lines<'a>(
     (lines, unresolved)
 }
 
+/// The detail-strip lines for one comment: a header (state · where · confidence ·
+/// author), the body, each reply indented and attributed, and a `[resolved]`
+/// marker when resolved. Pure, so the thread render is unit-testable.
+pub fn thread_lines(c: &Comment, loc: &Localization) -> Vec<ratatui::text::Line<'static>> {
+    use ratatui::style::{Modifier, Style};
+    use ratatui::text::{Line, Span};
+    let at = loc
+        .span
+        .map(|(s, _)| format!("line {}", s + 1))
+        .unwrap_or_else(|| "unplaced".into());
+    let mut header = vec![
+        Span::styled(format!("{:?}", loc.state), state_style(loc.state)),
+        Span::raw(format!(
+            "  {at}  conf {:.2}  @{}",
+            loc.confidence, c.author.id
+        )),
+    ];
+    if c.resolved {
+        header.push(Span::styled(
+            "  [resolved]",
+            Style::new().add_modifier(Modifier::DIM),
+        ));
+    }
+    let mut lines = vec![Line::from(header), Line::from(c.body.clone())];
+    for r in &c.thread {
+        lines.push(Line::from(vec![
+            Span::styled("  └ ", Style::new().add_modifier(Modifier::DIM)),
+            Span::styled(
+                format!("@{}: ", r.author.id),
+                Style::new().add_modifier(Modifier::DIM),
+            ),
+            Span::raw(r.body.clone()),
+        ]));
+    }
+    lines
+}
+
 /// Clip `text` to `max` display lines, appending an explicit overflow cue when
 /// lines are hidden. A fixed-height pane must never silently drop day's
 /// candidate list or warnings (`telos/honest-ambiguity`) — the reader is told
@@ -1105,21 +1142,10 @@ fn draw_comments(
         content_area,
     );
 
-    // Strip: the selected comment's detail, then the unresolvable list.
+    // Strip: the selected comment's full thread, then the unresolvable list.
     let mut strip: Vec<Line> = Vec::new();
     if let Some((c, loc)) = state.comment_localized.get(state.comment_selected) {
-        let at = loc
-            .span
-            .map(|(s, _)| format!("line {}", s + 1))
-            .unwrap_or_else(|| "unplaced".into());
-        strip.push(Line::from(vec![
-            Span::styled(format!("{:?}", loc.state), state_style(loc.state)),
-            Span::raw(format!(
-                "  {at}  conf {:.2}  @{}",
-                loc.confidence, c.author.id
-            )),
-        ]));
-        strip.push(Line::from(c.body.clone()));
+        strip.extend(thread_lines(c, loc));
     }
     if !unresolved.is_empty() {
         strip.push(Line::from(Span::styled(
@@ -1133,9 +1159,20 @@ fn draw_comments(
             )));
         }
     }
+    let strip_title = match state.comment_localized.get(state.comment_selected) {
+        Some((c, _)) => {
+            let s = comments::thread_summary(c);
+            if s.is_empty() {
+                " comment ".to_string()
+            } else {
+                format!(" comment · {s} ")
+            }
+        }
+        None => " comment ".to_string(),
+    };
     frame.render_widget(
         Paragraph::new(strip)
-            .block(Block::bordered().title(" comment "))
+            .block(Block::bordered().title(strip_title))
             .wrap(Wrap { trim: false }),
         strip_area,
     );
@@ -1835,6 +1872,7 @@ mod tests {
             },
             created_at: 0,
             resolved: false,
+            thread: Vec::new(),
         }
     }
 
@@ -1898,6 +1936,45 @@ mod tests {
         // The unresolvable comment is surfaced separately, not on any line.
         assert_eq!(unresolved.len(), 1);
         assert_eq!(unresolved[0].body, "lost");
+    }
+
+    #[test]
+    fn thread_lines_render_root_reply_and_resolved() {
+        // (AC-3) the strip shows the root body, an attributed indented reply, and
+        // a [resolved] marker.
+        let content = "one\ntwo\n";
+        let mut c = mk_comment(content, 0, "root body");
+        c.resolved = true;
+        c.thread.push(crate::comments::Reply {
+            author: crate::comments::Author {
+                who: "agent".into(),
+                id: "claude".into(),
+            },
+            body: "a reply".into(),
+            created_at: 1,
+        });
+        let loc = Localization {
+            state: State::Anchored,
+            span: Some((0, 0)),
+            confidence: 1.0,
+        };
+        let texts: Vec<String> = thread_lines(&c, &loc)
+            .iter()
+            .map(|l| {
+                l.spans
+                    .iter()
+                    .map(|s| s.content.as_ref())
+                    .collect::<String>()
+            })
+            .collect();
+        assert!(texts.iter().any(|t| t.contains("root body")), "{texts:?}");
+        assert!(
+            texts
+                .iter()
+                .any(|t| t.contains("@claude:") && t.contains("a reply")),
+            "reply not attributed/indented: {texts:?}"
+        );
+        assert!(texts.iter().any(|t| t.contains("[resolved]")), "{texts:?}");
     }
 
     #[test]

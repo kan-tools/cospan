@@ -59,8 +59,17 @@ pub struct Author {
     pub id: String,
 }
 
+/// One reply in a comment's thread. Same author model as the root comment.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Reply {
+    pub author: Author,
+    pub body: String,
+    /// Microseconds since the Unix epoch.
+    pub created_at: i64,
+}
+
 /// One sidecar comment. Ephemeral, re-localized every read; `resolved` and the
-/// (currently unused) thread live here so persist-to-kan can map 1:1 later.
+/// `thread` live here so persist-to-kan can map 1:1 later.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Comment {
     pub id: String,
@@ -70,6 +79,47 @@ pub struct Comment {
     /// Microseconds since the Unix epoch.
     pub created_at: i64,
     pub resolved: bool,
+    /// Reply thread, newest last. `default` so a sidecar written before threads
+    /// existed loads unchanged (an absent field becomes an empty thread).
+    #[serde(default)]
+    pub thread: Vec<Reply>,
+}
+
+/// Append `r` to the thread of the comment with `id`; returns whether one matched.
+pub fn add_reply(comments: &mut [Comment], id: &str, r: Reply) -> bool {
+    match comments.iter_mut().find(|c| c.id == id) {
+        Some(c) => {
+            c.thread.push(r);
+            true
+        }
+        None => false,
+    }
+}
+
+/// Mark the comment with `id` resolved; returns whether one matched.
+pub fn resolve(comments: &mut [Comment], id: &str) -> bool {
+    match comments.iter_mut().find(|c| c.id == id) {
+        Some(c) => {
+            c.resolved = true;
+            true
+        }
+        None => false,
+    }
+}
+
+/// A one-line summary suffix for a comment: reply count and resolved state, or
+/// empty when it has neither.
+pub fn thread_summary(c: &Comment) -> String {
+    let mut parts = Vec::new();
+    match c.thread.len() {
+        0 => {}
+        1 => parts.push("(1 reply)".to_string()),
+        n => parts.push(format!("({n} replies)")),
+    }
+    if c.resolved {
+        parts.push("[resolved]".to_string());
+    }
+    parts.join(" ")
 }
 
 /// A deterministic content digest (`DefaultHasher`, no extra dependency) used to
@@ -182,6 +232,7 @@ mod tests {
             },
             created_at: 1_700_000_000_000_000,
             resolved: false,
+            thread: Vec::new(),
         }
     }
 
@@ -192,6 +243,59 @@ mod tests {
         assert!(!line.contains('\n'), "a record must be one JSONL line");
         let back: Comment = serde_json::from_str(&line).unwrap();
         assert_eq!(back, c);
+    }
+
+    fn reply_from(id: &str, body: &str) -> Reply {
+        Reply {
+            author: Author {
+                who: "human".into(),
+                id: id.into(),
+            },
+            body: body.into(),
+            created_at: 1,
+        }
+    }
+
+    #[test]
+    fn pre_threads_record_loads_with_empty_thread() {
+        // (AC-1) a JSONL line written before `thread` existed has no such field.
+        let json = r#"{"id":"c_1","anchor":{"target":"x","before":"","after":"","line_hint":0,"ctx":1,"base_hash":0},"body":"hi","author":{"who":"human","id":"local"},"created_at":0,"resolved":false}"#;
+        let c: Comment = serde_json::from_str(json).unwrap();
+        assert!(c.thread.is_empty());
+        // And a comment carrying replies round-trips.
+        let mut with = comment_at(V0, 1);
+        with.thread = vec![reply_from("a", "one"), reply_from("b", "two")];
+        let back: Comment = serde_json::from_str(&serde_json::to_string(&with).unwrap()).unwrap();
+        assert_eq!(back, with);
+    }
+
+    #[test]
+    fn add_reply_and_resolve_match_by_id() {
+        // (AC-2) reply/resolve mutate the right comment; an unknown id is a no-op.
+        let mut cs = vec![comment_at(V0, 1)]; // id "c_1"
+        assert!(add_reply(
+            &mut cs,
+            "c_1",
+            reply_from("me", "cached upstream")
+        ));
+        assert_eq!(cs[0].thread, vec![reply_from("me", "cached upstream")]);
+        assert!(!add_reply(&mut cs, "nope", reply_from("me", "x")));
+        assert!(resolve(&mut cs, "c_1"));
+        assert!(cs[0].resolved);
+        assert!(!resolve(&mut cs, "nope"));
+        assert_eq!(cs[0].thread.len(), 1, "a failed reply must not append");
+    }
+
+    #[test]
+    fn thread_summary_names_reply_count_and_resolved() {
+        // (AC-4) the list suffix reflects replies and resolved state.
+        let mut c = comment_at(V0, 1);
+        assert_eq!(thread_summary(&c), "");
+        c.thread.push(reply_from("a", "one"));
+        assert_eq!(thread_summary(&c), "(1 reply)");
+        c.thread.push(reply_from("b", "two"));
+        c.resolved = true;
+        assert_eq!(thread_summary(&c), "(2 replies) [resolved]");
     }
 
     #[test]
