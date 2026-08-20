@@ -2191,7 +2191,10 @@ mod tests {
         assert!(joined.contains("Drifted"), "{joined}");
         assert!(joined.contains("[resolved]"), "{joined}");
         assert!(joined.contains("+1 reply"), "{joined}");
-        assert!(joined.contains("wraps"), "wrapped body text missing: {joined}");
+        assert!(
+            joined.contains("wraps"),
+            "wrapped body text missing: {joined}"
+        );
         assert!(lines.len() >= 3, "header + body + reply expected: {joined}");
     }
 
