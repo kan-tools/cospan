@@ -11,7 +11,7 @@
   "cites": [],
   "rev": "223mtflqg5pho",
   "seq": 0,
-  "of": 6,
+  "of": 8,
   "text_len": 593,
   "content": "p2Rib2R5oWhEZWNpc2lvbqFkdGV4dGBlY2l0ZXOAZmF1dGhvcqJjZGlkeDlkaWQ6a2V5OnpEbmFlU2RCYnJNNk5lWTRpOE1veHVGaXlEdHd4M0FISjhmakVkOTRnckgzMXI4WFllYWdlbnT2Z3N1YmplY3ShZUxvY2FsdWRheS1zdW1tYXJ5LWluLWNvc3BhbmlhcnRpZmFjdHOBoWZDb21taXR4KDg4ZWRlMGI2M2I5ZWQ5NDE1M2ViZjA5YTdlZmQxYWNjMjk2ZTc1NzNpd29ya3NwYWNloWlXb3Jrc3BhY2V4QDgzNWY4N2FkZTQwYmRjOGRmMjJjM2JiZDI3OGQ1N2UwNDBmYWEwOGNjNmU0MTVkNmJkMDM4NGViOWE3ZTUzY2VrcmVjb3JkZWRfYXQbAAZZXGzB1U0="
 }
@@ -32,7 +32,7 @@ cospan should render the compact day process-summary the harness statusline show
   "cites": [],
   "rev": "223mtflqg724q",
   "seq": 1,
-  "of": 6,
+  "of": 8,
   "content": "p2Rib2R5oWdTdWJqZWN0omV0aXRsZXg8Y29zcGFuIHJlbmRlcnMgKGFuZCBldmVudHVhbGx5IG93bnMpIHRoZSBkYXkgcHJvY2VzcyBzdW1tYXJ5bHN1YmplY3Rfa2luZGRJZGVhZWNpdGVzgGZhdXRob3KiY2RpZHg5ZGlkOmtleTp6RG5hZVNkQmJyTTZOZVk0aThNb3h1Rml5RHR3eDNBSEo4ZmpFZDk0Z3JIMzFyOFhZZWFnZW509mdzdWJqZWN0oWVMb2NhbHVkYXktc3VtbWFyeS1pbi1jb3NwYW5pYXJ0aWZhY3RzgaFmQ29tbWl0eCg4OGVkZTBiNjNiOWVkOTQxNTNlYmYwOWE3ZWZkMWFjYzI5NmU3NTczaXdvcmtzcGFjZaFpV29ya3NwYWNleEA4MzVmODdhZGU0MGJkYzhkZjIyYzNiYmQyNzhkNTdlMDQwZmFhMDhjYzZlNDE1ZDZiZDAzODRlYjlhN2U1M2Nla3JlY29yZGVkX2F0GwAGWVxswn/y"
 }
 ---
@@ -50,7 +50,7 @@ cospan should render the compact day process-summary the harness statusline show
   "cites": [],
   "rev": "223mtflqgcgsc",
   "seq": 2,
-  "of": 6,
+  "of": 8,
   "content": "p2Rib2R5oWtQdWJsaWNhdGlvbqFlbGF5ZXJnR2l0VHJlZWVjaXRlc4BmYXV0aG9yomNkaWR4OWRpZDprZXk6ekRuYWVTZEJick02TmVZNGk4TW94dUZpeUR0d3gzQUhKOGZqRWQ5NGdySDMxcjhYWWVhZ2VudPZnc3ViamVjdKFlTG9jYWx1ZGF5LXN1bW1hcnktaW4tY29zcGFuaWFydGlmYWN0c4GhZkNvbW1pdHgoODhlZGUwYjYzYjllZDk0MTUzZWJmMDlhN2VmZDFhY2MyOTZlNzU3M2l3b3Jrc3BhY2WhaVdvcmtzcGFjZXhAODM1Zjg3YWRlNDBiZGM4ZGYyMmMzYmJkMjc4ZDU3ZTA0MGZhYTA4Y2M2ZTQxNWQ2YmQwMzg0ZWI5YTdlNTNjZWtyZWNvcmRlZF9hdBsABllcbMQyoA=="
 }
 ---
@@ -70,7 +70,7 @@ cospan should render the compact day process-summary the harness statusline show
   ],
   "rev": "223mtflyantbf",
   "seq": 3,
-  "of": 6,
+  "of": 8,
   "text_len": 450,
   "content": "p2Rib2R5oWhEZWNpc2lvbqFkdGV4dGBlY2l0ZXOB2CpYJQABcRIgwCz5erYzG1lHq5Z/sYwPxgSxgh1kzIS/2TSMoLRfIt5mYXV0aG9yomNkaWR4OWRpZDprZXk6ekRuYWVTZEJick02TmVZNGk4TW94dUZpeUR0d3gzQUhKOGZqRWQ5NGdySDMxcjhYWWVhZ2VudPZnc3ViamVjdKFlTG9jYWx1ZGF5LXN1bW1hcnktaW4tY29zcGFuaWFydGlmYWN0c4GhZkNvbW1pdHgoODhlZGUwYjYzYjllZDk0MTUzZWJmMDlhN2VmZDFhY2MyOTZlNzU3M2l3b3Jrc3BhY2WhaVdvcmtzcGFjZXhAODM1Zjg3YWRlNDBiZGM4ZGYyMmMzYmJkMjc4ZDU3ZTA0MGZhYTA4Y2M2ZTQxNWQ2YmQwMzg0ZWI5YTdlNTNjZWtyZWNvcmRlZF9hdBsABllcfGnkhA=="
 }
@@ -93,7 +93,7 @@ Deferred, blocked on upstream day. Sourcing the compact summary honestly needs a
   ],
   "rev": "223mtflyap4jr",
   "seq": 4,
-  "of": 6,
+  "of": 8,
   "content": "p2Rib2R5oWZTdGF0dXOhZXZhbHVlZ0Jsb2NrZWRlY2l0ZXOB2CpYJQABcRIguZ1rQmgKLzxpUorXEgi0ui+1TLH+X432MBjw8kkSsb9mYXV0aG9yomNkaWR4OWRpZDprZXk6ekRuYWVTZEJick02TmVZNGk4TW94dUZpeUR0d3gzQUhKOGZqRWQ5NGdySDMxcjhYWWVhZ2VudPZnc3ViamVjdKFlTG9jYWx1ZGF5LXN1bW1hcnktaW4tY29zcGFuaWFydGlmYWN0c4GhZkNvbW1pdHgoODhlZGUwYjYzYjllZDk0MTUzZWJmMDlhN2VmZDFhY2MyOTZlNzU3M2l3b3Jrc3BhY2WhaVdvcmtzcGFjZXhAODM1Zjg3YWRlNDBiZGM4ZGYyMmMzYmJkMjc4ZDU3ZTA0MGZhYTA4Y2M2ZTQxNWQ2YmQwMzg0ZWI5YTdlNTNjZWtyZWNvcmRlZF9hdBsABllcfGqJjA=="
 }
 ---
@@ -111,7 +111,46 @@ Deferred, blocked on upstream day. Sourcing the compact summary honestly needs a
   "cites": [],
   "rev": "223mtflyaspbf",
   "seq": 5,
-  "of": 6,
+  "of": 8,
   "content": "p2Rib2R5oWtQdWJsaWNhdGlvbqFlbGF5ZXJnR2l0VHJlZWVjaXRlc4BmYXV0aG9yomNkaWR4OWRpZDprZXk6ekRuYWVTZEJick02TmVZNGk4TW94dUZpeUR0d3gzQUhKOGZqRWQ5NGdySDMxcjhYWWVhZ2VudPZnc3ViamVjdKFlTG9jYWx1ZGF5LXN1bW1hcnktaW4tY29zcGFuaWFydGlmYWN0c4GhZkNvbW1pdHgoODhlZGUwYjYzYjllZDk0MTUzZWJmMDlhN2VmZDFhY2MyOTZlNzU3M2l3b3Jrc3BhY2WhaVdvcmtzcGFjZXhAODM1Zjg3YWRlNDBiZGM4ZGYyMmMzYmJkMjc4ZDU3ZTA0MGZhYTA4Y2M2ZTQxNWQ2YmQwMzg0ZWI5YTdlNTNjZWtyZWNvcmRlZF9hdBsABllcfGxUhQ=="
+}
+---
+***8<***
+---
+{
+  "v": 3,
+  "cid": "bafyreifvd4rxximz5wtprlf3622tunklr6hkr4bm545wpjcprdlawkekfi",
+  "sig": "33ed743b74cf483f63a0093e00a324e614ce1d0970a103e28e58d4a1334aaa911b6fea3a20114a2a6af1e1f8fb3ddb3c4d0ea99172c9941a38c135099256af6e",
+  "author": "did:key:zDnaeSdBbrM6NeY4i8MoxuFiyDtwx3AHJ8fjEd94grH31r8XY",
+  "subject": {
+    "local": "day-summary-in-cospan"
+  },
+  "kind": "observation",
+  "cites": [],
+  "rev": "223mtidrnrwqx",
+  "seq": 6,
+  "of": 8,
+  "text_len": 196,
+  "content": "p2Rib2R5oWtPYnNlcnZhdGlvbqFkdGV4dGBlY2l0ZXOAZmF1dGhvcqJjZGlkeDlkaWQ6a2V5OnpEbmFlU2RCYnJNNk5lWTRpOE1veHVGaXlEdHd4M0FISjhmakVkOTRnckgzMXI4WFllYWdlbnT2Z3N1YmplY3ShZUxvY2FsdWRheS1zdW1tYXJ5LWluLWNvc3BhbmlhcnRpZmFjdHOBoWZDb21taXR4KGRmMmM0NjZjYWE3Y2VlMDQxMTRjY2RmZDI5Y2U3YzRkYTViZDdiNTZpd29ya3NwYWNloWlXb3Jrc3BhY2V4QGEyMTMyM2ZjNjk3MjY3YzJjMzY4Nzg1NzU4NjhkNDhlMzkzMmU0MzhkMDc3MDliMGE2ZWJjZjI0ZDJhZGY4ZWZrcmVjb3JkZWRfYXQbAAZZcm878nE="
+}
+---
+
+Upstream unblock tracked: filed kan-tools/day#240 requesting machine-readable day status (--json) for the live atom position + per-witness state this subject needs. When that lands, this unblocks.
+***8<***
+---
+{
+  "v": 3,
+  "cid": "bafyreiecao7roybe3doihyxjgh7473foxgmsna7m7r7lmjci52tccccfge",
+  "sig": "3ab3f916c505bbe7dce29cec60a20799b07cc7a42bf2a06966c284041119daa554986e127da3a8912ede115202b7c5eac7e718f208c4ea71cef94ab1cff1fab1",
+  "author": "did:key:zDnaeSdBbrM6NeY4i8MoxuFiyDtwx3AHJ8fjEd94grH31r8XY",
+  "subject": {
+    "local": "day-summary-in-cospan"
+  },
+  "kind": "publication",
+  "cites": [],
+  "rev": "223mtiewnjxnh",
+  "seq": 7,
+  "of": 8,
+  "content": "p2Rib2R5oWtQdWJsaWNhdGlvbqFlbGF5ZXJnR2l0VHJlZWVjaXRlc4BmYXV0aG9yomNkaWR4OWRpZDprZXk6ekRuYWVTZEJick02TmVZNGk4TW94dUZpeUR0d3gzQUhKOGZqRWQ5NGdySDMxcjhYWWVhZ2VudPZnc3ViamVjdKFlTG9jYWx1ZGF5LXN1bW1hcnktaW4tY29zcGFuaWFydGlmYWN0c4GhZkNvbW1pdHgoZGYyYzQ2NmNhYTdjZWUwNDExNGNjZGZkMjljZTdjNGRhNWJkN2I1Nml3b3Jrc3BhY2WhaVdvcmtzcGFjZXhAYTIxMzIzZmM2OTcyNjdjMmMzNjg3ODU3NTg2OGQ0OGUzOTMyZTQzOGQwNzcwOWIwYTZlYmNmMjRkMmFkZjhlZmtyZWNvcmRlZF9hdBsABllyuTf2Cg=="
 }
 ---

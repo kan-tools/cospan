@@ -7,7 +7,9 @@
 //! re-fold tick, and the fold is rebuilt only when `.kan/log/HEAD` changes
 //! (`telos/poll-dont-subscribe`).
 
+use crate::comments::{self, Comment};
 use crate::substrate::{self, is_day_subject, namespace, short_cid, Claim, Fold, ProcessSnapshot};
+use crate::{Localization, State};
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
@@ -98,14 +100,37 @@ pub struct AppState {
     pub telos_scroll: usize,
     /// Keys of collapsed tree nodes (`sec:<label>` / `path:<prefix>`).
     pub collapsed: HashSet<String>,
+
+    // --- Comments view (P1): a picker over commented files + a live gutter. ---
+    /// Source files that have a sidecar, with their comment count; rebuilt on
+    /// entering the view or on a re-fold.
+    pub comment_files: Vec<(PathBuf, usize)>,
+    /// Index into `comment_files`.
+    pub comment_file_selected: usize,
+    /// Cached content of the selected file (for the gutter render).
+    pub comment_content: String,
+    /// The selected file's comments with their current localization, newest gate.
+    pub comment_localized: Vec<(Comment, Localization)>,
+    /// The repo-relative path whose content is currently loaded into
+    /// `comment_content`/`comment_localized` — distinct from the *selected* file,
+    /// so a re-read is forced whenever they differ (and a missing source is not
+    /// confused with "not yet loaded").
+    pub comment_loaded: Option<PathBuf>,
+    /// The loaded file's last-seen mtime — the same-file content-change gate.
+    pub comment_mtime: Option<SystemTime>,
+    /// Cursor over the selected file's comments.
+    pub comment_selected: usize,
+    /// Scroll offset into the file-content pane.
+    pub comment_scroll: usize,
 }
 
-/// The top-level views, switched with `1`/`2`/`3` or `Tab`.
+/// The top-level views, switched with `1`/`2`/`3`/`4` or `Tab`.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum View {
     Browser,
     Atoms,
     Telos,
+    Comments,
 }
 
 impl View {
@@ -113,7 +138,8 @@ impl View {
         match self {
             View::Browser => View::Atoms,
             View::Atoms => View::Telos,
-            View::Telos => View::Browser,
+            View::Telos => View::Comments,
+            View::Comments => View::Browser,
         }
     }
 
@@ -122,6 +148,7 @@ impl View {
             '1' => Some(View::Browser),
             '2' => Some(View::Atoms),
             '3' => Some(View::Telos),
+            '4' => Some(View::Comments),
             _ => None,
         }
     }
@@ -170,9 +197,18 @@ impl AppState {
             atom_scroll: 0,
             telos_scroll: 0,
             collapsed: HashSet::new(),
+            comment_files: Vec::new(),
+            comment_file_selected: 0,
+            comment_content: String::new(),
+            comment_localized: Vec::new(),
+            comment_loaded: None,
+            comment_mtime: None,
+            comment_selected: 0,
+            comment_scroll: 0,
         };
         s.rebuild_rows();
         s.selected = s.first_subject_index().unwrap_or(0);
+        s.comment_files = commented_files(&s.repo);
         s
     }
 
@@ -378,6 +414,191 @@ impl AppState {
             .unwrap_or(0)
             .min(self.rows.len().saturating_sub(1));
     }
+
+    /// Re-scan the sidecar tree for commented files. Called on entering the
+    /// Comments view so newly-commented files appear.
+    pub fn reload_comment_files(&mut self) {
+        self.comment_files = commented_files(&self.repo);
+        self.comment_file_selected = self
+            .comment_file_selected
+            .min(self.comment_files.len().saturating_sub(1));
+    }
+
+    /// Refresh the selected file's comment localizations. Re-reads when the
+    /// selected file differs from the loaded one (first open / file switch) or its
+    /// content changed since last tick; otherwise a single `stat` and early
+    /// return, so an unchanged file triggers no re-read or `save`
+    /// (`telos/poll-dont-subscribe`). A missing source reads as empty, so its
+    /// comments localize to `Unresolvable` and reach the resolve-by-hand list
+    /// rather than leaving another file's content on screen (`honest-ambiguity`).
+    pub fn refresh_comments(&mut self) {
+        if self.comment_files.is_empty() {
+            self.comment_content.clear();
+            self.comment_localized.clear();
+            self.comment_loaded = None;
+            self.comment_mtime = None;
+            return;
+        }
+        self.comment_file_selected = self.comment_file_selected.min(self.comment_files.len() - 1);
+        let rel = self.comment_files[self.comment_file_selected].0.clone();
+        let src = self.repo.join(&rel);
+        let mtime = std::fs::metadata(&src).ok().and_then(|m| m.modified().ok());
+        let already_loaded = self.comment_loaded.as_deref() == Some(rel.as_path());
+        // Reload on a different file, or a same-file content change. `comment_mtime`
+        // only gates the *same* file, so a missing source's `None` mtime can never
+        // masquerade as "already current".
+        if already_loaded && !should_refold(self.comment_mtime, mtime) {
+            return;
+        }
+        let content = std::fs::read_to_string(&src).unwrap_or_default();
+        let sidecar = self
+            .repo
+            .join(comments::sidecar_path(&rel.to_string_lossy()));
+        let mut cs = comments::load(&sidecar).unwrap_or_default();
+        let localized: Vec<(Comment, Localization)> = cs
+            .iter_mut()
+            .map(|c| {
+                let loc = comments::localize_and_update(c, &content);
+                (c.clone(), loc)
+            })
+            .collect();
+        // Persist the re-anchored last-seen state, like `cospan comments`.
+        let _ = comments::save(&sidecar, &cs);
+        self.comment_content = content;
+        self.comment_localized = localized;
+        self.comment_loaded = Some(rel);
+        self.comment_mtime = mtime;
+        self.comment_selected = self
+            .comment_selected
+            .min(self.comment_localized.len().saturating_sub(1));
+    }
+
+    /// Move the comment cursor and scroll the content pane to its anchored line.
+    pub fn select_comment(&mut self, delta: isize) {
+        let n = self.comment_localized.len();
+        if n == 0 {
+            return;
+        }
+        self.comment_selected =
+            (self.comment_selected as isize + delta).clamp(0, n as isize - 1) as usize;
+        if let Some((start, _)) = self.comment_localized[self.comment_selected].1.span {
+            self.comment_scroll = start;
+        }
+    }
+
+    /// Switch the selected commented file, resetting the per-file re-read gate.
+    pub fn select_comment_file(&mut self, delta: isize) {
+        let n = self.comment_files.len();
+        if n == 0 {
+            return;
+        }
+        self.comment_file_selected =
+            (self.comment_file_selected as isize + delta).clamp(0, n as isize - 1) as usize;
+        self.comment_selected = 0;
+        self.comment_scroll = 0;
+        // The next `refresh_comments` re-reads because the selected file now
+        // differs from `comment_loaded`; no sentinel reset needed.
+    }
+}
+
+/// Discover source files that have a comment sidecar, with their comment count,
+/// by walking `.cospan/comments`. Repo-relative source paths, sorted.
+pub fn commented_files(repo: &Path) -> Vec<(PathBuf, usize)> {
+    let base = repo.join(".cospan/comments");
+    let mut out = Vec::new();
+    collect_sidecars(&base, &base, &mut out);
+    out.sort_by(|a, b| a.0.cmp(&b.0));
+    out
+}
+
+fn collect_sidecars(base: &Path, dir: &Path, out: &mut Vec<(PathBuf, usize)>) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for e in entries.flatten() {
+        let p = e.path();
+        // `file_type()` does not follow symlinks, so a symlinked directory is not
+        // recursed into — no cycle can blow the stack under this ephemeral tree.
+        let is_dir = e.file_type().map(|t| t.is_dir()).unwrap_or(false);
+        if is_dir {
+            collect_sidecars(base, &p, out);
+        } else if p.extension().is_some_and(|x| x == "jsonl") {
+            // The source path is the sidecar's path under `base`, minus `.jsonl`.
+            if let Ok(rel) = p.strip_prefix(base) {
+                let s = rel.to_string_lossy();
+                let src = PathBuf::from(s.strip_suffix(".jsonl").unwrap_or(&s));
+                let count = comments::load(&p).map(|v| v.len()).unwrap_or(0);
+                out.push((src, count));
+            }
+        }
+    }
+}
+
+/// A foreground style per re-localizer state, from the ANSI-16 palette.
+fn state_style(state: State) -> ratatui::style::Style {
+    use ratatui::style::{Color, Style};
+    match state {
+        State::Anchored => Style::new().fg(Color::Green),
+        State::Drifted => Style::new().fg(Color::Yellow),
+        State::Unresolvable => Style::new().fg(Color::Red),
+    }
+}
+
+/// Build the Comments content pane: each source line prefixed by a gutter marker
+/// for any comment anchored on it (styled by state; the selected comment
+/// highlighted), and the `Unresolvable` comments (span `None`) returned
+/// separately since they cannot be placed on a line (`telos/honest-ambiguity`).
+pub fn gutter_lines<'a>(
+    content: &str,
+    localized: &'a [(Comment, Localization)],
+    selected: usize,
+) -> (Vec<ratatui::text::Line<'static>>, Vec<&'a Comment>) {
+    use ratatui::style::{Modifier, Style};
+    use ratatui::text::{Line, Span};
+    let unresolved: Vec<&Comment> = localized
+        .iter()
+        .filter(|(_, loc)| loc.span.is_none())
+        .map(|(c, _)| c)
+        .collect();
+    let num_w = content.lines().count().max(1).to_string().len();
+    let lines = content
+        .lines()
+        .enumerate()
+        .map(|(i, text)| {
+            let covers = |loc: &Localization| loc.span.is_some_and(|(s, e)| i >= s && i <= e);
+            // Prefer the selected comment when it covers this line, so its marker
+            // (not an overlapping neighbour's) carries the highlight.
+            let hit = localized
+                .get(selected)
+                .filter(|(_, loc)| covers(loc))
+                .map(|c| (selected, c))
+                .or_else(|| {
+                    localized
+                        .iter()
+                        .enumerate()
+                        .find(|(_, (_, loc))| covers(loc))
+                });
+            let (marker, style) = match hit {
+                Some((idx, (_, loc))) => {
+                    let mut st = state_style(loc.state);
+                    if idx == selected {
+                        st = st.add_modifier(Modifier::REVERSED);
+                    }
+                    ("●", st)
+                }
+                None => (" ", Style::new()),
+            };
+            Line::from(vec![
+                Span::styled(marker.to_string(), style),
+                Span::styled(
+                    format!(" {:>num_w$} ", i + 1),
+                    Style::new().add_modifier(Modifier::DIM),
+                ),
+                Span::raw(text.to_string()),
+            ])
+        })
+        .collect();
+    (lines, unresolved)
 }
 
 /// Clip `text` to `max` display lines, appending an explicit overflow cue when
@@ -663,6 +884,10 @@ pub fn run(repo: PathBuf) -> std::io::Result<()> {
             let fresh = substrate::fold(&state.repo);
             state.refold(fresh, now);
         }
+        // Second gate, same tick: re-localize the Comments view's file on change.
+        if state.view == View::Comments {
+            state.refresh_comments();
+        }
 
         if let Err(e) = terminal.draw(|frame| draw(frame, &state)) {
             break Err(e);
@@ -675,12 +900,27 @@ pub fn run(repo: PathBuf) -> std::io::Result<()> {
                     KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                         break Ok(())
                     }
-                    KeyCode::Char(d @ '1'..='3') => {
+                    KeyCode::Char(d @ '1'..='4') => {
                         if let Some(v) = View::from_digit(d) {
                             state.view = v;
+                            if v == View::Comments {
+                                state.reload_comment_files();
+                            }
                         }
                     }
-                    KeyCode::Tab => state.view = state.view.next(),
+                    KeyCode::Tab => {
+                        state.view = state.view.next();
+                        if state.view == View::Comments {
+                            state.reload_comment_files();
+                        }
+                    }
+                    // Switch commented file in the Comments view.
+                    KeyCode::Char('[') if state.view == View::Comments => {
+                        state.select_comment_file(-1)
+                    }
+                    KeyCode::Char(']') if state.view == View::Comments => {
+                        state.select_comment_file(1)
+                    }
                     KeyCode::Char('j') | KeyCode::Down => match state.view {
                         View::Browser => state.move_down(),
                         View::Atoms => {
@@ -695,11 +935,13 @@ pub fn run(repo: PathBuf) -> std::io::Result<()> {
                                 .saturating_sub(1);
                             state.telos_scroll = (state.telos_scroll + 1).min(max);
                         }
+                        View::Comments => state.select_comment(1),
                     },
                     KeyCode::Char('k') | KeyCode::Up => match state.view {
                         View::Browser => state.move_up(),
                         View::Atoms => state.atom_scroll = state.atom_scroll.saturating_sub(1),
                         View::Telos => state.telos_scroll = state.telos_scroll.saturating_sub(1),
+                        View::Comments => state.select_comment(-1),
                     },
                     KeyCode::Enter if state.view == View::Browser => {
                         if state.focus == Focus::Subjects {
@@ -768,6 +1010,7 @@ fn draw(frame: &mut ratatui::Frame, state: &AppState) {
         View::Browser => draw_browser(frame, state, area.width, body),
         View::Atoms => draw_atoms(frame, state, body),
         View::Telos => draw_telos(frame, state, body),
+        View::Comments => draw_comments(frame, state, area.width, body),
     }
 }
 
@@ -780,11 +1023,119 @@ fn view_header(view: View) -> String {
         }
     };
     format!(
-        "cospan  {}{}{}  · Tab switch · q quit",
+        "cospan  {}{}{}{}  · Tab switch · q quit",
         tab(View::Browser, "1 browser"),
         tab(View::Atoms, "2 atoms"),
         tab(View::Telos, "3 telos"),
+        tab(View::Comments, "4 comments"),
     )
+}
+
+fn draw_comments(
+    frame: &mut ratatui::Frame,
+    state: &AppState,
+    width: u16,
+    body: ratatui::layout::Rect,
+) {
+    use ratatui::layout::{Constraint, Layout};
+    use ratatui::style::{Modifier, Style};
+    use ratatui::text::{Line, Span};
+    use ratatui::widgets::{Block, List, ListItem, ListState, Paragraph, Wrap};
+
+    if state.comment_files.is_empty() {
+        frame.render_widget(
+            Paragraph::new(
+                "no comments yet — drop one with `cospan comment add <file> --line <N> <body>`",
+            )
+            .block(Block::bordered().title(" comments ")),
+            body,
+        );
+        return;
+    }
+
+    // Wide: a commented-files rail beside the content pane; narrow: content only.
+    let (files_area, main_area) = match layout_mode(width) {
+        Fit::Wide => {
+            let [l, r] =
+                Layout::horizontal([Constraint::Percentage(32), Constraint::Percentage(68)])
+                    .areas(body);
+            (Some(l), r)
+        }
+        Fit::Narrow => (None, body),
+    };
+
+    if let Some(area) = files_area {
+        let items: Vec<ListItem> = state
+            .comment_files
+            .iter()
+            .map(|(p, n)| ListItem::new(format!("{} ({n})", p.to_string_lossy())))
+            .collect();
+        let mut ls = ListState::default();
+        ls.select(Some(state.comment_file_selected));
+        frame.render_stateful_widget(
+            List::new(items)
+                .block(Block::bordered().title(format!(" files · {} ", state.comment_files.len())))
+                .highlight_style(Style::new().add_modifier(Modifier::REVERSED))
+                .highlight_symbol("> "),
+            area,
+            &mut ls,
+        );
+    }
+
+    let [content_area, strip_area] =
+        Layout::vertical([Constraint::Min(3), Constraint::Length(6)]).areas(main_area);
+
+    let (lines, unresolved) = gutter_lines(
+        &state.comment_content,
+        &state.comment_localized,
+        state.comment_selected,
+    );
+    let scroll = state.comment_scroll.min(lines.len().saturating_sub(1));
+    let file_title = state
+        .comment_files
+        .get(state.comment_file_selected)
+        .map(|(p, _)| p.to_string_lossy().to_string())
+        .unwrap_or_default();
+    frame.render_widget(
+        Paragraph::new(lines[scroll..].to_vec())
+            .block(Block::bordered().title(format!(" {file_title} · [ ] switch file "))),
+        content_area,
+    );
+
+    // Strip: the selected comment's detail, then the unresolvable list.
+    let mut strip: Vec<Line> = Vec::new();
+    if let Some((c, loc)) = state.comment_localized.get(state.comment_selected) {
+        let at = loc
+            .span
+            .map(|(s, _)| format!("line {}", s + 1))
+            .unwrap_or_else(|| "unplaced".into());
+        strip.push(Line::from(vec![
+            Span::styled(format!("{:?}", loc.state), state_style(loc.state)),
+            Span::raw(format!(
+                "  {at}  conf {:.2}  @{}",
+                loc.confidence, c.author.id
+            )),
+        ]));
+        strip.push(Line::from(c.body.clone()));
+    }
+    if !unresolved.is_empty() {
+        strip.push(Line::from(Span::styled(
+            format!("unresolvable ({}) — replace by hand:", unresolved.len()),
+            state_style(State::Unresolvable),
+        )));
+        for c in unresolved.iter().take(3) {
+            strip.push(Line::from(format!(
+                "  · {}",
+                c.body.lines().next().unwrap_or("")
+            )));
+        }
+    }
+    frame.render_widget(
+        Paragraph::new(strip)
+            .block(Block::bordered().title(" comment "))
+            .wrap(Wrap { trim: false }),
+        strip_area,
+    );
 }
 
 fn draw_browser(
@@ -858,7 +1209,7 @@ pub fn process_view_lines(p: &ProcessSnapshot, view: View) -> Vec<String> {
                 lines.push("(no teloi declared)".to_string());
             }
         }
-        View::Browser => {} // never routes here
+        View::Browser | View::Comments => {} // never route here
     }
     lines
 }
@@ -1445,11 +1796,193 @@ mod tests {
     fn view_selector_cycles_and_maps_digits() {
         assert_eq!(View::Browser.next(), View::Atoms);
         assert_eq!(View::Atoms.next(), View::Telos);
-        assert_eq!(View::Telos.next(), View::Browser);
+        assert_eq!(View::Telos.next(), View::Comments);
+        assert_eq!(View::Comments.next(), View::Browser);
         assert_eq!(View::from_digit('1'), Some(View::Browser));
         assert_eq!(View::from_digit('2'), Some(View::Atoms));
         assert_eq!(View::from_digit('3'), Some(View::Telos));
+        assert_eq!(View::from_digit('4'), Some(View::Comments));
         assert_eq!(View::from_digit('9'), None);
+        // (AC-1) the Comments tab is labeled in the header.
+        assert!(view_header(View::Comments).contains("4 comments"));
+    }
+
+    // --- Comments view (P1) ---------------------------------------------------
+
+    fn comments_tmp(tag: &str) -> PathBuf {
+        let d = std::env::temp_dir().join(format!("cospan-tui-{}-{}", std::process::id(), tag));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        d
+    }
+
+    fn write_sidecar(repo: &Path, src_rel: &str, comments: &[crate::comments::Comment]) {
+        let path = repo.join(crate::comments::sidecar_path(src_rel));
+        crate::comments::save(&path, comments).unwrap();
+    }
+
+    fn mk_comment(content: &str, line0: usize, body: &str) -> crate::comments::Comment {
+        crate::comments::Comment {
+            id: format!("c_{body}"),
+            anchor: crate::comments::StoredAnchor::capture(content, line0, 2),
+            body: body.into(),
+            author: crate::comments::Author {
+                who: "human".into(),
+                id: "tester".into(),
+            },
+            created_at: 0,
+            resolved: false,
+        }
+    }
+
+    #[test]
+    fn commented_files_discovers_only_files_with_a_sidecar() {
+        // (AC-2) two commented files, one un-commented; discovery returns the two.
+        let repo = comments_tmp("discover");
+        let content = "fn a() {}\nfn b() {}\n";
+        write_sidecar(&repo, "src/a.rs", &[mk_comment(content, 0, "one")]);
+        write_sidecar(
+            &repo,
+            "src/b.rs",
+            &[
+                mk_comment(content, 0, "two"),
+                mk_comment(content, 1, "three"),
+            ],
+        );
+        // A plain source file with no sidecar must not appear.
+        std::fs::write(repo.join("README.md"), "hi").unwrap();
+
+        let found = commented_files(&repo);
+        assert_eq!(
+            found,
+            vec![
+                (PathBuf::from("src/a.rs"), 1),
+                (PathBuf::from("src/b.rs"), 2),
+            ]
+        );
+    }
+
+    #[test]
+    fn gutter_lines_marks_anchored_lines_and_lists_unresolvable() {
+        // (AC-3, AC-5) an Anchored comment marks its line; an Unresolvable one
+        // (span None) is returned in the list, never placed on a line.
+        let content = "one\ntwo\nthree\n";
+        let localized = vec![
+            (
+                mk_comment(content, 1, "on two"),
+                Localization {
+                    state: State::Anchored,
+                    span: Some((1, 1)),
+                    confidence: 1.0,
+                },
+            ),
+            (
+                mk_comment(content, 0, "lost"),
+                Localization {
+                    state: State::Unresolvable,
+                    span: None,
+                    confidence: 0.0,
+                },
+            ),
+        ];
+        let (lines, unresolved) = gutter_lines(content, &localized, 0);
+        assert_eq!(lines.len(), 3);
+        // Line index 1 (the anchored one) carries the ● marker; the others a space.
+        let marker = |i: usize| lines[i].spans[0].content.to_string();
+        assert_eq!(marker(1), "●");
+        assert_eq!(marker(0), " ");
+        assert_eq!(marker(2), " ");
+        // The unresolvable comment is surfaced separately, not on any line.
+        assert_eq!(unresolved.len(), 1);
+        assert_eq!(unresolved[0].body, "lost");
+    }
+
+    #[test]
+    fn a_comment_relocalizes_to_the_moved_line() {
+        // (AC-4) anchor on a line, then feed content where it moved; the recomputed
+        // localization reports the new span rather than the stale stored line.
+        let before = "alpha\ntarget line\nbeta\n";
+        let mut c = mk_comment(before, 1, "on target");
+        let after = "new header\nanother\nalpha\ntarget line\nbeta\n";
+        let loc = crate::comments::localize_and_update(&mut c, after);
+        assert_ne!(loc.state, State::Unresolvable);
+        assert_eq!(loc.span, Some((3, 3))); // moved from line 2 to line 4 (0-based 3)
+    }
+
+    #[test]
+    fn refresh_comments_is_safe_with_no_commented_files() {
+        // (AC-5) the per-file refresh no-ops cleanly when nothing is commented.
+        let mut a = app(&["telos/a"]);
+        a.comment_files.clear();
+        a.refresh_comments();
+        assert!(a.comment_localized.is_empty());
+        assert!(a.comment_content.is_empty());
+    }
+
+    #[test]
+    fn refresh_comments_loads_the_selected_file() {
+        // (AC-4/AC-5 happy path) the selected file's content + localizations load.
+        let repo = comments_tmp("load-view");
+        let content = "fn a() {}\nfn b() {}\n";
+        std::fs::create_dir_all(repo.join("src")).unwrap();
+        std::fs::write(repo.join("src/a.rs"), content).unwrap();
+        write_sidecar(&repo, "src/a.rs", &[mk_comment(content, 1, "on b")]);
+
+        let mut a = AppState::new(repo, fold_of(&[]), None);
+        a.refresh_comments();
+        assert_eq!(a.comment_content, content);
+        assert_eq!(a.comment_localized.len(), 1);
+        assert_eq!(a.comment_localized[0].1.state, State::Anchored);
+        assert_eq!(a.comment_loaded.as_deref(), Some(Path::new("src/a.rs")));
+    }
+
+    #[test]
+    fn selecting_a_deleted_source_clears_content_and_lists_its_comments() {
+        // The BLOCK regression: a commented file whose source was deleted must not
+        // leave the previous file's content on screen; its comments become
+        // Unresolvable and reach the resolve-by-hand list (honest-ambiguity).
+        let repo = comments_tmp("deleted-src");
+        let content = "one\ntwo\nthree\n";
+        std::fs::create_dir_all(repo.join("src")).unwrap();
+        std::fs::write(repo.join("src/real.rs"), content).unwrap();
+        write_sidecar(&repo, "src/real.rs", &[mk_comment(content, 0, "real")]);
+        // A sidecar whose source file does NOT exist.
+        write_sidecar(
+            &repo,
+            "src/gone.rs",
+            &[
+                mk_comment(content, 0, "gone-a"),
+                mk_comment(content, 1, "gone-b"),
+            ],
+        );
+
+        // Files sort as [src/gone.rs, src/real.rs]; load real first.
+        let mut a = AppState::new(repo, fold_of(&[]), None);
+        a.comment_file_selected = 1;
+        a.refresh_comments();
+        assert_eq!(a.comment_content, content);
+
+        // Switch to the deleted-source file and refresh.
+        a.select_comment_file(-1);
+        a.refresh_comments();
+        assert!(
+            a.comment_content.is_empty(),
+            "stale content from the previous file leaked: {:?}",
+            a.comment_content
+        );
+        assert_eq!(a.comment_loaded.as_deref(), Some(Path::new("src/gone.rs")));
+        assert_eq!(a.comment_localized.len(), 2);
+        assert!(
+            a.comment_localized
+                .iter()
+                .all(|(_, loc)| loc.state == State::Unresolvable),
+            "a deleted-source comment should be Unresolvable"
+        );
+        // gutter_lines surfaces them in the resolve-by-hand list, on no line.
+        let (lines, unresolved) =
+            gutter_lines(&a.comment_content, &a.comment_localized, a.comment_selected);
+        assert!(lines.is_empty());
+        assert_eq!(unresolved.len(), 2);
     }
 
     #[test]
