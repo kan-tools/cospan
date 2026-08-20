@@ -1077,6 +1077,136 @@ fn view_header(view: View) -> String {
     )
 }
 
+/// Greedy word-wrap of `s` to width `w`, splitting on the text's own newlines
+/// first. A single over-long word is left intact (the terminal clips it); always
+/// returns at least one line.
+pub fn wrap_text(s: &str, w: usize) -> Vec<String> {
+    if w == 0 {
+        return vec![s.to_string()];
+    }
+    let mut out = Vec::new();
+    for para in s.split('\n') {
+        let mut line = String::new();
+        for word in para.split_whitespace() {
+            if line.is_empty() {
+                line = word.to_string();
+            } else if line.chars().count() + 1 + word.chars().count() <= w {
+                line.push(' ');
+                line.push_str(word);
+            } else {
+                out.push(std::mem::take(&mut line));
+                line = word.to_string();
+            }
+        }
+        out.push(line);
+    }
+    if out.is_empty() {
+        out.push(String::new());
+    }
+    out
+}
+
+/// A compact note for the comment column: a state-colored header (`● @author ·
+/// STATE`, `[resolved]` when resolved), the body word-wrapped to `w` and capped
+/// (trailing `…` when longer), and a `+N replies` line. The full body and thread
+/// stay in the strip, so this reads at a glance.
+pub fn note_block(
+    c: &Comment,
+    loc: &Localization,
+    w: usize,
+    selected: bool,
+) -> Vec<ratatui::text::Line<'static>> {
+    use ratatui::style::{Modifier, Style};
+    use ratatui::text::{Line, Span};
+    const BODY_CAP: usize = 3;
+    let mut label = format!("@{} · {:?}", c.author.id, loc.state);
+    if c.resolved {
+        label.push_str(" [resolved]");
+    }
+    let header_style = if selected {
+        Style::new().add_modifier(Modifier::REVERSED)
+    } else {
+        Style::new()
+    };
+    let mut lines = vec![Line::from(vec![
+        Span::styled("● ", state_style(loc.state)),
+        Span::styled(label, header_style),
+    ])];
+
+    let mut body = wrap_text(&c.body, w.saturating_sub(2));
+    let truncated = body.len() > BODY_CAP;
+    body.truncate(BODY_CAP);
+    if truncated {
+        if let Some(last) = body.last_mut() {
+            last.push('…');
+        }
+    }
+    for b in body {
+        lines.push(Line::from(format!("  {b}")));
+    }
+    if !c.thread.is_empty() {
+        let n = c.thread.len();
+        lines.push(Line::from(Span::styled(
+            format!("  +{n} repl{}", if n == 1 { "y" } else { "ies" }),
+            Style::new().add_modifier(Modifier::DIM),
+        )));
+    }
+    lines
+}
+
+/// Pair each code line with a right-column note cell, reflowing the code down so a
+/// multi-line note never overlaps code or another note. `notes` is
+/// `(localized_index, start_line, note_lines)`, sorted by `start_line`. Returns
+/// the paired `(left, right)` rows and, per note, `(localized_index, first_row)`
+/// so the caller can scroll to a selected comment.
+#[allow(clippy::type_complexity)]
+pub fn reflow_rows(
+    code_lines: Vec<ratatui::text::Line<'static>>,
+    notes: &[(usize, usize, Vec<ratatui::text::Line<'static>>)],
+) -> (
+    Vec<(ratatui::text::Line<'static>, ratatui::text::Line<'static>)>,
+    Vec<(usize, usize)>,
+) {
+    use ratatui::text::Line;
+    let blank = || Line::from("");
+    let mut rows: Vec<(Line, Line)> = Vec::new();
+    let mut note_rows: Vec<(usize, usize)> = Vec::new();
+    let mut ni = 0;
+    for (i, code) in code_lines.into_iter().enumerate() {
+        rows.push((code, blank()));
+        let code_row = rows.len() - 1;
+        let mut right_free = true; // the code row's right cell is still empty
+        while ni < notes.len() && notes[ni].1 == i {
+            let (loc_idx, _start, note_lines) = &notes[ni];
+            for (j, nl) in note_lines.iter().enumerate() {
+                if j == 0 && right_free {
+                    rows[code_row].1 = nl.clone();
+                    right_free = false;
+                    note_rows.push((*loc_idx, code_row));
+                } else {
+                    rows.push((blank(), nl.clone()));
+                    if j == 0 {
+                        note_rows.push((*loc_idx, rows.len() - 1));
+                    }
+                }
+            }
+            ni += 1;
+        }
+    }
+    // Any note anchored past the last code line (a shrunk file) still shows.
+    while ni < notes.len() {
+        let (loc_idx, _s, note_lines) = &notes[ni];
+        for (j, nl) in note_lines.iter().enumerate() {
+            rows.push((blank(), nl.clone()));
+            if j == 0 {
+                note_rows.push((*loc_idx, rows.len() - 1));
+            }
+        }
+        ni += 1;
+    }
+    (rows, note_rows)
+}
+
 fn draw_comments(
     frame: &mut ratatui::Frame,
     state: &AppState,
@@ -1134,22 +1264,67 @@ fn draw_comments(
     let [content_area, strip_area] =
         Layout::vertical([Constraint::Min(3), Constraint::Length(6)]).areas(main_area);
 
-    let (lines, unresolved) = gutter_lines(
+    let (code_lines, unresolved) = gutter_lines(
         &state.comment_content,
         &state.comment_localized,
         state.comment_selected,
     );
-    let scroll = state.comment_scroll.min(lines.len().saturating_sub(1));
     let file_title = state
         .comment_files
         .get(state.comment_file_selected)
         .map(|(p, _)| p.to_string_lossy().to_string())
         .unwrap_or_default();
-    frame.render_widget(
-        Paragraph::new(lines[scroll..].to_vec())
-            .block(Block::bordered().title(format!(" {file_title} · ←/→ file "))),
-        content_area,
-    );
+    match layout_mode(width) {
+        Fit::Wide => {
+            // Code column beside a right comment column; the code reflows down so
+            // a multi-line note never overlaps code or a neighbour.
+            let [code_area, note_area] =
+                Layout::horizontal([Constraint::Percentage(58), Constraint::Percentage(42)])
+                    .areas(content_area);
+            let note_w = note_area.width.saturating_sub(2) as usize;
+            let notes: Vec<(usize, usize, Vec<Line>)> = state
+                .comment_localized
+                .iter()
+                .enumerate()
+                .filter_map(|(idx, (c, loc))| {
+                    loc.span.map(|(s, _)| {
+                        (
+                            idx,
+                            s,
+                            note_block(c, loc, note_w, idx == state.comment_selected),
+                        )
+                    })
+                })
+                .collect();
+            let (rows, note_rows) = reflow_rows(code_lines, &notes);
+            // Scroll so the selected comment's note is in view.
+            let sel_row = note_rows
+                .iter()
+                .find(|(idx, _)| *idx == state.comment_selected)
+                .map(|(_, r)| *r)
+                .unwrap_or(0);
+            let scroll = sel_row.min(rows.len().saturating_sub(1));
+            let left: Vec<Line> = rows.iter().skip(scroll).map(|(l, _)| l.clone()).collect();
+            let right: Vec<Line> = rows.iter().skip(scroll).map(|(_, r)| r.clone()).collect();
+            frame.render_widget(
+                Paragraph::new(left)
+                    .block(Block::bordered().title(format!(" {file_title} · ←/→ file "))),
+                code_area,
+            );
+            frame.render_widget(
+                Paragraph::new(right).block(Block::bordered().title(" comments ")),
+                note_area,
+            );
+        }
+        Fit::Narrow => {
+            let scroll = state.comment_scroll.min(code_lines.len().saturating_sub(1));
+            frame.render_widget(
+                Paragraph::new(code_lines[scroll..].to_vec())
+                    .block(Block::bordered().title(format!(" {file_title} · ←/→ file "))),
+                content_area,
+            );
+        }
+    }
 
     // Strip: the selected comment's full thread, then the unresolvable list.
     let mut strip: Vec<Line> = Vec::new();
@@ -1972,6 +2147,105 @@ mod tests {
         assert_eq!(marker(0), " ");
         assert_eq!(marker(2), " ");
         // The unresolvable comment is surfaced separately, not on any line.
+        assert_eq!(unresolved.len(), 1);
+        assert_eq!(unresolved[0].body, "lost");
+    }
+
+    #[test]
+    fn wrap_text_wraps_and_keeps_long_words_intact() {
+        // (AC-1)
+        let w = wrap_text("the quick brown fox jumps", 9);
+        assert!(w.iter().all(|l| l.chars().count() <= 9), "{w:?}");
+        assert!(w.len() >= 2, "{w:?}");
+        assert_eq!(wrap_text("", 5), vec![""]);
+        let long = wrap_text("superlongword ok", 4);
+        assert!(long.iter().any(|l| l == "superlongword"), "{long:?}");
+    }
+
+    fn line_text(l: &ratatui::text::Line) -> String {
+        l.spans.iter().map(|s| s.content.as_ref()).collect()
+    }
+
+    #[test]
+    fn note_block_shows_header_body_resolved_and_reply_count() {
+        // (AC-2)
+        let content = "a\nb\n";
+        let mut c = mk_comment(content, 0, "this body wraps across several lines here yes");
+        c.resolved = true;
+        c.thread.push(crate::comments::Reply {
+            author: crate::comments::Author {
+                who: "agent".into(),
+                id: "claude".into(),
+            },
+            body: "r".into(),
+            created_at: 1,
+        });
+        let loc = Localization {
+            state: State::Drifted,
+            span: Some((0, 0)),
+            confidence: 0.8,
+        };
+        let lines = note_block(&c, &loc, 12, false);
+        let joined = lines.iter().map(line_text).collect::<Vec<_>>().join("\n");
+        assert!(joined.contains("@tester"), "{joined}");
+        assert!(joined.contains("Drifted"), "{joined}");
+        assert!(joined.contains("[resolved]"), "{joined}");
+        assert!(joined.contains("+1 reply"), "{joined}");
+        assert!(
+            joined.contains("wraps"),
+            "wrapped body text missing: {joined}"
+        );
+        assert!(lines.len() >= 3, "header + body + reply expected: {joined}");
+    }
+
+    #[test]
+    fn reflow_pushes_code_down_for_a_multiline_note() {
+        // (AC-3) a height-3 note at code line 1 shifts code line 2 down by two rows.
+        use ratatui::text::Line;
+        let code: Vec<Line> = ["l0", "l1", "l2", "l3"]
+            .iter()
+            .map(|s| Line::from(s.to_string()))
+            .collect();
+        let note = vec![Line::from("n0"), Line::from("n1"), Line::from("n2")];
+        let (rows, note_rows) = reflow_rows(code, &[(0usize, 1usize, note)]);
+        assert_eq!(rows.len(), 6);
+        assert_eq!(line_text(&rows[1].0), "l1");
+        assert_eq!(line_text(&rows[1].1), "n0"); // note's first line beside l1
+        assert_eq!(line_text(&rows[2].0), ""); // reflow: code paused
+        assert_eq!(line_text(&rows[2].1), "n1");
+        assert_eq!(line_text(&rows[4].0), "l2"); // l2 pushed from row 2 to row 4
+        assert_eq!(note_rows, vec![(0, 1)]); // note (loc idx 0) starts at row 1
+    }
+
+    #[test]
+    fn unresolvable_comment_makes_no_note_but_stays_listed() {
+        // (AC-4) span None -> no note in the column; still in the unresolvable list.
+        let content = "one\ntwo\n";
+        let localized = vec![
+            (
+                mk_comment(content, 0, "anchored"),
+                Localization {
+                    state: State::Anchored,
+                    span: Some((0, 0)),
+                    confidence: 1.0,
+                },
+            ),
+            (
+                mk_comment(content, 0, "lost"),
+                Localization {
+                    state: State::Unresolvable,
+                    span: None,
+                    confidence: 0.0,
+                },
+            ),
+        ];
+        let notes: Vec<(usize, usize)> = localized
+            .iter()
+            .enumerate()
+            .filter_map(|(i, (_, loc))| loc.span.map(|(s, _)| (i, s)))
+            .collect();
+        assert_eq!(notes, vec![(0, 0)]); // only the anchored one
+        let (_lines, unresolved) = gutter_lines(content, &localized, 0);
         assert_eq!(unresolved.len(), 1);
         assert_eq!(unresolved[0].body, "lost");
     }
