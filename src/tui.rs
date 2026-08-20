@@ -954,11 +954,12 @@ pub fn run(repo: PathBuf) -> std::io::Result<()> {
                             state.reload_comment_files();
                         }
                     }
-                    // Switch commented file in the Comments view.
-                    KeyCode::Char('[') if state.view == View::Comments => {
+                    // Switch commented file in the Comments view: ←/→ (the
+                    // discoverable default) or [ / ].
+                    KeyCode::Char('[') | KeyCode::Left if state.view == View::Comments => {
                         state.select_comment_file(-1)
                     }
-                    KeyCode::Char(']') if state.view == View::Comments => {
+                    KeyCode::Char(']') | KeyCode::Right if state.view == View::Comments => {
                         state.select_comment_file(1)
                     }
                     KeyCode::Char('j') | KeyCode::Down => match state.view {
@@ -1062,8 +1063,13 @@ fn view_header(view: View) -> String {
             format!(" {label} ")
         }
     };
+    // A per-view key legend so navigation is discoverable without reading source.
+    let keys = match view {
+        View::Comments => "· ←→ file · j/k comment ",
+        _ => "",
+    };
     format!(
-        "cospan  {}{}{}{}  · Tab switch · q quit",
+        "cospan  {}{}{}{}  {keys}· Tab switch · q quit",
         tab(View::Browser, "1 browser"),
         tab(View::Atoms, "2 atoms"),
         tab(View::Telos, "3 telos"),
@@ -1114,7 +1120,10 @@ fn draw_comments(
         ls.select(Some(state.comment_file_selected));
         frame.render_stateful_widget(
             List::new(items)
-                .block(Block::bordered().title(format!(" files · {} ", state.comment_files.len())))
+                .block(
+                    Block::bordered()
+                        .title(format!(" files · {} · ←/→ ", state.comment_files.len())),
+                )
                 .highlight_style(Style::new().add_modifier(Modifier::REVERSED))
                 .highlight_symbol("> "),
             area,
@@ -1138,7 +1147,7 @@ fn draw_comments(
         .unwrap_or_default();
     frame.render_widget(
         Paragraph::new(lines[scroll..].to_vec())
-            .block(Block::bordered().title(format!(" {file_title} · [ ] switch file "))),
+            .block(Block::bordered().title(format!(" {file_title} · ←/→ file "))),
         content_area,
     );
 
@@ -1845,6 +1854,35 @@ mod tests {
         assert_eq!(View::from_digit('9'), None);
         // (AC-1) the Comments tab is labeled in the header.
         assert!(view_header(View::Comments).contains("4 comments"));
+    }
+
+    #[test]
+    fn comments_header_shows_the_navigation_legend() {
+        // (AC-1) the file-switch and comment-move keys are visible in the header.
+        let h = view_header(View::Comments);
+        assert!(h.contains("←→ file"), "no file-switch hint: {h}");
+        assert!(h.contains("j/k comment"), "no comment-move hint: {h}");
+        // Other views do not carry the comment-move hint.
+        assert!(!view_header(View::Browser).contains("j/k comment"));
+    }
+
+    #[test]
+    fn select_comment_file_moves_and_clamps() {
+        // (AC-2) the action ←/→ (and [ ]) invoke: ±1, clamped at both ends.
+        let mut a = app(&["telos/a"]);
+        a.comment_files = vec![
+            (PathBuf::from("a.rs"), 1),
+            (PathBuf::from("b.rs"), 1),
+            (PathBuf::from("c.rs"), 1),
+        ];
+        a.comment_file_selected = 0;
+        a.select_comment_file(-1); // clamps at the first
+        assert_eq!(a.comment_file_selected, 0);
+        a.select_comment_file(1);
+        a.select_comment_file(1);
+        assert_eq!(a.comment_file_selected, 2);
+        a.select_comment_file(1); // clamps at the last
+        assert_eq!(a.comment_file_selected, 2);
     }
 
     // --- Comments view (P1) ---------------------------------------------------
