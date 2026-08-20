@@ -118,6 +118,9 @@ content + sidecar), and the sidecar re-anchor is cospan's designed behavior.
   file browser; the flagship demo is viewing existing comments live.
 - RQ-3: Live re-read uses a second per-file mtime gate inside the single existing
   tick, not a new watch loop or thread (`telos/poll-dont-subscribe`).
+- RQ-4: The comment cursor orders comments by their anchored line (top to bottom),
+  not sidecar/creation order, so `j`/`k` (down/up) follow the file's vertical
+  layout; `Unresolvable` comments (no line) sort last, stably.
 
 ## Open Questions
 

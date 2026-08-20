@@ -455,13 +455,16 @@ impl AppState {
             .repo
             .join(comments::sidecar_path(&rel.to_string_lossy()));
         let mut cs = comments::load(&sidecar).unwrap_or_default();
-        let localized: Vec<(Comment, Localization)> = cs
+        let mut localized: Vec<(Comment, Localization)> = cs
             .iter_mut()
             .map(|c| {
                 let loc = comments::localize_and_update(c, &content);
                 (c.clone(), loc)
             })
             .collect();
+        // Order by anchored line (top to bottom) so `j`/`k` follow the file's
+        // vertical layout; Unresolvable comments (no line) sort last, stably.
+        localized.sort_by_key(|(_, loc)| loc.span.map(|(s, _)| s).unwrap_or(usize::MAX));
         // Persist the re-anchored last-seen state, like `cospan comments`.
         let _ = comments::save(&sidecar, &cs);
         self.comment_content = content;
@@ -1917,6 +1920,32 @@ mod tests {
         a.refresh_comments();
         assert!(a.comment_localized.is_empty());
         assert!(a.comment_content.is_empty());
+    }
+
+    #[test]
+    fn comments_load_ordered_by_anchored_line_not_creation() {
+        // Added bottom-first, but the cursor order must follow the file top-down,
+        // so `j`/Down moves the anchored line downward.
+        let repo = comments_tmp("order");
+        let content = "l0\nl1\nl2\nl3\n";
+        std::fs::create_dir_all(repo.join("src")).unwrap();
+        std::fs::write(repo.join("src/a.rs"), content).unwrap();
+        write_sidecar(
+            &repo,
+            "src/a.rs",
+            &[
+                mk_comment(content, 3, "on l3"),
+                mk_comment(content, 1, "on l1"),
+            ],
+        );
+        let mut a = AppState::new(repo, fold_of(&[]), None);
+        a.refresh_comments();
+        let starts: Vec<usize> = a
+            .comment_localized
+            .iter()
+            .map(|(_, loc)| loc.span.unwrap().0)
+            .collect();
+        assert_eq!(starts, vec![1, 3], "comments not ordered by line");
     }
 
     #[test]
