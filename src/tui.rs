@@ -96,6 +96,8 @@ pub struct AppState {
     pub detail_scroll: usize,
     /// The active top-level view.
     pub view: View,
+    /// Which sub-pane the Process tab shows.
+    pub process_pane: ProcessPane,
     pub atom_scroll: usize,
     pub telos_scroll: usize,
     /// Keys of collapsed tree nodes (`sec:<label>` / `path:<prefix>`).
@@ -129,32 +131,47 @@ pub struct AppState {
     footer_width: u16,
 }
 
-/// The top-level views, switched with `1`/`2`/`3`/`4` or `Tab`.
+/// The top-level tabs, switched with `1`/`2`/`3` or `Tab`. `Ledger` is the kan
+/// claim browser; `Process` houses the atoms/telos sub-panes.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum View {
-    Browser,
-    Atoms,
-    Telos,
     Comments,
+    Ledger,
+    Process,
 }
 
 impl View {
     pub fn next(self) -> View {
         match self {
-            View::Browser => View::Atoms,
-            View::Atoms => View::Telos,
-            View::Telos => View::Comments,
-            View::Comments => View::Browser,
+            View::Comments => View::Ledger,
+            View::Ledger => View::Process,
+            View::Process => View::Comments,
         }
     }
 
     pub fn from_digit(c: char) -> Option<View> {
         match c {
-            '1' => Some(View::Browser),
-            '2' => Some(View::Atoms),
-            '3' => Some(View::Telos),
-            '4' => Some(View::Comments),
+            '1' => Some(View::Comments),
+            '2' => Some(View::Ledger),
+            '3' => Some(View::Process),
             _ => None,
+        }
+    }
+}
+
+/// The two sub-panes of the Process tab (today's Atoms and Telos views).
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum ProcessPane {
+    Atoms,
+    Telos,
+}
+
+impl ProcessPane {
+    /// Toggle Atoms <-> Telos (what `←`/`→` do in the Process view).
+    pub fn toggled(self) -> ProcessPane {
+        match self {
+            ProcessPane::Atoms => ProcessPane::Telos,
+            ProcessPane::Telos => ProcessPane::Atoms,
         }
     }
 }
@@ -198,7 +215,8 @@ impl AppState {
             focus: Focus::Subjects,
             claim_selected: 0,
             detail_scroll: 0,
-            view: View::Browser,
+            view: View::Comments,
+            process_pane: ProcessPane::Atoms,
             atom_scroll: 0,
             telos_scroll: 0,
             collapsed: HashSet::new(),
@@ -513,6 +531,18 @@ impl AppState {
         if let Some((start, _)) = self.comment_localized[self.comment_selected].1.span {
             self.comment_scroll = start;
         }
+    }
+
+    /// Scroll the active Process sub-pane (atoms or telos), clamped to its length.
+    pub fn process_scroll(&mut self, delta: isize) {
+        let max = process_view_lines(&self.fold.process, self.process_pane)
+            .len()
+            .saturating_sub(1);
+        let scroll = match self.process_pane {
+            ProcessPane::Atoms => &mut self.atom_scroll,
+            ProcessPane::Telos => &mut self.telos_scroll,
+        };
+        *scroll = (*scroll as isize + delta).clamp(0, max as isize) as usize;
     }
 
     /// Switch the selected commented file, resetting the per-file re-read gate.
@@ -969,7 +999,7 @@ pub fn run(repo: PathBuf) -> std::io::Result<()> {
                     KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                         break Ok(())
                     }
-                    KeyCode::Char(d @ '1'..='4') => {
+                    KeyCode::Char(d @ '1'..='3') => {
                         if let Some(v) = View::from_digit(d) {
                             state.view = v;
                             if v == View::Comments {
@@ -983,44 +1013,37 @@ pub fn run(repo: PathBuf) -> std::io::Result<()> {
                             state.reload_comment_files();
                         }
                     }
-                    // Switch commented file in the Comments view: ←/→ (the
-                    // discoverable default) or [ / ].
+                    // ←/→ (or [ / ]): switch commented file (Comments) or toggle the
+                    // atoms/telos sub-pane (Process).
                     KeyCode::Char('[') | KeyCode::Left if state.view == View::Comments => {
                         state.select_comment_file(-1)
                     }
                     KeyCode::Char(']') | KeyCode::Right if state.view == View::Comments => {
                         state.select_comment_file(1)
                     }
+                    KeyCode::Char('[' | ']') | KeyCode::Left | KeyCode::Right
+                        if state.view == View::Process =>
+                    {
+                        state.process_pane = state.process_pane.toggled();
+                    }
                     KeyCode::Char('j') | KeyCode::Down => match state.view {
-                        View::Browser => state.move_down(),
-                        View::Atoms => {
-                            let max = process_view_lines(&state.fold.process, View::Atoms)
-                                .len()
-                                .saturating_sub(1);
-                            state.atom_scroll = (state.atom_scroll + 1).min(max);
-                        }
-                        View::Telos => {
-                            let max = process_view_lines(&state.fold.process, View::Telos)
-                                .len()
-                                .saturating_sub(1);
-                            state.telos_scroll = (state.telos_scroll + 1).min(max);
-                        }
+                        View::Ledger => state.move_down(),
+                        View::Process => state.process_scroll(1),
                         View::Comments => state.select_comment(1),
                     },
                     KeyCode::Char('k') | KeyCode::Up => match state.view {
-                        View::Browser => state.move_up(),
-                        View::Atoms => state.atom_scroll = state.atom_scroll.saturating_sub(1),
-                        View::Telos => state.telos_scroll = state.telos_scroll.saturating_sub(1),
+                        View::Ledger => state.move_up(),
+                        View::Process => state.process_scroll(-1),
                         View::Comments => state.select_comment(-1),
                     },
-                    KeyCode::Enter if state.view == View::Browser => {
+                    KeyCode::Enter if state.view == View::Ledger => {
                         if state.focus == Focus::Subjects {
                             state.activate(); // toggle a node, or descend a subject
                         } else {
                             state.descend();
                         }
                     }
-                    KeyCode::Esc if state.view == View::Browser => state.ascend(),
+                    KeyCode::Esc if state.view == View::Ledger => state.ascend(),
                     _ => {}
                 },
                 Ok(_) => {}
@@ -1065,10 +1088,9 @@ fn draw(frame: &mut ratatui::Frame, state: &AppState) {
     frame.render_widget(Line::from(view_header(state.view)).bold(), header);
 
     match state.view {
-        View::Browser => draw_browser(frame, state, area.width, body),
-        View::Atoms => draw_atoms(frame, state, body),
-        View::Telos => draw_telos(frame, state, body),
         View::Comments => draw_comments(frame, state, area.width, body),
+        View::Ledger => draw_browser(frame, state, area.width, body),
+        View::Process => draw_process(frame, state, body),
     }
 
     // The thin status-bar footer (day's status line), sourced from day's cache.
@@ -1086,15 +1108,23 @@ fn view_header(view: View) -> String {
     // A per-view key legend so navigation is discoverable without reading source.
     let keys = match view {
         View::Comments => "· ←→ file · j/k comment ",
-        _ => "",
+        View::Process => "· ←→ atoms/telos · j/k scroll ",
+        View::Ledger => "",
     };
     format!(
-        "cospan  {}{}{}{}  {keys}· Tab switch · q quit",
-        tab(View::Browser, "1 browser"),
-        tab(View::Atoms, "2 atoms"),
-        tab(View::Telos, "3 telos"),
-        tab(View::Comments, "4 comments"),
+        "cospan  {}{}{}  {keys}· Tab switch · q quit",
+        tab(View::Comments, "1 comments"),
+        tab(View::Ledger, "2 ledger"),
+        tab(View::Process, "3 process"),
     )
+}
+
+/// The Process tab: today's atoms or telos content, per the active sub-pane.
+fn draw_process(frame: &mut ratatui::Frame, state: &AppState, area: ratatui::layout::Rect) {
+    match state.process_pane {
+        ProcessPane::Atoms => draw_atoms(frame, state, area),
+        ProcessPane::Telos => draw_telos(frame, state, area),
+    }
 }
 
 /// Greedy word-wrap of `s` to width `w`, splitting on the text's own newlines
@@ -1415,14 +1445,14 @@ fn draw_browser(
 /// The full rendered lines (deferral note + declared structure) for a process
 /// view. Shared by the renderer and the scroll clamp, so a held `j` cannot
 /// inflate the offset past the content.
-pub fn process_view_lines(p: &ProcessSnapshot, view: View) -> Vec<String> {
+pub fn process_view_lines(p: &ProcessSnapshot, pane: ProcessPane) -> Vec<String> {
     let mut lines = vec![
         "(live position & witness state need machine-readable day — declared structure only)"
             .to_string(),
         String::new(),
     ];
-    match view {
-        View::Atoms => {
+    match pane {
+        ProcessPane::Atoms => {
             if p.atoms.is_empty() {
                 lines.push("(no atoms declared)".to_string());
             }
@@ -1436,7 +1466,7 @@ pub fn process_view_lines(p: &ProcessSnapshot, view: View) -> Vec<String> {
                 ));
             }
         }
-        View::Telos => {
+        ProcessPane::Telos => {
             for t in &p.teloi {
                 lines.push(format!("{}  ({})", t.title, t.slug));
                 lines.push(format!("  {}", t.statement));
@@ -1453,7 +1483,6 @@ pub fn process_view_lines(p: &ProcessSnapshot, view: View) -> Vec<String> {
                 lines.push("(no teloi declared)".to_string());
             }
         }
-        View::Browser | View::Comments => {} // never route here
     }
     lines
 }
@@ -1475,13 +1504,25 @@ fn render_scrolled(
 }
 
 fn draw_atoms(frame: &mut ratatui::Frame, state: &AppState, area: ratatui::layout::Rect) {
-    let lines = process_view_lines(&state.fold.process, View::Atoms);
-    render_scrolled(frame, area, " atoms ", &lines, state.atom_scroll);
+    let lines = process_view_lines(&state.fold.process, ProcessPane::Atoms);
+    render_scrolled(
+        frame,
+        area,
+        " process · atoms · ←→ telos ",
+        &lines,
+        state.atom_scroll,
+    );
 }
 
 fn draw_telos(frame: &mut ratatui::Frame, state: &AppState, area: ratatui::layout::Rect) {
-    let lines = process_view_lines(&state.fold.process, View::Telos);
-    render_scrolled(frame, area, " teloi ", &lines, state.telos_scroll);
+    let lines = process_view_lines(&state.fold.process, ProcessPane::Telos);
+    render_scrolled(
+        frame,
+        area,
+        " process · telos · ←→ atoms ",
+        &lines,
+        state.telos_scroll,
+    );
 }
 
 /// A foreground color per top-level section, from the ANSI-16 palette so it reads
@@ -2038,17 +2079,38 @@ mod tests {
 
     #[test]
     fn view_selector_cycles_and_maps_digits() {
-        assert_eq!(View::Browser.next(), View::Atoms);
-        assert_eq!(View::Atoms.next(), View::Telos);
-        assert_eq!(View::Telos.next(), View::Comments);
-        assert_eq!(View::Comments.next(), View::Browser);
-        assert_eq!(View::from_digit('1'), Some(View::Browser));
-        assert_eq!(View::from_digit('2'), Some(View::Atoms));
-        assert_eq!(View::from_digit('3'), Some(View::Telos));
-        assert_eq!(View::from_digit('4'), Some(View::Comments));
+        // (AC-1) Comments · Ledger · Process.
+        assert_eq!(View::Comments.next(), View::Ledger);
+        assert_eq!(View::Ledger.next(), View::Process);
+        assert_eq!(View::Process.next(), View::Comments);
+        assert_eq!(View::from_digit('1'), Some(View::Comments));
+        assert_eq!(View::from_digit('2'), Some(View::Ledger));
+        assert_eq!(View::from_digit('3'), Some(View::Process));
+        assert_eq!(View::from_digit('4'), None);
         assert_eq!(View::from_digit('9'), None);
-        // (AC-1) the Comments tab is labeled in the header.
-        assert!(view_header(View::Comments).contains("4 comments"));
+    }
+
+    #[test]
+    fn tab_bar_names_the_new_tabs_with_legends() {
+        // (AC-2) Ledger + Process tabs; Process names its sub-pane keys; no browser.
+        assert!(view_header(View::Ledger).contains("2 ledger"));
+        let p = view_header(View::Process);
+        assert!(p.contains("3 process"), "{p}");
+        assert!(p.contains("←→ atoms/telos"), "no sub-pane keys: {p}");
+        assert!(p.contains("j/k scroll"), "{p}");
+        assert!(!view_header(View::Comments).contains("browser"));
+    }
+
+    #[test]
+    fn process_pane_toggles_atoms_and_telos() {
+        // (AC-4) the action ←/→ invoke in the Process view.
+        assert_eq!(ProcessPane::Atoms.toggled(), ProcessPane::Telos);
+        assert_eq!(ProcessPane::Telos.toggled(), ProcessPane::Atoms);
+        let mut a = app(&["telos/a"]);
+        a.view = View::Process;
+        assert_eq!(a.process_pane, ProcessPane::Atoms);
+        a.process_pane = a.process_pane.toggled();
+        assert_eq!(a.process_pane, ProcessPane::Telos);
     }
 
     #[test]
@@ -2058,7 +2120,7 @@ mod tests {
         assert!(h.contains("←→ file"), "no file-switch hint: {h}");
         assert!(h.contains("j/k comment"), "no comment-move hint: {h}");
         // Other views do not carry the comment-move hint.
-        assert!(!view_header(View::Browser).contains("j/k comment"));
+        assert!(!view_header(View::Ledger).contains("j/k comment"));
     }
 
     #[test]
@@ -2445,7 +2507,7 @@ mod tests {
     #[test]
     fn process_view_lines_are_note_led_and_bound_the_scroll() {
         // Empty snapshot: note + the "no atoms" line.
-        let empty = process_view_lines(&ProcessSnapshot::default(), View::Atoms);
+        let empty = process_view_lines(&ProcessSnapshot::default(), ProcessPane::Atoms);
         assert!(empty[0].contains("machine-readable day"), "{:?}", empty[0]);
         assert!(empty.iter().any(|l| l.contains("no atoms")));
 
@@ -2459,8 +2521,22 @@ mod tests {
             teloi: vec![],
             tensions: vec![],
         };
-        let lines = process_view_lines(&snap, View::Atoms);
+        let lines = process_view_lines(&snap, ProcessPane::Atoms);
         assert!(lines.iter().any(|l| l.contains("build")));
+        // (AC-3) the Telos sub-pane yields telos content, not atoms.
+        let tsnap = ProcessSnapshot {
+            atoms: vec![],
+            teloi: vec![substrate::TelosView {
+                slug: "p0-spine".into(),
+                title: "P0".into(),
+                statement: "the spine runs".into(),
+                witnesses: vec!["code-change".into()],
+            }],
+            tensions: vec![],
+        };
+        let tlines = process_view_lines(&tsnap, ProcessPane::Telos);
+        assert!(tlines.iter().any(|l| l.contains("p0-spine")), "{tlines:?}");
+        assert!(tlines.iter().any(|l| l.contains("witnesses")));
         // The clamp the key handler applies can never slice past the end.
         let max = lines.len().saturating_sub(1);
         assert!((999usize).min(max) < lines.len());
