@@ -65,11 +65,89 @@ fn first_line(s: &str) -> &str {
 // --- Comment sidecar: drop a comment, and list comments with live state ------
 
 fn comment_cmd(args: &[String]) {
-    if args.first().map(String::as_str) != Some("add") {
-        eprintln!("usage: cospan comment add <file> --line <N> [--ctx <C>] <body>");
+    match args.first().map(String::as_str) {
+        Some("add") => comment_add(&args[1..]),
+        Some("reply") => comment_reply(&args[1..]),
+        Some("resolve") => comment_resolve(&args[1..]),
+        _ => {
+            eprintln!(
+                "usage:\n  cospan comment add <file> --line <N> [--ctx <C>] <body>\n  \
+                 cospan comment reply <file> <id> <body>\n  \
+                 cospan comment resolve <file> <id>"
+            );
+            std::process::exit(2);
+        }
+    }
+}
+
+/// Load a file's sidecar, or exit with a message. Shared by reply/resolve.
+fn load_sidecar_or_exit(file: &str) -> (std::path::PathBuf, Vec<Comment>) {
+    let path = comments::sidecar_path(file);
+    match comments::load(&path) {
+        Ok(v) => (path, v),
+        Err(e) => {
+            eprintln!("cospan: {e}");
+            std::process::exit(1);
+        }
+    }
+}
+
+fn now_micros() -> i64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_micros() as i64)
+        .unwrap_or(0)
+}
+
+fn comment_reply(args: &[String]) {
+    let [file, id, body_parts @ ..] = args else {
+        eprintln!("usage: cospan comment reply <file> <id> <body>");
+        std::process::exit(2);
+    };
+    let body = body_parts.join(" ");
+    if body.is_empty() {
+        eprintln!("comment reply needs a <body>");
         std::process::exit(2);
     }
-    let rest = &args[1..];
+    let (path, mut records) = load_sidecar_or_exit(file);
+    let reply = comments::Reply {
+        author: Author {
+            who: "human".into(),
+            id: std::env::var("USER").unwrap_or_else(|_| "local".into()),
+        },
+        body,
+        created_at: now_micros(),
+    };
+    if !comments::add_reply(&mut records, id, reply) {
+        eprintln!("cospan: no comment with id {id} in {file}");
+        std::process::exit(1);
+    }
+    if let Err(e) = comments::save(&path, &records) {
+        eprintln!("cospan: {e}");
+        std::process::exit(1);
+    }
+    println!("replied to {id} → {}", path.display());
+}
+
+fn comment_resolve(args: &[String]) {
+    let [file, id] = args else {
+        eprintln!("usage: cospan comment resolve <file> <id>");
+        std::process::exit(2);
+    };
+    let (path, mut records) = load_sidecar_or_exit(file);
+    if !comments::resolve(&mut records, id) {
+        eprintln!("cospan: no comment with id {id} in {file}");
+        std::process::exit(1);
+    }
+    if let Err(e) = comments::save(&path, &records) {
+        eprintln!("cospan: {e}");
+        std::process::exit(1);
+    }
+    println!("resolved {id} → {}", path.display());
+}
+
+fn comment_add(args: &[String]) {
+    let rest = args;
 
     // Single pass: --line/--ctx consume their value; the first remaining bare
     // token is the file, the rest join into the body. (Parsing the file after
@@ -147,6 +225,7 @@ fn comment_cmd(args: &[String]) {
         },
         created_at,
         resolved: false,
+        thread: Vec::new(),
     };
 
     let loc = relocalize(&comment.anchor.as_anchor(), &content);
@@ -190,7 +269,18 @@ fn comments_cmd(args: &[String]) {
     println!("{file}  ({} comment{plural})", records.len());
     for c in &mut records {
         let loc = comments::localize_and_update(c, &content);
-        println!("  {}  {}  {}", render(&loc), first_line(&c.body), c.id);
+        let summary = comments::thread_summary(c);
+        let suffix = if summary.is_empty() {
+            String::new()
+        } else {
+            format!("  {summary}")
+        };
+        println!(
+            "  {}  {}  {}{suffix}",
+            render(&loc),
+            first_line(&c.body),
+            c.id
+        );
     }
     // Persist the updated last-seen anchors.
     if let Err(e) = comments::save(&path, &records) {
