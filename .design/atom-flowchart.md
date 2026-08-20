@@ -16,9 +16,15 @@ row jumps) are listed textually rather than faked (`telos/honest-ambiguity`).
 - REQ-2: A pure `atom_flowchart(atoms: &[Atom], selected: usize) -> Vec<String>`
   renders the layout into a character grid: each atom a 3-line box (`┌─ slug ─┐`
   style), the `selected` atom's box drawn with a double border (`╔═╗`), and a
-  `──▶` arrow painted for every `next` edge whose target sits one column right on
-  the same row. `next` edges that are not same-row/next-column (back-edges, skips)
-  are appended below the grid as `<from> ⇢ <to>` lines, never drawn as fake art.
+  solid `──▶` arrow painted for every `next` edge whose target sits one column
+  right on the same row.
+- REQ-2b: In a **single-row** layout, the remaining edges — every `revisits`
+  back-edge and every off-column/off-row `next` — are **routed as arrows** in
+  stacked lanes below the boxes, in a **distinct dashed style** (`┄`/`┆` with
+  rounded corners `╰`/`╯` and a `▲` head rising into the target box) so a back-flow
+  reads differently from a forward edge. In a **multi-row** layout these edges
+  stay a `<from> ⇢/↻ <to>` text list, since routing across rows would cross boxes
+  — listing them is honest where drawing cannot be (`telos/honest-ambiguity`).
 - REQ-3: The Process atoms sub-pane renders `atom_flowchart` with the selected
   atom; `j`/`k` moves the selection among atoms (in layout order) and the graph
   re-highlights; `←`/`→` still toggles atoms/telos and `Tab`/digits still switch
@@ -36,10 +42,13 @@ row jumps) are listed textually rather than faked (`telos/honest-ambiguity`).
   `a→b→c` asserts columns `0,1,2` all at row `0`; and for a fan (`a→b`, `a→c`)
   asserts `b` and `c` share column `1` at rows `0` and `1`.
 - [ ] AC-2: (covers REQ-2) A unit test asserts `atom_flowchart` for `a→b` contains
-  a box for each slug and a line joining them with `─`/`▶`; that the selected
+  a box for each slug and a solid `─`/`▶` arrow joining them; that the selected
   atom's box uses a double-border char (`╔` or `═`) while an unselected one uses
-  `┌`; and that a back-edge (`b`'s `next` points to `a`) appears in the
-  not-drawn list, not as a drawn arrow.
+  `┌`.
+- [ ] AC-2b: (covers REQ-2b) A unit test asserts that a single-row graph with a
+  `revisits` back-edge routes it as a dashed arrow (a `┄`/`╰`/`╯`/`▲` char is
+  present, no `↻ ` text list), while a multi-row graph with an off-row `next`
+  keeps the `⇢` text list.
 - [ ] AC-3: (covers REQ-3) A unit test asserts moving the atom selection is
   clamped to `[0, atoms.len())` and that `atom_flowchart` re-renders the new
   selection with the double border on the newly selected box.
@@ -96,7 +105,9 @@ selection were resolved during design._
 
 ## Out of Scope
 - The telos drill-down (statement/witnesses/tensions) — a separate cycle.
-- Curved/multi-segment ASCII arrow routing for back-edges and row jumps.
+- Back-edge / off-row arrow routing in **multi-row** layouts (routing across rows
+  would cross boxes); those edges stay a text list. Single-row routing is in scope
+  (REQ-2b).
 - Live atom *position* / per-witness state (still needs machine-readable day,
   kan-tools/day#240); this renders the declared structure.
 - Horizontal scrolling of a very wide graph beyond what the pane clips.

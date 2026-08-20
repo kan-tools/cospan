@@ -1609,8 +1609,51 @@ pub fn atom_flowchart(atoms: &[Atom], selected: usize) -> Vec<String> {
     }
     const ROW_H: usize = 4;
     let n_rows = placed.iter().map(|p| p.row).max().unwrap_or(0) + 1;
-    let grid_h = n_rows * ROW_H - 1;
+    let single_row = n_rows == 1;
     let grid_w = col_x[n_cols - 1] + col_w[n_cols - 1];
+    let box_center = |i: usize| col_x[placed[i].col] + box_w(i) / 2;
+
+    // Classify every edge: a same-row/next-column `next` is a forward arrow; every
+    // other edge is a back-flow — routed as a dashed arrow below the boxes when the
+    // layout is single-row, else listed as text (routing would cross boxes).
+    let idx_of: HashMap<&str, usize> = atoms
+        .iter()
+        .enumerate()
+        .map(|(i, a)| (a.slug.as_str(), i))
+        .collect();
+    let mut forward: Vec<(usize, usize)> = Vec::new();
+    let mut routed: Vec<(usize, usize)> = Vec::new();
+    let mut annotations: Vec<String> = Vec::new();
+    let mut classify = |u: usize, target: Option<usize>, slug: &str, revisit: bool| match target {
+        Some(v)
+            if !revisit && placed[v].row == placed[u].row && placed[v].col == placed[u].col + 1 =>
+        {
+            forward.push((u, v))
+        }
+        Some(v) if single_row => routed.push((u, v)),
+        Some(_) | None => {
+            let mark = if revisit { '↻' } else { '⇢' };
+            let tail = if target.is_none() { " (unknown)" } else { "" };
+            annotations.push(format!("{} {mark} {slug}{tail}", atoms[u].slug))
+        }
+    };
+    for (u, atom) in atoms.iter().enumerate() {
+        for s in &atom.next {
+            classify(u, idx_of.get(s.as_str()).copied(), s, false);
+        }
+        for rv in &atom.revisits {
+            classify(u, idx_of.get(rv.as_str()).copied(), rv, true);
+        }
+    }
+
+    // Grid height: the boxes, plus one arrow-head row and a lane per routed edge.
+    let boxes_h = n_rows * ROW_H - 1;
+    let grid_h = boxes_h
+        + if routed.is_empty() {
+            0
+        } else {
+            1 + routed.len()
+        };
     let mut grid = vec![vec![' '; grid_w]; grid_h];
 
     for i in 0..n {
@@ -1638,35 +1681,47 @@ pub fn atom_flowchart(atoms: &[Atom], selected: usize) -> Vec<String> {
         }
     }
 
-    let idx_of: HashMap<&str, usize> = atoms
-        .iter()
-        .enumerate()
-        .map(|(i, a)| (a.slug.as_str(), i))
-        .collect();
-    let mut annotations: Vec<String> = Vec::new();
-    for u in 0..n {
-        for s in &atoms[u].next {
-            match idx_of.get(s.as_str()) {
-                Some(&vv)
-                    if placed[vv].row == placed[u].row && placed[vv].col == placed[u].col + 1 =>
-                {
-                    let y = placed[u].row * ROW_H + 1;
-                    let x0 = col_x[placed[u].col] + box_w(u);
-                    let x1 = col_x[placed[vv].col];
-                    if x1 > x0 {
-                        for x in grid[y].iter_mut().take(x1 - 1).skip(x0) {
-                            *x = '─';
-                        }
-                        grid[y][x1 - 1] = '▶';
-                    }
-                }
-                Some(_) => annotations.push(format!("{} ⇢ {}", atoms[u].slug, s)),
-                None => annotations.push(format!("{} ⇢ {} (unknown)", atoms[u].slug, s)),
+    // Forward arrows: solid `──▶` on the boxes' middle row.
+    for (u, v) in forward {
+        let y = placed[u].row * ROW_H + 1;
+        let x0 = col_x[placed[u].col] + box_w(u);
+        let x1 = col_x[placed[v].col];
+        if x1 > x0 {
+            for x in grid[y].iter_mut().take(x1 - 1).skip(x0) {
+                *x = '─';
+            }
+            grid[y][x1 - 1] = '▶';
+        }
+    }
+
+    // Back-flows (single-row only): a dashed arrow routed in a lane below the
+    // boxes, `▲` rising into the target — visually distinct from the solid forward
+    // arrows.
+    let arrow_y = boxes_h; // one row below the box bottoms
+    for (li, (u, v)) in routed.iter().enumerate() {
+        let (sx, tx) = (box_center(*u), box_center(*v));
+        let lane_y = arrow_y + 1 + li;
+        for row in grid.iter_mut().take(lane_y).skip(arrow_y) {
+            row[sx] = '┆'; // source drop
+        }
+        grid[arrow_y][tx] = '▲'; // arrow-head rising into the target
+        for row in grid.iter_mut().take(lane_y).skip(arrow_y + 1) {
+            row[tx] = '┆';
+        }
+        let (lo, hi) = (sx.min(tx), sx.max(tx));
+        // Guard the degenerate self-edge (sx == tx) so the slice never inverts.
+        if lo + 1 < hi {
+            for cell in &mut grid[lane_y][lo + 1..hi] {
+                *cell = '┄';
             }
         }
-        for rv in &atoms[u].revisits {
-            annotations.push(format!("{} ↻ {}", atoms[u].slug, rv));
-        }
+        let (src_corner, tgt_corner) = if sx > tx {
+            ('╯', '╰')
+        } else {
+            ('╰', '╯')
+        };
+        grid[lane_y][sx] = src_corner;
+        grid[lane_y][tx] = tgt_corner;
     }
 
     let mut out: Vec<String> = grid
@@ -2824,22 +2879,59 @@ mod tests {
             out.contains('┌'),
             "unselected box not single-bordered: {out}"
         );
-        assert!(out.contains("b ↻ a"), "back-edge not listed: {out}");
         // Empty atoms: the declared-empty note, not a panic.
         assert_eq!(
             atom_flowchart(&[], 0),
             vec!["(no atoms declared)".to_string()]
         );
+    }
 
-        // A next-edge that is next-column but a different row is listed (⇢), not
-        // drawn: a fan a→b, a→c puts c at row 1 while a is row 0.
+    #[test]
+    fn back_edges_route_in_single_row_and_list_in_multi_row() {
+        // (AC-2b) single-row: a→b, b revisits a → the back-edge is ROUTED as a
+        // dashed arrow (no ↻ text list).
+        let single = vec![
+            atom_with("a", &["b"]),
+            Atom {
+                slug: "b".into(),
+                revisits: vec!["a".into()],
+                ..Default::default()
+            },
+        ];
+        let out = atom_flowchart(&single, 1).join("\n");
+        assert!(
+            out.contains('┄') && out.contains('▲'),
+            "back-edge not routed: {out}"
+        );
+        assert!(
+            out.contains('╰') || out.contains('╯'),
+            "no routed corner: {out}"
+        );
+        assert!(
+            !out.contains('↻'),
+            "single-row back-edge should not be text-listed: {out}"
+        );
+
+        // Multi-row: a fan a→b, a→c puts c at row 1; the off-row edge stays a ⇢
+        // text list (routing across rows would cross boxes).
         let fan = vec![
             atom_with("a", &["b", "c"]),
             atom_with("b", &[]),
             atom_with("c", &[]),
         ];
         let fout = atom_flowchart(&fan, 0).join("\n");
-        assert!(fout.contains("a ⇢ c"), "off-row edge not listed: {fout}");
+        assert!(
+            fout.contains("a ⇢ c"),
+            "off-row edge not listed in multi-row: {fout}"
+        );
+
+        // A self-revisiting atom (sx == tx) must not panic on the routed lane.
+        let selfy = vec![Atom {
+            slug: "loop".into(),
+            revisits: vec!["loop".into()],
+            ..Default::default()
+        }];
+        let _ = atom_flowchart(&selfy, 0); // must not panic
     }
 
     #[test]

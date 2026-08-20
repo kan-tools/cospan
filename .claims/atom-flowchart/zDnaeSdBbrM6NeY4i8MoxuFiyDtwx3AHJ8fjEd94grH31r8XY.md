@@ -11,7 +11,7 @@
   "cites": [],
   "rev": "223mtjy4ysxu4",
   "seq": 0,
-  "of": 8,
+  "of": 10,
   "text_len": 188,
   "content": "p2Rib2R5oWtPYnNlcnZhdGlvbqFkdGV4dGBlY2l0ZXOAZmF1dGhvcqJjZGlkeDlkaWQ6a2V5OnpEbmFlU2RCYnJNNk5lWTRpOE1veHVGaXlEdHd4M0FISjhmakVkOTRnckgzMXI4WFllYWdlbnT2Z3N1YmplY3ShZUxvY2FsbmF0b20tZmxvd2NoYXJ0aWFydGlmYWN0c4GhZkNvbW1pdHgoZGJiNWNmYWZiZGMzZWFjMmM3NWZhYmVmZGI0ZWYzNjY5YTQzMjk5NWl3b3Jrc3BhY2WhaVdvcmtzcGFjZXhAYTIxMzIzZmM2OTcyNjdjMmMzNjg3ODU3NTg2OGQ0OGUzOTMyZTQzOGQwNzcwOWIwYTZlYmNmMjRkMmFkZjhlZmtyZWNvcmRlZF9hdBsABll/hexzrw=="
 }
@@ -34,7 +34,7 @@ design doc .design/atom-flowchart.md checked against the live design-doc schema:
   ],
   "rev": "223mtjy4z4y4k",
   "seq": 1,
-  "of": 8,
+  "of": 10,
   "text_len": 614,
   "content": "p2Rib2R5oWRQbGFuoWR0ZXh0YGVjaXRlc4HYKlglAAFxEiDXI/D7YuFuv1wx1QnuGNU521d0DtN8t4WdI7QY2b53PGZhdXRob3KiY2RpZHg5ZGlkOmtleTp6RG5hZVNkQmJyTTZOZVk0aThNb3h1Rml5RHR3eDNBSEo4ZmpFZDk0Z3JIMzFyOFhZZWFnZW509mdzdWJqZWN0oWVMb2NhbG5hdG9tLWZsb3djaGFydGlhcnRpZmFjdHOBoWZDb21taXR4KGRiYjVjZmFmYmRjM2VhYzJjNzVmYWJlZmRiNGVmMzY2OWE0MzI5OTVpd29ya3NwYWNloWlXb3Jrc3BhY2V4QGEyMTMyM2ZjNjk3MjY3YzJjMzY4Nzg1NzU4NjhkNDhlMzkzMmU0MzhkMDc3MDliMGE2ZWJjZjI0ZDJhZGY4ZWZrcmVjb3JkZWRfYXQbAAZZf4Xxd9g="
 }
@@ -55,7 +55,7 @@ atom-flowchart design (.design/atom-flowchart.md): Reshape the Process tab's ato
   "cites": [],
   "rev": "223mtjy4za6uj",
   "seq": 2,
-  "of": 8,
+  "of": 10,
   "content": "p2Rib2R5oWdTdWJqZWN0omV0aXRsZXgpRmVhdHVyZTogdGhlIGF0b20gZmxvd2NoYXJ0IChQcm9jZXNzIHRhYilsc3ViamVjdF9raW5kZElkZWFlY2l0ZXOAZmF1dGhvcqJjZGlkeDlkaWQ6a2V5OnpEbmFlU2RCYnJNNk5lWTRpOE1veHVGaXlEdHd4M0FISjhmakVkOTRnckgzMXI4WFllYWdlbnT2Z3N1YmplY3ShZUxvY2FsbmF0b20tZmxvd2NoYXJ0aWFydGlmYWN0c4GhZkNvbW1pdHgoZGJiNWNmYWZiZGMzZWFjMmM3NWZhYmVmZGI0ZWYzNjY5YTQzMjk5NWl3b3Jrc3BhY2WhaVdvcmtzcGFjZXhAYTIxMzIzZmM2OTcyNjdjMmMzNjg3ODU3NTg2OGQ0OGUzOTMyZTQzOGQwNzcwOWIwYTZlYmNmMjRkMmFkZjhlZmtyZWNvcmRlZF9hdBsABll/hfMS4A=="
 }
 ---
@@ -75,7 +75,7 @@ atom-flowchart design (.design/atom-flowchart.md): Reshape the Process tab's ato
   ],
   "rev": "223mtjy4zk5t4",
   "seq": 3,
-  "of": 8,
+  "of": 10,
   "text_len": 212,
   "content": "p2Rib2R5oWhEZWNpc2lvbqFkdGV4dGBlY2l0ZXOB2CpYJQABcRIgPzs+5/adwuBKWiQ9NmdMAJq/ZfKnQ9Ck8sGo0xj27C9mYXV0aG9yomNkaWR4OWRpZDprZXk6ekRuYWVTZEJick02TmVZNGk4TW94dUZpeUR0d3gzQUhKOGZqRWQ5NGdySDMxcjhYWWVhZ2VudPZnc3ViamVjdKFlTG9jYWxuYXRvbS1mbG93Y2hhcnRpYXJ0aWZhY3RzgaFmQ29tbWl0eChkYmI1Y2ZhZmJkYzNlYWMyYzc1ZmFiZWZkYjRlZjM2NjlhNDMyOTk1aXdvcmtzcGFjZaFpV29ya3NwYWNleEBhMjEzMjNmYzY5NzI2N2MyYzM2ODc4NTc1ODY4ZDQ4ZTM5MzJlNDM4ZDA3NzA5YjBhNmViY2YyNGQyYWRmOGVma3JlY29yZGVkX2F0GwAGWX+F+A6s"
 }
@@ -98,7 +98,7 @@ RQ-1: Layout is by longest-path column with bounded relaxation (cycle-safe) rath
   ],
   "rev": "223mtjy4ztym5",
   "seq": 4,
-  "of": 8,
+  "of": 10,
   "text_len": 201,
   "content": "p2Rib2R5oWhEZWNpc2lvbqFkdGV4dGBlY2l0ZXOB2CpYJQABcRIgPzs+5/adwuBKWiQ9NmdMAJq/ZfKnQ9Ck8sGo0xj27C9mYXV0aG9yomNkaWR4OWRpZDprZXk6ekRuYWVTZEJick02TmVZNGk4TW94dUZpeUR0d3gzQUhKOGZqRWQ5NGdySDMxcjhYWWVhZ2VudPZnc3ViamVjdKFlTG9jYWxuYXRvbS1mbG93Y2hhcnRpYXJ0aWZhY3RzgaFmQ29tbWl0eChkYmI1Y2ZhZmJkYzNlYWMyYzc1ZmFiZWZkYjRlZjM2NjlhNDMyOTk1aXdvcmtzcGFjZaFpV29ya3NwYWNleEBhMjEzMjNmYzY5NzI2N2MyYzM2ODc4NTc1ODY4ZDQ4ZTM5MzJlNDM4ZDA3NzA5YjBhNmViY2YyNGQyYWRmOGVma3JlY29yZGVkX2F0GwAGWX+F/PnN"
 }
@@ -121,7 +121,7 @@ RQ-2: Edges the grid cannot route on a straight same-row arrow are listed as tex
   ],
   "rev": "223mtjy525ti3",
   "seq": 5,
-  "of": 8,
+  "of": 10,
   "text_len": 159,
   "content": "p2Rib2R5oWhEZWNpc2lvbqFkdGV4dGBlY2l0ZXOB2CpYJQABcRIgPzs+5/adwuBKWiQ9NmdMAJq/ZfKnQ9Ck8sGo0xj27C9mYXV0aG9yomNkaWR4OWRpZDprZXk6ekRuYWVTZEJick02TmVZNGk4TW94dUZpeUR0d3gzQUhKOGZqRWQ5NGdySDMxcjhYWWVhZ2VudPZnc3ViamVjdKFlTG9jYWxuYXRvbS1mbG93Y2hhcnRpYXJ0aWZhY3RzgaFmQ29tbWl0eChkYmI1Y2ZhZmJkYzNlYWMyYzc1ZmFiZWZkYjRlZjM2NjlhNDMyOTk1aXdvcmtzcGFjZaFpV29ya3NwYWNleEBhMjEzMjNmYzY5NzI2N2MyYzM2ODc4NTc1ODY4ZDQ4ZTM5MzJlNDM4ZDA3NzA5YjBhNmViY2YyNGQyYWRmOGVma3JlY29yZGVkX2F0GwAGWX+GAeVI"
 }
@@ -144,7 +144,7 @@ RQ-3: The selected box is shown by a double border (a different box-drawing styl
   ],
   "rev": "223mtjysz4eph",
   "seq": 6,
-  "of": 8,
+  "of": 10,
   "text_len": 1357,
   "content": "p2Rib2R5oWhEZWNpc2lvbqFkdGV4dGBlY2l0ZXOB2CpYJQABcRIgHGBFVCiKhqPaVn/t2VsjRMfyNrKw4dIPX6FJcFwL8RhmYXV0aG9yomNkaWR4OWRpZDprZXk6ekRuYWVTZEJick02TmVZNGk4TW94dUZpeUR0d3gzQUhKOGZqRWQ5NGdySDMxcjhYWWVhZ2VudPZnc3ViamVjdKFlTG9jYWxuYXRvbS1mbG93Y2hhcnRpYXJ0aWZhY3RzgaFmQ29tbWl0eChkYmI1Y2ZhZmJkYzNlYWMyYzc1ZmFiZWZkYjRlZjM2NjlhNDMyOTk1aXdvcmtzcGFjZaFpV29ya3NwYWNleEBhMjEzMjNmYzY5NzI2N2MyYzM2ODc4NTc1ODY4ZDQ4ZTM5MzJlNDM4ZDA3NzA5YjBhNmViY2YyNGQyYWRmOGVma3JlY29yZGVkX2F0GwAGWX+x8Sdo"
 }
@@ -165,7 +165,48 @@ adversarial review of atom-flowchart: SHIP. Independent Opus review traced every
   "cites": [],
   "rev": "223mtjyszgsws",
   "seq": 7,
-  "of": 8,
+  "of": 10,
   "content": "p2Rib2R5oWtQdWJsaWNhdGlvbqFlbGF5ZXJnR2l0VHJlZWVjaXRlc4BmYXV0aG9yomNkaWR4OWRpZDprZXk6ekRuYWVTZEJick02TmVZNGk4TW94dUZpeUR0d3gzQUhKOGZqRWQ5NGdySDMxcjhYWWVhZ2VudPZnc3ViamVjdKFlTG9jYWxuYXRvbS1mbG93Y2hhcnRpYXJ0aWZhY3RzgaFmQ29tbWl0eChkYmI1Y2ZhZmJkYzNlYWMyYzc1ZmFiZWZkYjRlZjM2NjlhNDMyOTk1aXdvcmtzcGFjZaFpV29ya3NwYWNleEBhMjEzMjNmYzY5NzI2N2MyYzM2ODc4NTc1ODY4ZDQ4ZTM5MzJlNDM4ZDA3NzA5YjBhNmViY2YyNGQyYWRmOGVma3JlY29yZGVkX2F0GwAGWX+x9mMi"
+}
+---
+***8<***
+---
+{
+  "v": 3,
+  "cid": "bafyreig6mmbuudjlysvk3qrs7n5kn3niqhofl7l7iymxh3wcon3nn7pcsy",
+  "sig": "8b3c1bc43b84e40cdcc55d94ac654bdb28feaf2cdd39698a568e55b14fb4eaa95b6f40e8ffda540530c638f839d7a0769e4346b56685f24119772bf5672f4fed",
+  "author": "did:key:zDnaeSdBbrM6NeY4i8MoxuFiyDtwx3AHJ8fjEd94grH31r8XY",
+  "subject": {
+    "local": "atom-flowchart"
+  },
+  "kind": "decision",
+  "cites": [
+    "bafyreia4mbcvikekq2r5uvt75xmvwi2ey7zdnmvq4hja6x5bjfyfyc7rda"
+  ],
+  "rev": "223mtk3sjly2s",
+  "seq": 8,
+  "of": 10,
+  "text_len": 1055,
+  "content": "p2Rib2R5oWhEZWNpc2lvbqFkdGV4dGBlY2l0ZXOB2CpYJQABcRIgHGBFVCiKhqPaVn/t2VsjRMfyNrKw4dIPX6FJcFwL8RhmYXV0aG9yomNkaWR4OWRpZDprZXk6ekRuYWVTZEJick02TmVZNGk4TW94dUZpeUR0d3gzQUhKOGZqRWQ5NGdySDMxcjhYWWVhZ2VudPZnc3ViamVjdKFlTG9jYWxuYXRvbS1mbG93Y2hhcnRpYXJ0aWZhY3RzgaFmQ29tbWl0eChjZjU4NjQ2NjY1ZDdlN2JkMDY1Mjk0MzY5ZmQxNjVjZDQ4MTdmZmUwaXdvcmtzcGFjZaFpV29ya3NwYWNleEBhMjEzMjNmYzY5NzI2N2MyYzM2ODc4NTc1ODY4ZDQ4ZTM5MzJlNDM4ZDA3NzA5YjBhNmViY2YyNGQyYWRmOGVma3JlY29yZGVkX2F0GwAGWYBw+Pex"
+}
+---
+
+adversarial review of atom-flowchart (back-edge routing addendum): SHIP. Added per user request: back-flows (revisits + off-column/off-row next) are now ROUTED as dashed arrows (┄/┆/╰/╯/▲) in stacked lanes below the boxes in a SINGLE-ROW layout, visually distinct from the solid forward ──▶; MULTI-ROW layouts keep the ⇢/↻ text list (routing across rows would cross boxes — honest-ambiguity). Independent Opus review proved the lane bounds safe: routed is non-empty only when single_row, so boxes_h=3 and grid_h=4+routed.len(); max lane_y=3+routed.len()<grid_h; box_center<grid_w strictly. The sx==tx self-edge (a self-revisiting atom) is guarded by `if lo+1<hi` and tested (loop revisits loop, no panic); distinct columns in single-row make adjacent-center inversion impossible. Classification correct (revisit never forward via !revisit guard; unknown target -> ⇢(unknown); multi-row adds no lanes). No regression (forward arrows from a collected list, identical geometry). 91 tests, clippy -D warnings, fmt clean. Verdict: SHIP.
+***8<***
+---
+{
+  "v": 3,
+  "cid": "bafyreicw3hfbb2vagjrr7wb32ql2qnoh75vfuq4v6ifxvcdwr6ktdbdsmu",
+  "sig": "697e58689eeafa127df3842a638ad5e2a947a493968c2a503bec8f9df87f311121c4310e43a741c42fda556108d2194b7239ae7214309e648ac738ab7d1dac47",
+  "author": "did:key:zDnaeSdBbrM6NeY4i8MoxuFiyDtwx3AHJ8fjEd94grH31r8XY",
+  "subject": {
+    "local": "atom-flowchart"
+  },
+  "kind": "publication",
+  "cites": [],
+  "rev": "223mtk3sjvdce",
+  "seq": 9,
+  "of": 10,
+  "content": "p2Rib2R5oWtQdWJsaWNhdGlvbqFlbGF5ZXJnR2l0VHJlZWVjaXRlc4BmYXV0aG9yomNkaWR4OWRpZDprZXk6ekRuYWVTZEJick02TmVZNGk4TW94dUZpeUR0d3gzQUhKOGZqRWQ5NGdySDMxcjhYWWVhZ2VudPZnc3ViamVjdKFlTG9jYWxuYXRvbS1mbG93Y2hhcnRpYXJ0aWZhY3RzgaFmQ29tbWl0eChjZjU4NjQ2NjY1ZDdlN2JkMDY1Mjk0MzY5ZmQxNjVjZDQ4MTdmZmUwaXdvcmtzcGFjZaFpV29ya3NwYWNleEBhMjEzMjNmYzY5NzI2N2MyYzM2ODc4NTc1ODY4ZDQ4ZTM5MzJlNDM4ZDA3NzA5YjBhNmViY2YyNGQyYWRmOGVma3JlY29yZGVkX2F0GwAGWYBw/aSV"
 }
 ---
