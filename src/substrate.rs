@@ -327,6 +327,10 @@ pub struct Atom {
     pub inputs: Vec<String>,
     pub outputs: Vec<String>,
     pub next: Vec<String>,
+    /// Witness types this atom's completion produces (the `done` block key).
+    pub done: Vec<String>,
+    /// Atoms this one revisits (the `revisits` block key), i.e. its back-edges.
+    pub revisits: Vec<String>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -365,6 +369,8 @@ fn parse_atom(slug: &str, claims: &[Claim]) -> Option<Atom> {
         inputs: str_array_at(&j, "in"),
         outputs: str_array_at(&j, "out"),
         next: str_array_at(&j, "next"),
+        done: str_array_at(&j, "done"),
+        revisits: str_array_at(&j, "revisits"),
     })
 }
 
