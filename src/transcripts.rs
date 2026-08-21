@@ -499,21 +499,37 @@ impl TranscriptSource for CodexSource {
     }
 
     fn discover(&self, repo: &Path) -> Vec<SessionHandle> {
-        self.for_repo(repo)
-            .into_iter()
-            .map(|(path, meta)| {
-                let last_active = std::fs::metadata(&path)
-                    .ok()
-                    .and_then(|m| m.modified().ok());
-                SessionHandle {
-                    harness: Harness::Codex,
-                    id: meta.session_id.clone(),
-                    title: short_id(&meta.session_id),
-                    git_branch: meta.branch,
-                    last_active,
-                    locator: Locator::File(path),
-                    body_available: true,
-                }
+        // Codex writes a fresh full-snapshot rollout file per resume/turn, all
+        // sharing one `session_id`. Collapse them to ONE logical session, keyed
+        // by `session_id`, whose body is the newest snapshot — otherwise a long
+        // session shows as dozens of duplicate rail entries that also thrash the
+        // re-read gate as their differing mtimes fight over the same id.
+        let mut newest: std::collections::HashMap<String, (PathBuf, CodexMeta, SystemTime)> =
+            std::collections::HashMap::new();
+        for (path, meta) in self.for_repo(repo) {
+            let mtime = std::fs::metadata(&path)
+                .ok()
+                .and_then(|m| m.modified().ok())
+                .unwrap_or(SystemTime::UNIX_EPOCH);
+            newest
+                .entry(meta.session_id.clone())
+                .and_modify(|slot| {
+                    if mtime > slot.2 {
+                        *slot = (path.clone(), meta.clone(), mtime);
+                    }
+                })
+                .or_insert((path, meta, mtime));
+        }
+        newest
+            .into_values()
+            .map(|(path, meta, mtime)| SessionHandle {
+                harness: Harness::Codex,
+                id: meta.session_id.clone(),
+                title: short_id(&meta.session_id),
+                git_branch: meta.branch,
+                last_active: Some(mtime),
+                locator: Locator::File(path),
+                body_available: true,
             })
             .collect()
     }
@@ -979,6 +995,35 @@ mod tests {
         assert_eq!(got[0].harness, Harness::Codex);
         assert_eq!(got[0].id, "s-a");
         assert_eq!(got[0].git_branch.as_deref(), Some("main"));
+
+        std::fs::remove_dir_all(&tmp).ok();
+        Ok(())
+    }
+
+    #[test]
+    fn codex_discover_collapses_files_by_session_id() -> Result<(), Box<dyn std::error::Error>> {
+        // Codex writes many full-snapshot rollouts sharing one session_id; they
+        // must collapse to a single rail entry, not one per file.
+        let tmp = std::env::temp_dir().join(format!("cospan-codex-dedup-{}", std::process::id()));
+        let day = tmp.join("2026/08/20");
+        std::fs::create_dir_all(&day)?;
+        let meta = |sid: &str, cwd: &str| {
+            format!(
+                "{{\"type\":\"session_meta\",\"timestamp\":\"t\",\"payload\":{{\"session_id\":\"{sid}\",\"cwd\":\"{cwd}\",\"git\":{{\"branch\":\"main\"}}}}}}"
+            )
+        };
+        std::fs::write(day.join("rollout-a1.jsonl"), meta("sess-A", "/repo"))?;
+        std::fs::write(day.join("rollout-a2.jsonl"), meta("sess-A", "/repo"))?;
+        std::fs::write(day.join("rollout-b.jsonl"), meta("sess-B", "/repo"))?;
+
+        let src = CodexSource { root: tmp.clone() };
+        let mut got = src.discover(Path::new("/repo"));
+        got.sort_by(|a, b| a.id.cmp(&b.id));
+        assert_eq!(got.len(), 2, "the two sess-A files collapse to one entry");
+        assert_eq!(
+            got.iter().map(|h| h.id.clone()).collect::<Vec<_>>(),
+            vec!["sess-A".to_string(), "sess-B".to_string()]
+        );
 
         std::fs::remove_dir_all(&tmp).ok();
         Ok(())

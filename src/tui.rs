@@ -1142,18 +1142,12 @@ pub struct ChatRow {
     pub line: ratatui::text::Line<'static>,
 }
 
-/// Lay a session's turns out as styled rows: each message gets a color-coded
-/// role header, a separator rule above it, and a body — markdown-rendered for
-/// User/Assistant messages, dim for tool/system turns. Collapsible turns
-/// (thinking, tool traffic, sidechains) show a one-line summary unless expanded,
-/// keeping the conversation readable (`telos/honest-ambiguity`: collapsed
-/// content is available, never dropped). `width` sizes the separator rule. Pure,
-/// so the layout is testable without a terminal.
-/// The harness prompt tags cospan formats. Deliberately a fixed registry, not
+/// Prompt tags cospan formats, per harness. Deliberately fixed registries, not
 /// "any paired tag": a message *discussing* tags (or an assistant emitting
-/// `<Foo>` generics) must not be reformatted as if the tags were real. These are
-/// the distinctive hyphenated wrappers the harnesses actually inject.
-const KNOWN_PROMPT_TAGS: &[&str] = &[
+/// `<Foo>` generics) must not be reformatted as if the tags were real — and each
+/// harness injects a different, distinctive set. Generic structural sub-tags
+/// (`<path>`, `<entry>`, `<cwd>`) are excluded to avoid colliding with code.
+const CLAUDE_PROMPT_TAGS: &[&str] = &[
     "system-reminder",
     "command-message",
     "command-name",
@@ -1164,6 +1158,29 @@ const KNOWN_PROMPT_TAGS: &[&str] = &[
     "task-reminder",
     "user-prompt-submit-hook",
 ];
+
+/// Codex's injected-context wrappers (see `~/.codex/sessions` rollouts).
+const CODEX_PROMPT_TAGS: &[&str] = &[
+    "app-context",
+    "environment_context",
+    "INSTRUCTIONS",
+    "user_instructions",
+    "skills_instructions",
+    "apps_instructions",
+    "plugins_instructions",
+    "recommended_plugins",
+    "multi_agent_mode",
+    "permission_profile",
+];
+
+/// The prompt-tag registry for a harness (opencode's is not yet catalogued).
+fn prompt_tags_for(harness: transcripts::Harness) -> &'static [&'static str] {
+    match harness {
+        transcripts::Harness::ClaudeCode => CLAUDE_PROMPT_TAGS,
+        transcripts::Harness::Codex => CODEX_PROMPT_TAGS,
+        transcripts::Harness::Opencode => &[],
+    }
+}
 
 /// Byte ranges of the text that Markdown treats as code — inline code spans and
 /// fenced/indented code blocks — computed by the real parser (`pulldown-cmark`),
@@ -1247,7 +1264,7 @@ fn parse_tag(s: &str) -> Option<(usize, &str, TagKind)> {
 /// counts as a prompt tag only if the text also contains a matching `</name>`
 /// (or it is self-closing) — so real prompt tags like `<system-reminder>…` are
 /// formatted, while generics like `Vec<Line>` (no `</Line>`) stay plain text.
-fn scan_prompt_tags(text: &str) -> Vec<Seg<'_>> {
+fn scan_prompt_tags<'a>(text: &'a str, tags_registry: &[&str]) -> Vec<Seg<'a>> {
     // Pass 1: collect every well-formed tag and which names are opened + closed.
     let mut tags: Vec<(usize, usize, TagKind)> = Vec::new();
     let mut opened: HashSet<&str> = HashSet::new();
@@ -1291,7 +1308,7 @@ fn scan_prompt_tags(text: &str) -> Vec<Seg<'_>> {
             &after[..n]
         };
         let paired = kind == TagKind::SelfClose || (opened.contains(name) && closed.contains(name));
-        let accept = KNOWN_PROMPT_TAGS.contains(&name) && paired && !in_code(start, end);
+        let accept = tags_registry.contains(&name) && paired && !in_code(start, end);
         if !accept {
             continue;
         }
@@ -1313,11 +1330,11 @@ fn scan_prompt_tags(text: &str) -> Vec<Seg<'_>> {
 /// Render a User/Assistant message body: markdown for prose, and recognized
 /// prompt tags broken onto their own colored lines with their contents indented
 /// by nesting depth — the common "structured prompt" formatting.
-fn render_message_body(text: &str) -> Vec<ratatui::text::Line<'static>> {
+fn render_message_body(text: &str, tags_registry: &[&str]) -> Vec<ratatui::text::Line<'static>> {
     use ratatui::style::{Color, Modifier, Style};
     use ratatui::text::{Line, Span};
 
-    let segs = scan_prompt_tags(text);
+    let segs = scan_prompt_tags(text, tags_registry);
     // No recognized tags → plain markdown, exactly as before.
     if segs.iter().all(|s| matches!(s, Seg::Text(_))) {
         return crate::markdown::render(text);
@@ -1375,6 +1392,7 @@ fn push_single_event(
     is_start: bool,
     expanded: &HashSet<usize>,
     rule_w: usize,
+    tags_registry: &[&str],
 ) {
     use ratatui::style::{Color, Modifier, Style};
     use ratatui::text::{Line, Span};
@@ -1431,11 +1449,12 @@ fn push_single_event(
         ]),
     });
 
-    // Body: markdown (with prompt-tag formatting) for real messages; dim raw
-    // text for tool/system turns.
+    // Body: markdown (with prompt-tag formatting) for message turns — including
+    // System, since Codex's injected-context wrappers arrive as `developer`
+    // (System) messages full of prompt tags; dim raw text for tool turns.
     let body: Vec<Line<'static>> = match (e.role, e.kind) {
-        (Role::User | Role::Assistant, EventKind::Message) if !e.text.is_empty() => {
-            render_message_body(&e.text)
+        (Role::User | Role::Assistant | Role::System, EventKind::Message) if !e.text.is_empty() => {
+            render_message_body(&e.text, tags_registry)
         }
         _ if e.text.is_empty() => vec![Line::from(Span::styled(
             "(empty)",
@@ -1594,6 +1613,10 @@ fn push_group(
     }
 }
 
+/// Lay a session's turns out as styled rows: color-coded role headers, a
+/// separator between turns, markdown bodies with harness-specific prompt-tag
+/// formatting, and runs of ≥2 back-to-back tool/thinking turns folded into one
+/// collapsible group. `width` sizes the wrap and separators. Pure and testable.
 pub fn chat_layout(
     session: &transcripts::Session,
     expanded: &HashSet<usize>,
@@ -1606,6 +1629,7 @@ pub fn chat_layout(
     let rule_w = width.clamp(8, 200);
     let events = &session.events;
     let n = events.len();
+    let tags_registry = prompt_tags_for(session.harness);
 
     let mut i = 0usize;
     let mut first_unit = true;
@@ -1636,7 +1660,15 @@ pub fn chat_layout(
             push_group(&mut out, &events[i..j], k, i, is_first, expanded, rule_w);
             i = j;
         } else {
-            push_single_event(&mut out, &events[i], i, is_first, expanded, rule_w);
+            push_single_event(
+                &mut out,
+                &events[i],
+                i,
+                is_first,
+                expanded,
+                rule_w,
+                tags_registry,
+            );
             i += 1;
         }
     }
@@ -3613,7 +3645,10 @@ mod tests {
 
     #[test]
     fn render_message_body_formats_paired_prompt_tags() {
-        let lines = render_message_body("<command-message>day:wakeup</command-message>");
+        let lines = render_message_body(
+            "<command-message>day:wakeup</command-message>",
+            CLAUDE_PROMPT_TAGS,
+        );
         let texts: Vec<String> = lines
             .iter()
             .map(|l| {
@@ -3651,7 +3686,7 @@ mod tests {
     #[test]
     fn render_message_body_ignores_unknown_and_in_code_tags() {
         // An unknown (non-registry) paired tag stays plain text…
-        let unknown = render_message_body("<inner>deep</inner> and more");
+        let unknown = render_message_body("<inner>deep</inner> and more", CLAUDE_PROMPT_TAGS);
         assert!(
             !unknown.iter().any(|l| {
                 let t: String = l.spans.iter().map(|s| s.content.as_ref()).collect();
@@ -3663,7 +3698,7 @@ mod tests {
         // …and a *known* tag written inside a code fence stays literal code —
         // this is the failure mode where discussing tags rendered as if real.
         let text = "example:\n\n```\n<system-reminder>fake</system-reminder>\n```\n";
-        let lines = render_message_body(text);
+        let lines = render_message_body(text, CLAUDE_PROMPT_TAGS);
         let broken_out = lines.iter().any(|l| {
             let t: String = l.spans.iter().map(|s| s.content.as_ref()).collect();
             t.trim() == "<system-reminder>" && l.spans.iter().any(|s| s.style.fg.is_some())
@@ -3684,10 +3719,33 @@ mod tests {
     }
 
     #[test]
+    fn prompt_tags_are_per_harness() {
+        use crate::transcripts::Harness;
+        // Codex's <environment_context> formats under the Codex registry…
+        let codex = render_message_body(
+            "<environment_context>\ncwd: /x\n</environment_context>",
+            CODEX_PROMPT_TAGS,
+        );
+        assert!(
+            codex.iter().any(|l| {
+                let t: String = l.spans.iter().map(|s| s.content.as_ref()).collect();
+                t.trim() == "<environment_context>"
+            }),
+            "Codex tag should format under the Codex registry"
+        );
+        // …but not under Claude's, and a Claude tag is absent from Codex's.
+        assert_eq!(prompt_tags_for(Harness::ClaudeCode), CLAUDE_PROMPT_TAGS);
+        assert_eq!(prompt_tags_for(Harness::Codex), CODEX_PROMPT_TAGS);
+        assert!(!CLAUDE_PROMPT_TAGS.contains(&"environment_context"));
+        assert!(!CODEX_PROMPT_TAGS.contains(&"system-reminder"));
+        assert!(prompt_tags_for(Harness::Opencode).is_empty());
+    }
+
+    #[test]
     fn render_message_body_leaves_generics_alone() {
         // `Vec<Line>` has no matching `</Line>`, so it is not a prompt tag: the
         // body renders as plain markdown, nothing broken onto its own line.
-        let lines = render_message_body("it returns `Vec<Line>` from render");
+        let lines = render_message_body("it returns `Vec<Line>` from render", CLAUDE_PROMPT_TAGS);
         let joined = lines
             .iter()
             .flat_map(|l| l.spans.iter().map(|s| s.content.as_ref().to_string()))
