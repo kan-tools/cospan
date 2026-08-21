@@ -151,6 +151,10 @@ pub struct AppState {
     /// Top visible *line* of the conversation (`j`/`k`/PgUp/PgDn scroll it);
     /// `Shift`+`↑`/`↓` jump between messages.
     pub chat_scroll: usize,
+    /// When true, the view stays pinned to the bottom (newest turn) — the
+    /// default on opening a session, and it re-pins as turns arrive. Scrolling up
+    /// releases it; scrolling back to the bottom re-arms it (tail-follow).
+    pub chat_follow: bool,
     /// Event indices whose collapsed turn (thinking / tool / sidechain) the
     /// operator has expanded with `Enter`.
     pub chat_expanded: HashSet<usize>,
@@ -289,6 +293,7 @@ impl AppState {
             chat_loaded_active: None,
             chat_signal: None,
             chat_scroll: 0,
+            chat_follow: true,
             chat_expanded: HashSet::new(),
             chat_rows: Vec::new(),
             chat_dirty: true,
@@ -649,8 +654,9 @@ impl AppState {
                 self.chat_session = Some(transcripts::read(handle));
                 self.chat_loaded = Some(handle.id.clone());
                 self.chat_loaded_active = handle.last_active;
-                self.chat_scroll = 0;
                 self.chat_expanded.clear();
+                // Open a session at its newest turn, and tail it.
+                self.chat_follow = true;
                 self.chat_dirty = true;
             }
         }
@@ -690,13 +696,29 @@ impl AppState {
         self.chat_total_lines = self.chat_rows.len();
         self.chat_layout_w = w;
         self.chat_dirty = false;
-        let max = self.chat_total_lines.saturating_sub(1);
-        self.chat_scroll = self.chat_scroll.min(max);
+        // Tail-follow: stay pinned to the newest turn unless the reader scrolled
+        // up; otherwise just clamp the existing offset.
+        self.chat_scroll = if self.chat_follow {
+            self.chat_max_scroll()
+        } else {
+            self.chat_scroll.min(self.chat_max_scroll())
+        };
     }
 
     /// The cached conversation rows for rendering (see `chat_relayout`).
     pub fn chat_rows(&self) -> &[ChatRow] {
         &self.chat_rows
+    }
+
+    /// Visible conversation rows (the pane height minus its border).
+    fn chat_visible_rows(&self) -> usize {
+        (self.body_h.saturating_sub(2)).max(1) as usize
+    }
+
+    /// The largest scroll offset that still fills the pane — the "bottom".
+    fn chat_max_scroll(&self) -> usize {
+        self.chat_total_lines
+            .saturating_sub(self.chat_visible_rows())
     }
 
     /// Width available to the conversation text, from the last viewport (minus
@@ -709,10 +731,13 @@ impl AppState {
         w.saturating_sub(2)
     }
 
-    /// Scroll the conversation by `delta` lines (`j`/`k`, PgUp/PgDn), clamped.
+    /// Scroll the conversation by `delta` lines (`j`/`k`, PgUp/PgDn), clamped to
+    /// the bottom. Re-arms tail-follow when scrolled to the bottom, releases it
+    /// otherwise.
     pub fn chat_scroll_by(&mut self, delta: isize) {
-        let max = self.chat_total_lines.saturating_sub(1) as isize;
+        let max = self.chat_max_scroll() as isize;
         self.chat_scroll = (self.chat_scroll as isize + delta).clamp(0, max.max(0)) as usize;
+        self.chat_follow = self.chat_scroll >= self.chat_max_scroll();
     }
 
     /// Jump the scroll to the previous/next message's start line (`Shift`+arrows
@@ -728,7 +753,8 @@ impl AppState {
             .saturating_sub(1);
         let target =
             (cur as isize + delta).clamp(0, self.chat_msg_starts.len() as isize - 1) as usize;
-        self.chat_scroll = self.chat_msg_starts[target].0;
+        self.chat_scroll = self.chat_msg_starts[target].0.min(self.chat_max_scroll());
+        self.chat_follow = self.chat_scroll >= self.chat_max_scroll();
     }
 
     /// The event index of the message at the top of the viewport — what `Enter`
@@ -1086,6 +1112,180 @@ pub struct ChatRow {
 /// keeping the conversation readable (`telos/honest-ambiguity`: collapsed
 /// content is available, never dropped). `width` sizes the separator rule. Pure,
 /// so the layout is testable without a terminal.
+/// Whether a prompt tag opens, closes, or is self-closing.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum TagKind {
+    Open,
+    Close,
+    SelfClose,
+}
+
+/// One piece of a message body: plain text, or a recognized prompt tag.
+enum Seg<'a> {
+    Text(&'a str),
+    Tag(&'a str, TagKind),
+}
+
+/// Parse a tag starting at the `<` of `s`, returning `(byte_len, name, kind)` if
+/// `s` opens with a well-formed `<name …>` / `</name>` / `<name/>`. Rejects
+/// `<` that is not a tag (e.g. `a < b`), and stops if a nested `<` appears first.
+fn parse_tag(s: &str) -> Option<(usize, &str, TagKind)> {
+    let b = s.as_bytes();
+    if b.first() != Some(&b'<') {
+        return None;
+    }
+    let mut i = 1;
+    let mut kind = TagKind::Open;
+    if b.get(i) == Some(&b'/') {
+        kind = TagKind::Close;
+        i += 1;
+    }
+    let name_start = i;
+    if !b.get(i).is_some_and(|c| c.is_ascii_alphabetic()) {
+        return None;
+    }
+    while b
+        .get(i)
+        .is_some_and(|c| c.is_ascii_alphanumeric() || *c == b'-' || *c == b'_')
+    {
+        i += 1;
+    }
+    let name = &s[name_start..i];
+    // Attributes (or nothing) up to `>`, bailing on a stray `<`.
+    while let Some(&c) = b.get(i) {
+        match c {
+            b'>' => {
+                let self_close = i > 0 && b[i - 1] == b'/';
+                if self_close && kind == TagKind::Open {
+                    kind = TagKind::SelfClose;
+                }
+                return Some((i + 1, name, kind));
+            }
+            b'<' => return None,
+            _ => i += 1,
+        }
+    }
+    None
+}
+
+/// Split a message body into text and *paired* prompt-tag segments. A `<name>`
+/// counts as a prompt tag only if the text also contains a matching `</name>`
+/// (or it is self-closing) — so real prompt tags like `<system-reminder>…` are
+/// formatted, while generics like `Vec<Line>` (no `</Line>`) stay plain text.
+fn scan_prompt_tags(text: &str) -> Vec<Seg<'_>> {
+    // Pass 1: collect every well-formed tag and which names are opened + closed.
+    let mut tags: Vec<(usize, usize, TagKind)> = Vec::new();
+    let mut opened: HashSet<&str> = HashSet::new();
+    let mut closed: HashSet<&str> = HashSet::new();
+    let mut i = 0;
+    while let Some(off) = text[i..].find('<') {
+        let start = i + off;
+        if let Some((len, name, kind)) = parse_tag(&text[start..]) {
+            match kind {
+                TagKind::Open => {
+                    opened.insert(name);
+                }
+                TagKind::Close => {
+                    closed.insert(name);
+                }
+                TagKind::SelfClose => {}
+            }
+            tags.push((start, start + len, kind));
+            i = start + len;
+        } else {
+            i = start + 1;
+        }
+    }
+
+    // Pass 2: accept self-closing tags and open/close tags whose name is paired.
+    let mut segs: Vec<Seg> = Vec::new();
+    let mut cursor = 0;
+    for (start, end, kind) in tags {
+        let name = {
+            let inner = &text[start..end];
+            // name = the run of tag-name chars after `<`/`</`.
+            let after = inner.trim_start_matches('<').trim_start_matches('/');
+            let n: usize = after
+                .char_indices()
+                .find(|(_, c)| !(c.is_ascii_alphanumeric() || *c == '-' || *c == '_'))
+                .map(|(k, _)| k)
+                .unwrap_or(after.len());
+            &after[..n]
+        };
+        let accept = kind == TagKind::SelfClose || (opened.contains(name) && closed.contains(name));
+        if !accept {
+            continue;
+        }
+        if cursor < start {
+            segs.push(Seg::Text(&text[cursor..start]));
+        }
+        segs.push(Seg::Tag(&text[start..end], kind));
+        cursor = end;
+    }
+    if cursor < text.len() {
+        segs.push(Seg::Text(&text[cursor..]));
+    }
+    if segs.is_empty() {
+        segs.push(Seg::Text(text));
+    }
+    segs
+}
+
+/// Render a User/Assistant message body: markdown for prose, and recognized
+/// prompt tags broken onto their own colored lines with their contents indented
+/// by nesting depth — the common "structured prompt" formatting.
+fn render_message_body(text: &str) -> Vec<ratatui::text::Line<'static>> {
+    use ratatui::style::{Color, Modifier, Style};
+    use ratatui::text::{Line, Span};
+
+    let segs = scan_prompt_tags(text);
+    // No recognized tags → plain markdown, exactly as before.
+    if segs.iter().all(|s| matches!(s, Seg::Text(_))) {
+        return crate::markdown::render(text);
+    }
+
+    let tag_style = Style::new().fg(Color::Blue).add_modifier(Modifier::BOLD);
+    let mut out: Vec<Line<'static>> = Vec::new();
+    let mut depth = 0usize;
+    let indent = |d: usize| "  ".repeat(d);
+    for seg in segs {
+        match seg {
+            Seg::Text(t) => {
+                if t.trim().is_empty() {
+                    continue;
+                }
+                for mut l in crate::markdown::render(t) {
+                    if depth > 0 {
+                        l.spans.insert(0, Span::raw(indent(depth)));
+                    }
+                    out.push(l);
+                }
+            }
+            Seg::Tag(t, TagKind::Open) => {
+                out.push(Line::from(vec![
+                    Span::raw(indent(depth)),
+                    Span::styled(t.to_string(), tag_style),
+                ]));
+                depth += 1;
+            }
+            Seg::Tag(t, TagKind::Close) => {
+                depth = depth.saturating_sub(1);
+                out.push(Line::from(vec![
+                    Span::raw(indent(depth)),
+                    Span::styled(t.to_string(), tag_style),
+                ]));
+            }
+            Seg::Tag(t, TagKind::SelfClose) => {
+                out.push(Line::from(vec![
+                    Span::raw(indent(depth)),
+                    Span::styled(t.to_string(), tag_style),
+                ]));
+            }
+        }
+    }
+    out
+}
+
 pub fn chat_layout(
     session: &transcripts::Session,
     expanded: &HashSet<usize>,
@@ -1159,10 +1359,11 @@ pub fn chat_layout(
             )),
         });
 
-        // Body: markdown for real messages; dim raw text for tool/system turns.
+        // Body: markdown (with prompt-tag formatting) for real messages; dim raw
+        // text for tool/system turns.
         let body: Vec<Line<'static>> = match (e.role, e.kind) {
             (Role::User | Role::Assistant, EventKind::Message) if !e.text.is_empty() => {
-                crate::markdown::render(&e.text)
+                render_message_body(&e.text)
             }
             _ if e.text.is_empty() => vec![Line::from(Span::styled(
                 "(empty)",
@@ -3142,6 +3343,122 @@ mod tests {
             .collect::<Vec<_>>()
             .join("\n");
         assert!(joined2.contains("SECRET_DETAIL_LINE"), "{joined2}");
+    }
+
+    #[test]
+    fn render_message_body_formats_paired_prompt_tags() {
+        let lines = render_message_body("<command-message>day:wakeup</command-message>");
+        let texts: Vec<String> = lines
+            .iter()
+            .map(|l| {
+                l.spans
+                    .iter()
+                    .map(|s| s.content.as_ref())
+                    .collect::<String>()
+            })
+            .collect();
+        // Each tag on its own line, content between them, indented.
+        assert!(
+            texts.iter().any(|l| l.trim() == "<command-message>"),
+            "{texts:?}"
+        );
+        assert!(texts.iter().any(|l| l.contains("day:wakeup")), "{texts:?}");
+        assert!(
+            texts.iter().any(|l| l.trim() == "</command-message>"),
+            "{texts:?}"
+        );
+        // The tag line is colored (a foreground was set on the tag span).
+        let tagline = lines
+            .iter()
+            .find(|l| {
+                l.spans
+                    .iter()
+                    .any(|s| s.content.contains("command-message"))
+            })
+            .unwrap();
+        assert!(
+            tagline.spans.iter().any(|s| s.style.fg.is_some()),
+            "prompt tag should be colored"
+        );
+    }
+
+    #[test]
+    fn render_message_body_leaves_generics_alone() {
+        // `Vec<Line>` has no matching `</Line>`, so it is not a prompt tag: the
+        // body renders as plain markdown, nothing broken onto its own line.
+        let lines = render_message_body("it returns `Vec<Line>` from render");
+        let joined = lines
+            .iter()
+            .flat_map(|l| l.spans.iter().map(|s| s.content.as_ref().to_string()))
+            .collect::<Vec<_>>()
+            .join("");
+        assert!(joined.contains("Vec<Line>"), "{joined}");
+        assert!(
+            !lines.iter().any(|l| {
+                let t: String = l.spans.iter().map(|s| s.content.as_ref()).collect();
+                t.trim() == "<Line>"
+            }),
+            "a generic must not be broken out as a tag"
+        );
+    }
+
+    #[test]
+    fn chat_tail_follow_arms_at_bottom_releases_above() {
+        let mut a = app(&["x"]);
+        a.view = View::Chat;
+        a.chat_total_lines = 50;
+        a.set_viewport(80, 12); // visible = 10 → bottom scroll = 40
+        a.chat_scroll = 40;
+        a.chat_follow = true;
+        a.chat_scroll_by(-5);
+        assert_eq!(a.chat_scroll, 35);
+        assert!(!a.chat_follow, "scrolling up releases tail-follow");
+        a.chat_scroll_by(100);
+        assert_eq!(a.chat_scroll, 40, "clamps to the bottom");
+        assert!(a.chat_follow, "returning to the bottom re-arms tail-follow");
+    }
+
+    #[test]
+    fn chat_relayout_pins_to_bottom_when_following() {
+        use crate::transcripts::{Event, EventKind, Harness, Role, Session};
+        let ev = |t: &str| Event {
+            role: Role::User,
+            kind: EventKind::Message,
+            ts: None,
+            id: None,
+            parent: None,
+            is_sidechain: false,
+            text: t.to_string(),
+        };
+        let session = Session {
+            harness: Harness::ClaudeCode,
+            id: "s".into(),
+            title: "t".into(),
+            git_branch: None,
+            events: (0..30).map(|i| ev(&format!("line {i}"))).collect(),
+        };
+        let mut a = app(&["x"]);
+        a.view = View::Chat;
+        a.chat_session = Some(session);
+        a.set_viewport(80, 12); // visible = 10
+        a.chat_dirty = true;
+        a.chat_follow = true;
+        a.chat_relayout();
+        assert!(
+            a.chat_total_lines > 10,
+            "the fixture fills more than a screen"
+        );
+        assert_eq!(
+            a.chat_scroll,
+            a.chat_total_lines - 10,
+            "follow pins the view to the bottom"
+        );
+        // With follow released, relayout keeps the reader's position.
+        a.chat_follow = false;
+        a.chat_scroll = 0;
+        a.chat_dirty = true;
+        a.chat_relayout();
+        assert_eq!(a.chat_scroll, 0, "released follow does not jump to bottom");
     }
 
     #[test]
