@@ -1465,13 +1465,36 @@ fn push_single_event(
     }
 }
 
-/// Render a run of ≥2 back-to-back tool turns as one collapsible group — a
-/// "N tool calls" line that expands to a per-call summary list. Keyed for
-/// expand/collapse by the run's first event index (`msg`), so it is one jump
-/// unit and `Enter` on it toggles the whole run.
-fn push_tool_group(
+/// The kinds of back-to-back turns that fold into one collapsible group.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum FoldKind {
+    Tool,
+    Thinking,
+}
+
+/// The fold category of an event, or `None` if it never folds (messages, and —
+/// deliberately — sidechain turns, which belong to a subagent's own context).
+fn fold_kind(e: &transcripts::Event) -> Option<FoldKind> {
+    use transcripts::EventKind;
+    if e.is_sidechain {
+        return None;
+    }
+    match e.kind {
+        EventKind::ToolCall | EventKind::ToolResult => Some(FoldKind::Tool),
+        EventKind::Thinking => Some(FoldKind::Thinking),
+        _ => None,
+    }
+}
+
+/// Render a run of ≥2 back-to-back turns of one fold category as a single
+/// collapsible group — "N tool calls" / "N thinking blocks" — that `Enter`
+/// expands: a per-call summary list for tools, the full reasoning for thinking.
+/// Keyed for expand/collapse by the run's first event index (`msg`), so it is
+/// one jump unit and `Enter` on it toggles the whole run.
+fn push_group(
     out: &mut Vec<ChatRow>,
     run: &[transcripts::Event],
+    kind: FoldKind,
     msg: usize,
     is_start: bool,
     expanded: &HashSet<usize>,
@@ -1481,7 +1504,10 @@ fn push_tool_group(
     use ratatui::text::{Line, Span};
     use transcripts::EventKind;
 
-    let accent = Color::Yellow;
+    let (accent, noun) = match kind {
+        FoldKind::Tool => (Color::Yellow, "tool calls"),
+        FoldKind::Thinking => (Color::Gray, "thinking blocks"),
+    };
     let bar = || Span::styled("▌ ".to_string(), Style::new().fg(accent));
     let open = expanded.contains(&msg);
     let (glyph, hint) = if open {
@@ -1495,35 +1521,74 @@ fn push_tool_group(
         line: Line::from(vec![
             bar(),
             Span::styled(
-                format!("{glyph} {} tool calls ", run.len()),
+                format!("{glyph} {} {noun} ", run.len()),
                 Style::new().fg(accent).add_modifier(Modifier::BOLD),
             ),
             Span::styled(hint.to_string(), Style::new().fg(Color::DarkGray)),
         ]),
     });
-    if open {
-        for e in run {
-            let label = if matches!(e.kind, EventKind::ToolResult) {
-                "result"
-            } else {
-                "tool"
-            };
-            let first = e.text.lines().next().unwrap_or("");
-            let line0 = Line::from(vec![
-                Span::styled(format!("{label}  "), Style::new().fg(accent)),
-                Span::styled(
-                    truncate(first, rule_w.saturating_sub(12)),
-                    Style::new().add_modifier(Modifier::DIM),
-                ),
-            ]);
-            for wl in wrap_line(&line0, rule_w.saturating_sub(2)) {
-                let mut spans = vec![bar()];
-                spans.extend(wl.spans);
-                out.push(ChatRow {
-                    msg,
-                    is_start: false,
-                    line: Line::from(spans),
-                });
+    if !open {
+        return;
+    }
+    // A little helper to push a body line under the bar.
+    let push_body = |out: &mut Vec<ChatRow>, line: Line<'static>| {
+        for wl in wrap_line(&line, rule_w.saturating_sub(2)) {
+            let mut spans = vec![bar()];
+            spans.extend(wl.spans);
+            out.push(ChatRow {
+                msg,
+                is_start: false,
+                line: Line::from(spans),
+            });
+        }
+    };
+    match kind {
+        // Tools: one compact "tool/result  brief" line per call.
+        FoldKind::Tool => {
+            for e in run {
+                let label = if matches!(e.kind, EventKind::ToolResult) {
+                    "result"
+                } else {
+                    "tool"
+                };
+                let first = e.text.lines().next().unwrap_or("");
+                push_body(
+                    out,
+                    Line::from(vec![
+                        Span::styled(format!("{label}  "), Style::new().fg(accent)),
+                        Span::styled(
+                            truncate(first, rule_w.saturating_sub(12)),
+                            Style::new().add_modifier(Modifier::DIM),
+                        ),
+                    ]),
+                );
+            }
+        }
+        // Thinking: the full reasoning of each block, dim, with a divider between.
+        FoldKind::Thinking => {
+            for (k, e) in run.iter().enumerate() {
+                if k > 0 {
+                    push_body(
+                        out,
+                        Line::from(Span::styled("· · ·", Style::new().fg(Color::DarkGray))),
+                    );
+                }
+                let body = if e.text.trim().is_empty() {
+                    vec![Line::from("(empty)")]
+                } else {
+                    e.text
+                        .lines()
+                        .map(|l| {
+                            Line::from(Span::styled(
+                                l.to_string(),
+                                Style::new().add_modifier(Modifier::DIM | Modifier::ITALIC),
+                            ))
+                        })
+                        .collect::<Vec<_>>()
+                };
+                for l in body {
+                    push_body(out, l);
+                }
             }
         }
     }
@@ -1536,25 +1601,22 @@ pub fn chat_layout(
 ) -> Vec<ChatRow> {
     use ratatui::style::{Color, Style};
     use ratatui::text::{Line, Span};
-    use transcripts::EventKind;
 
     let mut out: Vec<ChatRow> = Vec::new();
     let rule_w = width.clamp(8, 200);
     let events = &session.events;
     let n = events.len();
-    let groupable = |e: &transcripts::Event| {
-        matches!(e.kind, EventKind::ToolCall | EventKind::ToolResult) && !e.is_sidechain
-    };
 
     let mut i = 0usize;
     let mut first_unit = true;
     while i < n {
-        // A run of consecutive groupable tool turns; folded only when ≥2.
+        // A run of consecutive turns of one fold category; folded only when ≥2.
+        let kind = fold_kind(&events[i]);
         let mut j = i;
-        while j < n && groupable(&events[j]) {
+        while j < n && kind.is_some() && fold_kind(&events[j]) == kind {
             j += 1;
         }
-        let group = j - i >= 2;
+        let group = kind.filter(|_| j - i >= 2);
 
         let is_first = first_unit;
         first_unit = false;
@@ -1570,8 +1632,8 @@ pub fn chat_layout(
                 )),
             });
         }
-        if group {
-            push_tool_group(&mut out, &events[i..j], i, is_first, expanded, rule_w);
+        if let Some(k) = group {
+            push_group(&mut out, &events[i..j], k, i, is_first, expanded, rule_w);
             i = j;
         } else {
             push_single_event(&mut out, &events[i], i, is_first, expanded, rule_w);
@@ -3782,6 +3844,65 @@ mod tests {
         exp.insert(1usize);
         let j2 = joined(&chat_layout(&session, &exp, 80));
         assert!(j2.contains("Bash(ls)") && j2.contains("Edit(x.rs)"), "{j2}");
+    }
+
+    #[test]
+    fn chat_layout_groups_back_to_back_thinking() {
+        use crate::transcripts::{Event, EventKind, Harness, Role, Session};
+        let think = |text: &str| Event {
+            role: Role::Assistant,
+            kind: EventKind::Thinking,
+            ts: None,
+            id: None,
+            parent: None,
+            is_sidechain: false,
+            text: text.to_string(),
+        };
+        let msg = |text: &str| Event {
+            role: Role::Assistant,
+            kind: EventKind::Message,
+            ts: None,
+            id: None,
+            parent: None,
+            is_sidechain: false,
+            text: text.to_string(),
+        };
+        let session = Session {
+            harness: Harness::ClaudeCode,
+            id: "s".into(),
+            title: "t".into(),
+            git_branch: None,
+            events: vec![
+                msg("start"),
+                think("first thought\nmore"),
+                think("second thought"),
+                think("third thought"),
+                msg("end"),
+            ],
+        };
+        let joined = |rows: &[ChatRow]| rows.iter().map(row_text).collect::<Vec<_>>().join("\n");
+
+        let collapsed = chat_layout(&session, &HashSet::new(), 80);
+        let j = joined(&collapsed);
+        assert!(j.contains("3 thinking blocks"), "{j}");
+        assert!(
+            !j.contains("first thought"),
+            "reasoning hidden when collapsed: {j}"
+        );
+
+        let mut exp = HashSet::new();
+        exp.insert(1usize); // the run's first event index
+        let j2 = joined(&chat_layout(&session, &exp, 80));
+        assert!(
+            j2.contains("first thought")
+                && j2.contains("second thought")
+                && j2.contains("third thought"),
+            "{j2}"
+        );
+        assert!(
+            j2.contains("· · ·"),
+            "blocks are divided when expanded: {j2}"
+        );
     }
 
     #[test]
