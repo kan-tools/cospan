@@ -148,12 +148,30 @@ pub struct AppState {
     chat_loaded_active: Option<SystemTime>,
     /// Last-seen aggregate change signal — the transcript re-read gate.
     chat_signal: Option<SystemTime>,
-    /// Cursor over the selected session's turns, by *event index* (`j`/`k`); the
-    /// conversation pane scrolls to keep it visible.
+    /// Top visible *line* of the conversation (`j`/`k`/PgUp/PgDn scroll it);
+    /// `Shift`+`↑`/`↓` jump between messages.
     pub chat_scroll: usize,
     /// Event indices whose collapsed turn (thinking / tool / sidechain) the
     /// operator has expanded with `Enter`.
     pub chat_expanded: HashSet<usize>,
+    /// The cached styled conversation rows, rebuilt by `chat_relayout` only when
+    /// the session, expansions, or width change — not per frame (markdown is
+    /// parsed once per change, not 4×/second).
+    chat_rows: Vec<ChatRow>,
+    /// True when `chat_rows` needs rebuilding; set by the read/expand/resize
+    /// mutators and cleared by `chat_relayout`.
+    chat_dirty: bool,
+    /// The width `chat_rows` was laid out for, to detect a resize.
+    chat_layout_w: usize,
+    /// Total rendered conversation lines, from the last layout — clamps scroll.
+    pub chat_total_lines: usize,
+    /// `(start line, event index)` for each message, from the last layout —
+    /// drives message-skip (`Shift`+arrows) and current-message detection.
+    pub chat_msg_starts: Vec<(usize, usize)>,
+
+    // --- Viewport: the body area's size, refreshed each tick for paging. ---
+    body_w: u16,
+    body_h: u16,
 
     // --- Footer: day's status line, width-matched from its cache. ---
     pub footer: Vec<String>,
@@ -272,6 +290,13 @@ impl AppState {
             chat_signal: None,
             chat_scroll: 0,
             chat_expanded: HashSet::new(),
+            chat_rows: Vec::new(),
+            chat_dirty: true,
+            chat_layout_w: 0,
+            chat_total_lines: 0,
+            chat_msg_starts: Vec::new(),
+            body_w: 0,
+            body_h: 0,
             footer: Vec::new(),
             footer_mtime: None,
             footer_width: 0,
@@ -602,6 +627,7 @@ impl AppState {
             self.chat_session = None;
             self.chat_loaded = None;
             self.chat_loaded_active = None;
+            self.chat_dirty = true;
             return;
         }
         self.chat_selected = self.chat_selected.min(self.chat_sessions.len() - 1);
@@ -617,6 +643,7 @@ impl AppState {
                 // Same session, new turns: re-read but keep the reading position.
                 self.chat_session = Some(transcripts::read(handle));
                 self.chat_loaded_active = handle.last_active;
+                self.chat_dirty = true;
             }
             ChatReread::Switch => {
                 self.chat_session = Some(transcripts::read(handle));
@@ -624,6 +651,7 @@ impl AppState {
                 self.chat_loaded_active = handle.last_active;
                 self.chat_scroll = 0;
                 self.chat_expanded.clear();
+                self.chat_dirty = true;
             }
         }
     }
@@ -639,30 +667,128 @@ impl AppState {
             (self.chat_selected as isize + delta).clamp(0, n as isize - 1) as usize;
     }
 
-    /// Move the conversation cursor over the selected session's turns (`j`/`k`).
-    pub fn chat_move(&mut self, delta: isize) {
-        let n = self
-            .chat_session
-            .as_ref()
-            .map(|s| s.events.len())
-            .unwrap_or(0);
-        if n == 0 {
+    /// Rebuild and cache the styled conversation rows plus their line metadata
+    /// (total lines + per-message start lines), and clamp the scroll — but only
+    /// when something changed (`chat_dirty` or a resize), so markdown is parsed
+    /// once per change rather than every frame. `draw_chat` renders the cache.
+    pub fn chat_relayout(&mut self) {
+        let w = self.chat_convo_width();
+        if !self.chat_dirty && self.chat_layout_w == w {
             return;
         }
-        self.chat_scroll = (self.chat_scroll as isize + delta).clamp(0, n as isize - 1) as usize;
+        self.chat_rows = match &self.chat_session {
+            Some(s) => chat_layout(s, &self.chat_expanded, w),
+            None => Vec::new(),
+        };
+        self.chat_msg_starts = self
+            .chat_rows
+            .iter()
+            .enumerate()
+            .filter(|(_, r)| r.is_start)
+            .map(|(line, r)| (line, r.msg))
+            .collect();
+        self.chat_total_lines = self.chat_rows.len();
+        self.chat_layout_w = w;
+        self.chat_dirty = false;
+        let max = self.chat_total_lines.saturating_sub(1);
+        self.chat_scroll = self.chat_scroll.min(max);
     }
 
-    /// Expand/collapse the turn under the cursor, if it is a collapsible one
-    /// (thinking, tool traffic, or a sidechain). `Enter` in the Chat view.
+    /// The cached conversation rows for rendering (see `chat_relayout`).
+    pub fn chat_rows(&self) -> &[ChatRow] {
+        &self.chat_rows
+    }
+
+    /// Width available to the conversation text, from the last viewport (minus
+    /// the pane border), so markdown wraps and separators match the render.
+    fn chat_convo_width(&self) -> usize {
+        let w = match layout_mode(self.body_w) {
+            Fit::Wide => (self.body_w as usize) * 68 / 100,
+            Fit::Narrow => self.body_w as usize,
+        };
+        w.saturating_sub(2)
+    }
+
+    /// Scroll the conversation by `delta` lines (`j`/`k`, PgUp/PgDn), clamped.
+    pub fn chat_scroll_by(&mut self, delta: isize) {
+        let max = self.chat_total_lines.saturating_sub(1) as isize;
+        self.chat_scroll = (self.chat_scroll as isize + delta).clamp(0, max.max(0)) as usize;
+    }
+
+    /// Jump the scroll to the previous/next message's start line (`Shift`+arrows
+    /// or `{`/`}`) — the "skip to message" motion over line-by-line scrolling.
+    pub fn chat_msg_jump(&mut self, delta: isize) {
+        if self.chat_msg_starts.is_empty() {
+            return;
+        }
+        // The message we're in: the last start at or above the current top line.
+        let cur = self
+            .chat_msg_starts
+            .partition_point(|(line, _)| *line <= self.chat_scroll)
+            .saturating_sub(1);
+        let target =
+            (cur as isize + delta).clamp(0, self.chat_msg_starts.len() as isize - 1) as usize;
+        self.chat_scroll = self.chat_msg_starts[target].0;
+    }
+
+    /// The event index of the message at the top of the viewport — what `Enter`
+    /// expand/collapse acts on.
+    fn chat_current_event(&self) -> Option<usize> {
+        self.chat_msg_starts
+            .iter()
+            .rev()
+            .find(|(line, _)| *line <= self.chat_scroll)
+            .map(|(_, ev)| *ev)
+    }
+
+    /// Expand/collapse the message at the top of the viewport, if it is a
+    /// collapsible turn (thinking, tool traffic, or a sidechain). `Enter`.
     pub fn chat_toggle_expand(&mut self) {
+        let Some(ev) = self.chat_current_event() else {
+            return;
+        };
         let collapses = self
             .chat_session
             .as_ref()
-            .and_then(|s| s.events.get(self.chat_scroll))
+            .and_then(|s| s.events.get(ev))
             .map(|e| e.kind.collapses() || e.is_sidechain)
             .unwrap_or(false);
-        if collapses && !self.chat_expanded.remove(&self.chat_scroll) {
-            self.chat_expanded.insert(self.chat_scroll);
+        if collapses {
+            if !self.chat_expanded.remove(&ev) {
+                self.chat_expanded.insert(ev);
+            }
+            self.chat_dirty = true;
+            self.chat_relayout(); // the line count changed
+        }
+    }
+
+    /// Set the body viewport size (refreshed each tick), for page-sized motion.
+    pub fn set_viewport(&mut self, w: u16, h: u16) {
+        self.body_w = w;
+        self.body_h = h;
+    }
+
+    /// One page of rows for PgUp/PgDn — a screen minus a line of overlap.
+    pub fn page_rows(&self) -> isize {
+        (self.body_h.saturating_sub(1)).max(1) as isize
+    }
+
+    /// Move down (`delta > 0`) or up by `delta` steps in the active view — the
+    /// shared body of `j`/`k` (delta ±1) and PgUp/PgDn (delta ±a page).
+    pub fn nav_step(&mut self, delta: isize) {
+        match self.view {
+            View::Chat => self.chat_scroll_by(delta),
+            View::Process => self.process_move(delta),
+            View::Comments => self.select_comment(delta),
+            View::Ledger => {
+                for _ in 0..delta.unsigned_abs() {
+                    if delta > 0 {
+                        self.move_down();
+                    } else {
+                        self.move_up();
+                    }
+                }
+            }
         }
     }
 
@@ -943,21 +1069,60 @@ pub fn detail_lines(subject: &str, claims: &[Claim]) -> Vec<String> {
     }
 }
 
-/// Render a session's turns into display lines, each tagged with its event
-/// index (so the interactive view can highlight and scroll to the cursor turn).
-/// Collapsible turns — thinking, tool traffic, and sidechains — show a one-line
-/// summary unless their index is in `expanded`, keeping the conversation
-/// readable (`telos/honest-ambiguity`: the collapsed content is available, not
-/// hidden). Pure, so the collapse rule is testable without a terminal.
-pub fn chat_render_lines(
+/// One rendered conversation row: which message (event index) it belongs to,
+/// whether it is that message's first row (for message-skip and current-message
+/// detection), and the styled line to draw.
+#[derive(Clone)]
+pub struct ChatRow {
+    pub msg: usize,
+    pub is_start: bool,
+    pub line: ratatui::text::Line<'static>,
+}
+
+/// Lay a session's turns out as styled rows: each message gets a color-coded
+/// role header, a separator rule above it, and a body — markdown-rendered for
+/// User/Assistant messages, dim for tool/system turns. Collapsible turns
+/// (thinking, tool traffic, sidechains) show a one-line summary unless expanded,
+/// keeping the conversation readable (`telos/honest-ambiguity`: collapsed
+/// content is available, never dropped). `width` sizes the separator rule. Pure,
+/// so the layout is testable without a terminal.
+pub fn chat_layout(
     session: &transcripts::Session,
     expanded: &HashSet<usize>,
-) -> Vec<(usize, String)> {
-    use transcripts::EventKind;
-    let mut out: Vec<(usize, String)> = Vec::new();
+    width: usize,
+) -> Vec<ChatRow> {
+    use ratatui::style::{Color, Modifier, Style};
+    use ratatui::text::{Line, Span};
+    use transcripts::{EventKind, Role};
+
+    let mut out: Vec<ChatRow> = Vec::new();
+    let rule_w = width.clamp(8, 200);
+
     for (i, e) in session.events.iter().enumerate() {
+        // A dim separator rule above every message but the first — the visual
+        // break between one turn and the next.
+        if i > 0 {
+            out.push(ChatRow {
+                msg: i,
+                is_start: true,
+                line: Line::from(Span::styled(
+                    "─".repeat(rule_w),
+                    Style::new().fg(Color::DarkGray),
+                )),
+            });
+        }
+
+        let (label, accent) = match e.role {
+            Role::User => ("▌ you", Color::Cyan),
+            Role::Assistant => ("▌ assistant", Color::Green),
+            Role::Tool => ("▌ tool", Color::Yellow),
+            Role::System => ("▌ system", Color::Magenta),
+        };
+
         let collapses = e.kind.collapses() || e.is_sidechain;
         if collapses && !expanded.contains(&i) {
+            // A single dim summary row (its own message-start when it is the
+            // first turn; otherwise the rule above was the start).
             let tag = if e.is_sidechain {
                 "sidechain"
             } else {
@@ -965,28 +1130,141 @@ pub fn chat_render_lines(
                     EventKind::Thinking => "thinking",
                     EventKind::ToolCall => "tool",
                     EventKind::ToolResult => "result",
-                    _ => "…",
+                    _ => "detail",
                 }
             };
             let first = e.text.lines().next().unwrap_or("");
-            out.push((i, format!("  ⤷ {tag}: {}  [Enter]", truncate(first, 72))));
-        } else {
-            out.push((i, format!("▸ {}", e.role.label())));
-            for l in e.text.lines() {
-                out.push((i, format!("  {l}")));
+            out.push(ChatRow {
+                msg: i,
+                is_start: i == 0,
+                line: Line::from(vec![
+                    Span::styled(format!("  ⤷ {tag} "), Style::new().fg(Color::DarkGray)),
+                    Span::styled(
+                        truncate(first, rule_w.saturating_sub(18)),
+                        Style::new().fg(Color::DarkGray).add_modifier(Modifier::DIM),
+                    ),
+                    Span::styled("  [↵ expand]", Style::new().fg(Color::DarkGray)),
+                ]),
+            });
+            continue;
+        }
+
+        // Header: a color-coded role bar.
+        out.push(ChatRow {
+            msg: i,
+            is_start: i == 0,
+            line: Line::from(Span::styled(
+                label.to_string(),
+                Style::new().fg(accent).add_modifier(Modifier::BOLD),
+            )),
+        });
+
+        // Body: markdown for real messages; dim raw text for tool/system turns.
+        let body: Vec<Line<'static>> = match (e.role, e.kind) {
+            (Role::User | Role::Assistant, EventKind::Message) if !e.text.is_empty() => {
+                crate::markdown::render(&e.text)
             }
-            if e.text.is_empty() {
-                out.push((i, "  (empty)".to_string()));
+            _ if e.text.is_empty() => vec![Line::from(Span::styled(
+                "(empty)",
+                Style::new().add_modifier(Modifier::DIM),
+            ))],
+            _ => e
+                .text
+                .lines()
+                .map(|l| {
+                    Line::from(Span::styled(
+                        l.to_string(),
+                        Style::new().fg(Color::Gray).add_modifier(Modifier::DIM),
+                    ))
+                })
+                .collect(),
+        };
+        for mut l in body {
+            // A two-space indent associates the body with its role bar, then
+            // wrap to the pane width so the line count is exact (scroll/jump).
+            l.spans.insert(0, Span::raw("  "));
+            for wl in wrap_line(&l, rule_w) {
+                out.push(ChatRow {
+                    msg: i,
+                    is_start: false,
+                    line: wl,
+                });
             }
         }
     }
+
     if out.is_empty() {
-        out.push((0, "(no turns)".to_string()));
+        out.push(ChatRow {
+            msg: 0,
+            is_start: true,
+            line: ratatui::text::Line::from("(no turns)"),
+        });
     }
     out
 }
 
 /// Truncate `s` to `n` chars, appending an ellipsis when it was cut.
+/// Word-wrap a styled `Line` to `width`, preserving each character's style, so
+/// the conversation's on-screen line count equals its logical line count and the
+/// scroll/message-jump offsets stay exact. Breaks at the last space that fits,
+/// hard-breaking a word longer than `width`.
+pub fn wrap_line(
+    line: &ratatui::text::Line<'static>,
+    width: usize,
+) -> Vec<ratatui::text::Line<'static>> {
+    use ratatui::text::Line;
+    if width == 0 {
+        return vec![line.clone()];
+    }
+    let chars: Vec<(char, ratatui::style::Style)> = line
+        .spans
+        .iter()
+        .flat_map(|s| s.content.chars().map(move |c| (c, s.style)))
+        .collect();
+    if chars.is_empty() {
+        return vec![Line::from("")];
+    }
+    let mut out: Vec<Line<'static>> = Vec::new();
+    let mut start = 0usize;
+    while start < chars.len() {
+        let hard = (start + width).min(chars.len());
+        let mut end = hard;
+        let mut skip_space = false;
+        if hard < chars.len() {
+            // Prefer a break at the last space within the window (but not at the
+            // very start, which would be leading indentation and loop forever).
+            if let Some(sp) = (start + 1..hard).rev().find(|&k| chars[k].0 == ' ') {
+                end = sp;
+                skip_space = true;
+            }
+        }
+        out.push(coalesce_runs(&chars[start..end]));
+        start = if skip_space { end + 1 } else { end };
+    }
+    out
+}
+
+/// Merge consecutive same-style chars into `Span`s to rebuild a `Line`.
+fn coalesce_runs(seg: &[(char, ratatui::style::Style)]) -> ratatui::text::Line<'static> {
+    use ratatui::text::{Line, Span};
+    let mut spans: Vec<Span<'static>> = Vec::new();
+    let mut buf = String::new();
+    let mut cur: Option<ratatui::style::Style> = None;
+    for &(c, st) in seg {
+        if cur != Some(st) {
+            if let Some(s) = cur {
+                spans.push(Span::styled(std::mem::take(&mut buf), s));
+            }
+            cur = Some(st);
+        }
+        buf.push(c);
+    }
+    if let Some(s) = cur {
+        spans.push(Span::styled(buf, s));
+    }
+    Line::from(spans)
+}
+
 fn truncate(s: &str, n: usize) -> String {
     if s.chars().count() > n {
         format!("{}…", s.chars().take(n).collect::<String>())
@@ -1244,13 +1522,27 @@ pub fn run(repo: PathBuf) -> std::io::Result<()> {
         if state.view == View::Comments {
             state.refresh_comments();
         }
-        // Chat gate: re-read transcripts when the aggregate signal advances.
+        // Footer gate: refresh day's status line on a cache/width change.
+        let size = terminal.size().unwrap_or_default();
+        state.refresh_footer(size.width, true);
+        // Publish the body viewport so paging and wrapping have real dimensions
+        // (header line + a footer of 1..=6 lines bracket the body).
+        let footer_h = {
+            let mut n = state.fold.errors.len();
+            n += if state.footer.is_empty() {
+                1
+            } else {
+                state.footer.len()
+            };
+            n.clamp(1, 6)
+        } as u16;
+        state.set_viewport(size.width, size.height.saturating_sub(1 + footer_h));
+        // Chat gate: re-read transcripts when the aggregate signal advances, then
+        // relayout the conversation so scroll/jump metadata match the render.
         if state.view == View::Chat {
             state.refresh_chat();
+            state.chat_relayout();
         }
-        // Footer gate: refresh day's status line on a cache/width change.
-        let footer_w = terminal.size().map(|s| s.width).unwrap_or(0);
-        state.refresh_footer(footer_w, true);
 
         if let Err(e) = terminal.draw(|frame| draw(frame, &state)) {
             break Err(e);
@@ -1301,18 +1593,21 @@ pub fn run(repo: PathBuf) -> std::io::Result<()> {
                         state.process_pane = state.process_pane.toggled();
                         state.process_detail = false; // leave any drill-down on a pane switch
                     }
-                    KeyCode::Char('j') | KeyCode::Down => match state.view {
-                        View::Chat => state.chat_move(1),
-                        View::Ledger => state.move_down(),
-                        View::Process => state.process_move(1),
-                        View::Comments => state.select_comment(1),
-                    },
-                    KeyCode::Char('k') | KeyCode::Up => match state.view {
-                        View::Chat => state.chat_move(-1),
-                        View::Ledger => state.move_up(),
-                        View::Process => state.process_move(-1),
-                        View::Comments => state.select_comment(-1),
-                    },
+                    // Skip to the previous/next message (Chat): Shift+↑/↓ or { / }.
+                    KeyCode::Char('{') if state.view == View::Chat => state.chat_msg_jump(-1),
+                    KeyCode::Char('}') if state.view == View::Chat => state.chat_msg_jump(1),
+                    KeyCode::Up | KeyCode::Down
+                        if state.view == View::Chat
+                            && key.modifiers.contains(KeyModifiers::SHIFT) =>
+                    {
+                        state.chat_msg_jump(if key.code == KeyCode::Down { 1 } else { -1 })
+                    }
+                    // Page up/down: a screen of motion in the active view.
+                    KeyCode::PageDown => state.nav_step(state.page_rows()),
+                    KeyCode::PageUp => state.nav_step(-state.page_rows()),
+                    // Line/step motion in the active view.
+                    KeyCode::Char('j') | KeyCode::Down => state.nav_step(1),
+                    KeyCode::Char('k') | KeyCode::Up => state.nav_step(-1),
                     KeyCode::Enter if state.view == View::Chat => state.chat_toggle_expand(),
                     KeyCode::Enter if state.view == View::Ledger => {
                         if state.focus == Focus::Subjects {
@@ -1391,13 +1686,13 @@ fn view_header(view: View) -> String {
     };
     // A per-view key legend so navigation is discoverable without reading source.
     let keys = match view {
-        View::Chat => "· ←→ session · j/k turn · Enter expand ",
+        View::Chat => "· ←→ session · j/k scroll · ⇧↑↓ msg · ↵ expand ",
         View::Comments => "· ←→ file · j/k comment ",
         View::Process => "· ←→ atoms/telos · j/k scroll ",
         View::Ledger => "",
     };
     format!(
-        "cospan  {}{}{}{}  {keys}· Tab switch · q quit",
+        "cospan  {}{}{}{}  {keys}· PgUp/PgDn · Tab switch · q quit",
         tab(View::Chat, "1 chat"),
         tab(View::Comments, "2 comments"),
         tab(View::Ledger, "3 ledger"),
@@ -1552,15 +1847,15 @@ fn draw_chat(
     body: ratatui::layout::Rect,
 ) {
     use ratatui::layout::{Constraint, Layout};
-    use ratatui::style::{Modifier, Style};
-    use ratatui::widgets::{Block, List, ListItem, ListState};
+    use ratatui::style::{Color, Modifier, Style};
+    use ratatui::widgets::{List, ListItem, ListState, Paragraph};
 
     if state.chat_sessions.is_empty() {
         frame.render_widget(
-            ratatui::widgets::Paragraph::new(
+            Paragraph::new(
                 "no agent sessions for this repo yet — start one in claude, codex, or opencode",
             )
-            .block(Block::bordered().title(" chat ")),
+            .block(pane_block(" chat ".to_string(), true)),
             body,
         );
         return;
@@ -1597,50 +1892,67 @@ fn draw_chat(
             .collect();
         let mut ls = ListState::default();
         ls.select(Some(state.chat_selected));
+        // The rail is a picker, not the scroll target — dim (unfocused) border.
         frame.render_stateful_widget(
             List::new(items)
-                .block(
-                    Block::bordered()
-                        .title(format!(" sessions · {} · ←/→ ", state.chat_sessions.len())),
-                )
-                .highlight_style(Style::new().add_modifier(Modifier::REVERSED))
-                .highlight_symbol("> "),
+                .block(pane_block(
+                    format!(" sessions · {} · ←/→ ", state.chat_sessions.len()),
+                    false,
+                ))
+                .highlight_style(Style::new().fg(Color::Cyan).add_modifier(Modifier::BOLD))
+                .highlight_symbol("▌ "),
             area,
             &mut ls,
         );
     }
 
-    // The conversation: one list row per rendered line, auto-scrolled to the
-    // cursor turn (the first line whose event index is the cursor).
+    // The conversation: pre-wrapped styled rows, scrolled by line. The active
+    // scroll target — focused (bold) border.
     let title = state
         .chat_sessions
         .get(state.chat_selected)
-        .map(|h| format!(" {} · {} ", h.harness.label(), h.title))
+        .map(|h| {
+            let branch = h
+                .git_branch
+                .as_deref()
+                .map(|b| format!(" · {b}"))
+                .unwrap_or_default();
+            format!(" {} · {}{branch} ", h.harness.label(), h.title)
+        })
         .unwrap_or_else(|| " chat ".to_string());
-    let (lines, cursor_line) = match &state.chat_session {
-        Some(session) => {
-            let rendered = chat_render_lines(session, &state.chat_expanded);
-            let cursor_line = rendered
-                .iter()
-                .position(|(idx, _)| *idx == state.chat_scroll)
-                .unwrap_or(0);
-            let items: Vec<ListItem> = rendered
-                .into_iter()
-                .map(|(_, l)| ListItem::new(l))
-                .collect();
-            (items, cursor_line)
-        }
-        None => (vec![ListItem::new("(loading…)")], 0),
+    // Render the visible window of the cached rows (built by `chat_relayout`),
+    // so a frame clones only what fits, never re-parses markdown.
+    let rows = state.chat_rows();
+    let inner_h = main_area.height.saturating_sub(2) as usize;
+    let top = state.chat_scroll.min(rows.len().saturating_sub(1));
+    let end = (top + inner_h).min(rows.len());
+    let lines: Vec<ratatui::text::Line> = if rows.is_empty() {
+        vec![ratatui::text::Line::from("(loading…)")]
+    } else {
+        rows[top..end].iter().map(|r| r.line.clone()).collect()
     };
-    let mut ls = ListState::default();
-    ls.select(Some(cursor_line));
-    frame.render_stateful_widget(
-        List::new(lines)
-            .block(Block::bordered().title(title))
-            .highlight_style(Style::new().add_modifier(Modifier::REVERSED)),
+    frame.render_widget(
+        Paragraph::new(lines).block(pane_block(title, true)),
         main_area,
-        &mut ls,
     );
+}
+
+/// A pane border that signals focus: the active (scroll/selection) pane gets a
+/// bold accent border, inactive panes a dim one — the "where does my navigation
+/// act" hint the multi-pane views share.
+fn pane_block(
+    title: impl Into<ratatui::text::Line<'static>>,
+    focused: bool,
+) -> ratatui::widgets::Block<'static> {
+    use ratatui::style::{Color, Modifier, Style};
+    use ratatui::widgets::{Block, BorderType};
+    let b = Block::bordered().title(title);
+    if focused {
+        b.border_type(BorderType::Thick)
+            .border_style(Style::new().fg(Color::Cyan).add_modifier(Modifier::BOLD))
+    } else {
+        b.border_style(Style::new().fg(Color::DarkGray))
+    }
 }
 
 fn draw_comments(
@@ -2212,7 +2524,7 @@ fn row_line(row: &Row, collapsed: &HashSet<String>) -> ratatui::text::Line<'stat
 
 fn draw_list(frame: &mut ratatui::Frame, state: &AppState, area: ratatui::layout::Rect) {
     use ratatui::style::{Modifier, Style};
-    use ratatui::widgets::{Block, List, ListItem, ListState};
+    use ratatui::widgets::{List, ListItem, ListState};
 
     let items: Vec<ListItem> = state
         .rows
@@ -2225,7 +2537,10 @@ fn draw_list(frame: &mut ratatui::Frame, state: &AppState, area: ratatui::layout
     }
     frame.render_stateful_widget(
         List::new(items)
-            .block(Block::bordered().title(format!(" subjects · {} ", state.fold.subjects.len())))
+            .block(pane_block(
+                format!(" subjects · {} ", state.fold.subjects.len()),
+                state.focus == Focus::Subjects,
+            ))
             .highlight_style(Style::new().add_modifier(Modifier::REVERSED))
             .highlight_symbol("> "),
         area,
@@ -2253,7 +2568,7 @@ pub fn kind_style(kind: &str) -> ratatui::style::Style {
 
 fn draw_claims(frame: &mut ratatui::Frame, state: &AppState, area: ratatui::layout::Rect) {
     use ratatui::style::{Modifier, Style};
-    use ratatui::widgets::{Block, List, ListItem, ListState};
+    use ratatui::widgets::{List, ListItem, ListState};
 
     let subject = state.selected_subject().unwrap_or("(no subject)");
     let claims = state.selected_claims();
@@ -2282,7 +2597,10 @@ fn draw_claims(frame: &mut ratatui::Frame, state: &AppState, area: ratatui::layo
     }
     frame.render_stateful_widget(
         List::new(items)
-            .block(Block::bordered().title(format!(" {subject} · claims ")))
+            .block(pane_block(
+                format!(" {subject} · claims "),
+                state.focus == Focus::Claims,
+            ))
             .highlight_style(Style::new().add_modifier(Modifier::REVERSED))
             .highlight_symbol("> "),
         area,
@@ -2293,7 +2611,7 @@ fn draw_claims(frame: &mut ratatui::Frame, state: &AppState, area: ratatui::layo
 fn draw_claim_detail(frame: &mut ratatui::Frame, state: &AppState, area: ratatui::layout::Rect) {
     use ratatui::style::Style;
     use ratatui::text::{Line, Span};
-    use ratatui::widgets::{Block, Paragraph, Wrap};
+    use ratatui::widgets::{Paragraph, Wrap};
 
     let (title, style, lines) = match state.selected_claim() {
         Some(c) => (
@@ -2312,7 +2630,10 @@ fn draw_claim_detail(frame: &mut ratatui::Frame, state: &AppState, area: ratatui
     frame.render_widget(
         Paragraph::new(lines[scroll..].to_vec())
             .wrap(Wrap { trim: false })
-            .block(Block::bordered().title(Span::styled(format!(" {title} "), style))),
+            .block(pane_block(
+                Span::styled(format!(" {title} "), style),
+                state.focus == Focus::Detail,
+            )),
         area,
     );
 }
@@ -2728,11 +3049,18 @@ mod tests {
 
     #[test]
     fn chat_header_shows_the_navigation_legend() {
-        // (AC-1) the session-switch, turn-move, and expand keys are visible.
+        // (AC-1) the session-switch, scroll, message-skip, expand, and page keys.
         let h = view_header(View::Chat);
         assert!(h.contains("←→ session"), "no session-switch hint: {h}");
-        assert!(h.contains("j/k turn"), "no turn-move hint: {h}");
-        assert!(h.contains("Enter expand"), "no expand hint: {h}");
+        assert!(h.contains("j/k scroll"), "no scroll hint: {h}");
+        assert!(h.contains("⇧↑↓ msg"), "no message-skip hint: {h}");
+        assert!(h.contains("↵ expand"), "no expand hint: {h}");
+        assert!(h.contains("PgUp/PgDn"), "no paging hint: {h}");
+    }
+
+    /// The plain text of a rendered chat row (its spans concatenated).
+    fn row_text(r: &ChatRow) -> String {
+        r.line.spans.iter().map(|s| s.content.as_ref()).collect()
     }
 
     #[test]
@@ -2789,32 +3117,101 @@ mod tests {
             ],
         };
         let none = HashSet::new();
-        let collapsed = chat_render_lines(&session, &none);
-        let joined = collapsed
+        let joined = chat_layout(&session, &none, 80)
             .iter()
-            .map(|(_, l)| l.as_str())
+            .map(row_text)
             .collect::<Vec<_>>()
             .join("\n");
-        // The plain user message renders in full.
+        // The plain user message renders in full, under its role bar.
+        assert!(joined.contains("▌ you"), "{joined}");
         assert!(joined.contains("please fix"), "{joined}");
         // Thinking is collapsed to a one-line teaser; the rest of its body hides.
-        assert!(joined.contains("⤷ thinking:"), "{joined}");
+        assert!(joined.contains("⤷ thinking"), "{joined}");
         assert!(!joined.contains("SECRET_DETAIL_LINE"), "{joined}");
         // The tool call is a single summary line; the sidechain body collapses.
-        assert!(joined.contains("⤷ tool:"), "{joined}");
-        assert!(joined.contains("⤷ sidechain:"), "{joined}");
+        assert!(joined.contains("⤷ tool"), "{joined}");
+        assert!(joined.contains("⤷ sidechain"), "{joined}");
         assert!(!joined.contains("HIDDEN_SIDECHAIN_BODY"), "{joined}");
 
         // Expanding the thinking turn (index 1) reveals its hidden body.
         let mut exp = HashSet::new();
         exp.insert(1usize);
-        let expanded = chat_render_lines(&session, &exp);
-        let joined2 = expanded
+        let joined2 = chat_layout(&session, &exp, 80)
             .iter()
-            .map(|(_, l)| l.as_str())
+            .map(row_text)
             .collect::<Vec<_>>()
             .join("\n");
         assert!(joined2.contains("SECRET_DETAIL_LINE"), "{joined2}");
+    }
+
+    #[test]
+    fn chat_layout_marks_message_starts_for_skip_and_current() {
+        use crate::transcripts::{Event, EventKind, Harness, Role, Session};
+        let mk = |role, text: &str| Event {
+            role,
+            kind: EventKind::Message,
+            ts: None,
+            id: None,
+            parent: None,
+            is_sidechain: false,
+            text: text.to_string(),
+        };
+        let session = Session {
+            harness: Harness::ClaudeCode,
+            id: "s".into(),
+            title: "t".into(),
+            git_branch: None,
+            events: vec![
+                mk(Role::User, "one"),
+                mk(Role::Assistant, "two"),
+                mk(Role::User, "three"),
+            ],
+        };
+        let rows = chat_layout(&session, &HashSet::new(), 80);
+        // Exactly one start row per message, in order.
+        let starts: Vec<usize> = rows
+            .iter()
+            .enumerate()
+            .filter(|(_, r)| r.is_start)
+            .map(|(_, r)| r.msg)
+            .collect();
+        assert_eq!(starts, vec![0, 1, 2], "one start per message: {starts:?}");
+    }
+
+    #[test]
+    fn chat_scroll_and_msg_jump_move_and_clamp() {
+        // Line scroll clamps at both ends; message-jump lands on start lines.
+        let mut a = app(&["x"]);
+        a.view = View::Chat;
+        a.chat_total_lines = 10;
+        a.chat_msg_starts = vec![(0, 0), (4, 1), (8, 2)];
+        a.chat_scroll = 0;
+        a.chat_scroll_by(3);
+        assert_eq!(a.chat_scroll, 3);
+        a.chat_scroll_by(-100);
+        assert_eq!(a.chat_scroll, 0, "clamps at top");
+        a.chat_scroll_by(100);
+        assert_eq!(a.chat_scroll, 9, "clamps at last line");
+        // Jump back to a message start, then step across messages.
+        a.chat_scroll = 5; // inside message 1 (start line 4)
+        a.chat_msg_jump(1);
+        assert_eq!(a.chat_scroll, 8, "next message start");
+        a.chat_msg_jump(-1);
+        assert_eq!(a.chat_scroll, 4, "previous message start");
+        a.chat_msg_jump(-1);
+        assert_eq!(a.chat_scroll, 0, "clamps at first message");
+    }
+
+    #[test]
+    fn page_and_nav_step_scale_with_the_viewport() {
+        let mut a = app(&["x"]);
+        a.view = View::Chat;
+        a.chat_total_lines = 100;
+        a.set_viewport(80, 20);
+        assert_eq!(a.page_rows(), 19, "a page is the body height minus one");
+        a.chat_scroll = 0;
+        a.nav_step(a.page_rows());
+        assert_eq!(a.chat_scroll, 19, "PgDn scrolls one page in Chat");
     }
 
     #[test]
