@@ -11,6 +11,7 @@ use crate::comments::{self, Comment};
 use crate::substrate::{
     self, is_day_subject, namespace, short_cid, Atom, Claim, Fold, ProcessSnapshot,
 };
+use crate::transcripts;
 use crate::{Localization, State};
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -131,16 +132,41 @@ pub struct AppState {
     /// Scroll offset into the file-content pane.
     pub comment_scroll: usize,
 
+    // --- Chat view: cross-harness session buffers from transcripts (read-only). ---
+    /// The repo's discovered sessions across all harnesses, newest-active first.
+    pub chat_sessions: Vec<transcripts::SessionHandle>,
+    /// Index into `chat_sessions`.
+    pub chat_selected: usize,
+    /// The read body of the selected session (its ordered turns).
+    pub chat_session: Option<transcripts::Session>,
+    /// The session id whose body is loaded into `chat_session`, so a switch
+    /// forces a re-read (distinct from the *selected* index).
+    pub chat_loaded: Option<String>,
+    /// The loaded session's `last_active` when it was read — so a re-read that
+    /// preserves the cursor (a new turn appended) is told apart from one that
+    /// resets it (a switch to a different session).
+    chat_loaded_active: Option<SystemTime>,
+    /// Last-seen aggregate change signal — the transcript re-read gate.
+    chat_signal: Option<SystemTime>,
+    /// Cursor over the selected session's turns, by *event index* (`j`/`k`); the
+    /// conversation pane scrolls to keep it visible.
+    pub chat_scroll: usize,
+    /// Event indices whose collapsed turn (thinking / tool / sidechain) the
+    /// operator has expanded with `Enter`.
+    pub chat_expanded: HashSet<usize>,
+
     // --- Footer: day's status line, width-matched from its cache. ---
     pub footer: Vec<String>,
     footer_mtime: Option<SystemTime>,
     footer_width: u16,
 }
 
-/// The top-level tabs, switched with `1`/`2`/`3` or `Tab`. `Ledger` is the kan
-/// claim browser; `Process` houses the atoms/telos sub-panes.
+/// The top-level tabs, switched with `1`/`2`/`3`/`4` or `Tab`. `Chat` is the
+/// cross-harness session buffers; `Ledger` is the kan claim browser; `Process`
+/// houses the atoms/telos sub-panes.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum View {
+    Chat,
     Comments,
     Ledger,
     Process,
@@ -149,17 +175,19 @@ pub enum View {
 impl View {
     pub fn next(self) -> View {
         match self {
+            View::Chat => View::Comments,
             View::Comments => View::Ledger,
             View::Ledger => View::Process,
-            View::Process => View::Comments,
+            View::Process => View::Chat,
         }
     }
 
     pub fn from_digit(c: char) -> Option<View> {
         match c {
-            '1' => Some(View::Comments),
-            '2' => Some(View::Ledger),
-            '3' => Some(View::Process),
+            '1' => Some(View::Chat),
+            '2' => Some(View::Comments),
+            '3' => Some(View::Ledger),
+            '4' => Some(View::Process),
             _ => None,
         }
     }
@@ -236,6 +264,14 @@ impl AppState {
             comment_mtime: None,
             comment_selected: 0,
             comment_scroll: 0,
+            chat_sessions: Vec::new(),
+            chat_selected: 0,
+            chat_session: None,
+            chat_loaded: None,
+            chat_loaded_active: None,
+            chat_signal: None,
+            chat_scroll: 0,
+            chat_expanded: HashSet::new(),
             footer: Vec::new(),
             footer_mtime: None,
             footer_width: 0,
@@ -528,6 +564,108 @@ impl AppState {
         self.footer_width = width;
     }
 
+    /// Re-discover the repo's sessions across harnesses. Called on entering the
+    /// Chat view so newly-started sessions appear.
+    pub fn reload_chat_sessions(&mut self) {
+        self.chat_sessions = transcripts::discover_all(&self.repo);
+        self.chat_selected = self
+            .chat_selected
+            .min(self.chat_sessions.len().saturating_sub(1));
+    }
+
+    /// Refresh the Chat view. Re-enumerates sessions only when the aggregate
+    /// transcript change signal advances (a new turn or session) — keeping the
+    /// cursor on the same session by id across a re-sort. The selected session's
+    /// body is then re-read per `chat_reread_plan`: a switch to a *different*
+    /// session resets the cursor and expansions; a new turn appended to the
+    /// *same* session re-reads but preserves them (appends land at the end, so
+    /// existing event indices are stable); an unrelated session changing
+    /// disturbs neither. One stat-driven gate, no push channel
+    /// (`telos/poll-dont-subscribe`); the read is pure projection, nothing is
+    /// written back (`telos/kan-is-truth`).
+    pub fn refresh_chat(&mut self) {
+        let signal = transcripts::change_signal(&self.repo);
+        if should_refold(self.chat_signal, signal) {
+            let prev_id = self
+                .chat_sessions
+                .get(self.chat_selected)
+                .map(|h| h.id.clone());
+            self.chat_sessions = transcripts::discover_all(&self.repo);
+            self.chat_signal = signal;
+            if let Some(id) = prev_id {
+                if let Some(i) = self.chat_sessions.iter().position(|h| h.id == id) {
+                    self.chat_selected = i;
+                }
+            }
+        }
+        if self.chat_sessions.is_empty() {
+            self.chat_session = None;
+            self.chat_loaded = None;
+            self.chat_loaded_active = None;
+            return;
+        }
+        self.chat_selected = self.chat_selected.min(self.chat_sessions.len() - 1);
+        let handle = &self.chat_sessions[self.chat_selected];
+        match chat_reread_plan(
+            self.chat_loaded.as_deref(),
+            self.chat_loaded_active,
+            &handle.id,
+            handle.last_active,
+        ) {
+            ChatReread::None => {}
+            ChatReread::Append => {
+                // Same session, new turns: re-read but keep the reading position.
+                self.chat_session = Some(transcripts::read(handle));
+                self.chat_loaded_active = handle.last_active;
+            }
+            ChatReread::Switch => {
+                self.chat_session = Some(transcripts::read(handle));
+                self.chat_loaded = Some(handle.id.clone());
+                self.chat_loaded_active = handle.last_active;
+                self.chat_scroll = 0;
+                self.chat_expanded.clear();
+            }
+        }
+    }
+
+    /// Switch the selected session (`←`/`→`). The body re-read happens on the
+    /// next tick via the `chat_loaded` mismatch in `refresh_chat`.
+    pub fn select_chat_session(&mut self, delta: isize) {
+        let n = self.chat_sessions.len();
+        if n == 0 {
+            return;
+        }
+        self.chat_selected =
+            (self.chat_selected as isize + delta).clamp(0, n as isize - 1) as usize;
+    }
+
+    /// Move the conversation cursor over the selected session's turns (`j`/`k`).
+    pub fn chat_move(&mut self, delta: isize) {
+        let n = self
+            .chat_session
+            .as_ref()
+            .map(|s| s.events.len())
+            .unwrap_or(0);
+        if n == 0 {
+            return;
+        }
+        self.chat_scroll = (self.chat_scroll as isize + delta).clamp(0, n as isize - 1) as usize;
+    }
+
+    /// Expand/collapse the turn under the cursor, if it is a collapsible one
+    /// (thinking, tool traffic, or a sidechain). `Enter` in the Chat view.
+    pub fn chat_toggle_expand(&mut self) {
+        let collapses = self
+            .chat_session
+            .as_ref()
+            .and_then(|s| s.events.get(self.chat_scroll))
+            .map(|e| e.kind.collapses() || e.is_sidechain)
+            .unwrap_or(false);
+        if collapses && !self.chat_expanded.remove(&self.chat_scroll) {
+            self.chat_expanded.insert(self.chat_scroll);
+        }
+    }
+
     /// Move the comment cursor and scroll the content pane to its anchored line.
     pub fn select_comment(&mut self, delta: isize) {
         let n = self.comment_localized.len();
@@ -763,6 +901,35 @@ pub fn should_refold(last: Option<SystemTime>, current: Option<SystemTime>) -> b
     last != current
 }
 
+/// What a Chat refresh should do with the selected session's body.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum ChatReread {
+    /// Nothing changed — keep the loaded body, cursor, and expansions.
+    None,
+    /// Same session, a turn was appended — re-read, but preserve cursor/expand.
+    Append,
+    /// A different session — re-read and reset cursor/expand.
+    Switch,
+}
+
+/// Decide how to (re)load the selected session, so scroll and expansion survive
+/// an append to the session being read but reset on an actual switch — and an
+/// unrelated session changing does neither. Pure, so the rule is testable.
+pub fn chat_reread_plan(
+    loaded_id: Option<&str>,
+    loaded_active: Option<SystemTime>,
+    selected_id: &str,
+    selected_active: Option<SystemTime>,
+) -> ChatReread {
+    if loaded_id != Some(selected_id) {
+        ChatReread::Switch
+    } else if loaded_active != selected_active {
+        ChatReread::Append
+    } else {
+        ChatReread::None
+    }
+}
+
 /// The detail pane's lines for a subject, from its cached fold outcome. Each
 /// state is explicit — loading, error, empty, or the newest-first claim lines —
 /// so the pane is never blank or fabricated (`telos/honest-ambiguity`).
@@ -773,6 +940,58 @@ pub fn detail_lines(subject: &str, claims: &[Claim]) -> Vec<String> {
         )]
     } else {
         claims.iter().map(Claim::display_line).collect()
+    }
+}
+
+/// Render a session's turns into display lines, each tagged with its event
+/// index (so the interactive view can highlight and scroll to the cursor turn).
+/// Collapsible turns — thinking, tool traffic, and sidechains — show a one-line
+/// summary unless their index is in `expanded`, keeping the conversation
+/// readable (`telos/honest-ambiguity`: the collapsed content is available, not
+/// hidden). Pure, so the collapse rule is testable without a terminal.
+pub fn chat_render_lines(
+    session: &transcripts::Session,
+    expanded: &HashSet<usize>,
+) -> Vec<(usize, String)> {
+    use transcripts::EventKind;
+    let mut out: Vec<(usize, String)> = Vec::new();
+    for (i, e) in session.events.iter().enumerate() {
+        let collapses = e.kind.collapses() || e.is_sidechain;
+        if collapses && !expanded.contains(&i) {
+            let tag = if e.is_sidechain {
+                "sidechain"
+            } else {
+                match e.kind {
+                    EventKind::Thinking => "thinking",
+                    EventKind::ToolCall => "tool",
+                    EventKind::ToolResult => "result",
+                    _ => "…",
+                }
+            };
+            let first = e.text.lines().next().unwrap_or("");
+            out.push((i, format!("  ⤷ {tag}: {}  [Enter]", truncate(first, 72))));
+        } else {
+            out.push((i, format!("▸ {}", e.role.label())));
+            for l in e.text.lines() {
+                out.push((i, format!("  {l}")));
+            }
+            if e.text.is_empty() {
+                out.push((i, "  (empty)".to_string()));
+            }
+        }
+    }
+    if out.is_empty() {
+        out.push((0, "(no turns)".to_string()));
+    }
+    out
+}
+
+/// Truncate `s` to `n` chars, appending an ellipsis when it was cut.
+fn truncate(s: &str, n: usize) -> String {
+    if s.chars().count() > n {
+        format!("{}…", s.chars().take(n).collect::<String>())
+    } else {
+        s.to_string()
     }
 }
 
@@ -1025,6 +1244,10 @@ pub fn run(repo: PathBuf) -> std::io::Result<()> {
         if state.view == View::Comments {
             state.refresh_comments();
         }
+        // Chat gate: re-read transcripts when the aggregate signal advances.
+        if state.view == View::Chat {
+            state.refresh_chat();
+        }
         // Footer gate: refresh day's status line on a cache/width change.
         let footer_w = terminal.size().map(|s| s.width).unwrap_or(0);
         state.refresh_footer(footer_w, true);
@@ -1040,11 +1263,13 @@ pub fn run(repo: PathBuf) -> std::io::Result<()> {
                     KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                         break Ok(())
                     }
-                    KeyCode::Char(d @ '1'..='3') => {
+                    KeyCode::Char(d @ '1'..='4') => {
                         if let Some(v) = View::from_digit(d) {
                             state.view = v;
                             if v == View::Comments {
                                 state.reload_comment_files();
+                            } else if v == View::Chat {
+                                state.reload_chat_sessions();
                             }
                         }
                     }
@@ -1052,15 +1277,23 @@ pub fn run(repo: PathBuf) -> std::io::Result<()> {
                         state.view = state.view.next();
                         if state.view == View::Comments {
                             state.reload_comment_files();
+                        } else if state.view == View::Chat {
+                            state.reload_chat_sessions();
                         }
                     }
-                    // ←/→ (or [ / ]): switch commented file (Comments) or toggle the
-                    // atoms/telos sub-pane (Process).
+                    // ←/→ (or [ / ]): switch commented file (Comments), switch
+                    // session (Chat), or toggle the atoms/telos sub-pane (Process).
                     KeyCode::Char('[') | KeyCode::Left if state.view == View::Comments => {
                         state.select_comment_file(-1)
                     }
                     KeyCode::Char(']') | KeyCode::Right if state.view == View::Comments => {
                         state.select_comment_file(1)
+                    }
+                    KeyCode::Char('[') | KeyCode::Left if state.view == View::Chat => {
+                        state.select_chat_session(-1)
+                    }
+                    KeyCode::Char(']') | KeyCode::Right if state.view == View::Chat => {
+                        state.select_chat_session(1)
                     }
                     KeyCode::Char('[' | ']') | KeyCode::Left | KeyCode::Right
                         if state.view == View::Process =>
@@ -1069,15 +1302,18 @@ pub fn run(repo: PathBuf) -> std::io::Result<()> {
                         state.process_detail = false; // leave any drill-down on a pane switch
                     }
                     KeyCode::Char('j') | KeyCode::Down => match state.view {
+                        View::Chat => state.chat_move(1),
                         View::Ledger => state.move_down(),
                         View::Process => state.process_move(1),
                         View::Comments => state.select_comment(1),
                     },
                     KeyCode::Char('k') | KeyCode::Up => match state.view {
+                        View::Chat => state.chat_move(-1),
                         View::Ledger => state.move_up(),
                         View::Process => state.process_move(-1),
                         View::Comments => state.select_comment(-1),
                     },
+                    KeyCode::Enter if state.view == View::Chat => state.chat_toggle_expand(),
                     KeyCode::Enter if state.view == View::Ledger => {
                         if state.focus == Focus::Subjects {
                             state.activate(); // toggle a node, or descend a subject
@@ -1135,6 +1371,7 @@ fn draw(frame: &mut ratatui::Frame, state: &AppState) {
     frame.render_widget(Line::from(view_header(state.view)).bold(), header);
 
     match state.view {
+        View::Chat => draw_chat(frame, state, area.width, body),
         View::Comments => draw_comments(frame, state, area.width, body),
         View::Ledger => draw_browser(frame, state, area.width, body),
         View::Process => draw_process(frame, state, body),
@@ -1154,15 +1391,17 @@ fn view_header(view: View) -> String {
     };
     // A per-view key legend so navigation is discoverable without reading source.
     let keys = match view {
+        View::Chat => "· ←→ session · j/k turn · Enter expand ",
         View::Comments => "· ←→ file · j/k comment ",
         View::Process => "· ←→ atoms/telos · j/k scroll ",
         View::Ledger => "",
     };
     format!(
-        "cospan  {}{}{}  {keys}· Tab switch · q quit",
-        tab(View::Comments, "1 comments"),
-        tab(View::Ledger, "2 ledger"),
-        tab(View::Process, "3 process"),
+        "cospan  {}{}{}{}  {keys}· Tab switch · q quit",
+        tab(View::Chat, "1 chat"),
+        tab(View::Comments, "2 comments"),
+        tab(View::Ledger, "3 ledger"),
+        tab(View::Process, "4 process"),
     )
 }
 
@@ -1302,6 +1541,106 @@ pub fn reflow_rows(
         ni += 1;
     }
     (rows, note_rows)
+}
+
+/// The Chat tab: a cross-harness session rail beside the selected session's
+/// conversation. Read-only projection of the harnesses' own transcripts.
+fn draw_chat(
+    frame: &mut ratatui::Frame,
+    state: &AppState,
+    width: u16,
+    body: ratatui::layout::Rect,
+) {
+    use ratatui::layout::{Constraint, Layout};
+    use ratatui::style::{Modifier, Style};
+    use ratatui::widgets::{Block, List, ListItem, ListState};
+
+    if state.chat_sessions.is_empty() {
+        frame.render_widget(
+            ratatui::widgets::Paragraph::new(
+                "no agent sessions for this repo yet — start one in claude, codex, or opencode",
+            )
+            .block(Block::bordered().title(" chat ")),
+            body,
+        );
+        return;
+    }
+
+    // Wide: a session rail beside the conversation; narrow: conversation only.
+    let (rail_area, main_area) = match layout_mode(width) {
+        Fit::Wide => {
+            let [l, r] =
+                Layout::horizontal([Constraint::Percentage(32), Constraint::Percentage(68)])
+                    .areas(body);
+            (Some(l), r)
+        }
+        Fit::Narrow => (None, body),
+    };
+
+    if let Some(area) = rail_area {
+        let items: Vec<ListItem> = state
+            .chat_sessions
+            .iter()
+            .map(|h| {
+                let branch = h
+                    .git_branch
+                    .as_deref()
+                    .map(|b| format!(" · {b}"))
+                    .unwrap_or_default();
+                let flag = if h.body_available {
+                    ""
+                } else {
+                    " ·(list-only)"
+                };
+                ListItem::new(format!("[{}] {}{branch}{flag}", h.harness.label(), h.title))
+            })
+            .collect();
+        let mut ls = ListState::default();
+        ls.select(Some(state.chat_selected));
+        frame.render_stateful_widget(
+            List::new(items)
+                .block(
+                    Block::bordered()
+                        .title(format!(" sessions · {} · ←/→ ", state.chat_sessions.len())),
+                )
+                .highlight_style(Style::new().add_modifier(Modifier::REVERSED))
+                .highlight_symbol("> "),
+            area,
+            &mut ls,
+        );
+    }
+
+    // The conversation: one list row per rendered line, auto-scrolled to the
+    // cursor turn (the first line whose event index is the cursor).
+    let title = state
+        .chat_sessions
+        .get(state.chat_selected)
+        .map(|h| format!(" {} · {} ", h.harness.label(), h.title))
+        .unwrap_or_else(|| " chat ".to_string());
+    let (lines, cursor_line) = match &state.chat_session {
+        Some(session) => {
+            let rendered = chat_render_lines(session, &state.chat_expanded);
+            let cursor_line = rendered
+                .iter()
+                .position(|(idx, _)| *idx == state.chat_scroll)
+                .unwrap_or(0);
+            let items: Vec<ListItem> = rendered
+                .into_iter()
+                .map(|(_, l)| ListItem::new(l))
+                .collect();
+            (items, cursor_line)
+        }
+        None => (vec![ListItem::new("(loading…)")], 0),
+    };
+    let mut ls = ListState::default();
+    ls.select(Some(cursor_line));
+    frame.render_stateful_widget(
+        List::new(lines)
+            .block(Block::bordered().title(title))
+            .highlight_style(Style::new().add_modifier(Modifier::REVERSED)),
+        main_area,
+        &mut ls,
+    );
 }
 
 fn draw_comments(
@@ -2361,26 +2700,121 @@ mod tests {
 
     #[test]
     fn view_selector_cycles_and_maps_digits() {
-        // (AC-1) Comments · Ledger · Process.
+        // (AC-1) Chat · Comments · Ledger · Process, Chat first.
+        assert_eq!(View::Chat.next(), View::Comments);
         assert_eq!(View::Comments.next(), View::Ledger);
         assert_eq!(View::Ledger.next(), View::Process);
-        assert_eq!(View::Process.next(), View::Comments);
-        assert_eq!(View::from_digit('1'), Some(View::Comments));
-        assert_eq!(View::from_digit('2'), Some(View::Ledger));
-        assert_eq!(View::from_digit('3'), Some(View::Process));
-        assert_eq!(View::from_digit('4'), None);
+        assert_eq!(View::Process.next(), View::Chat);
+        assert_eq!(View::from_digit('1'), Some(View::Chat));
+        assert_eq!(View::from_digit('2'), Some(View::Comments));
+        assert_eq!(View::from_digit('3'), Some(View::Ledger));
+        assert_eq!(View::from_digit('4'), Some(View::Process));
+        assert_eq!(View::from_digit('5'), None);
         assert_eq!(View::from_digit('9'), None);
     }
 
     #[test]
     fn tab_bar_names_the_new_tabs_with_legends() {
-        // (AC-2) Ledger + Process tabs; Process names its sub-pane keys; no browser.
-        assert!(view_header(View::Ledger).contains("2 ledger"));
+        // (AC-1) Chat first; Ledger/Process tabs; Process names its sub-pane keys.
+        assert!(view_header(View::Chat).contains("1 chat"));
+        assert!(view_header(View::Comments).contains("2 comments"));
+        assert!(view_header(View::Ledger).contains("3 ledger"));
         let p = view_header(View::Process);
-        assert!(p.contains("3 process"), "{p}");
+        assert!(p.contains("4 process"), "{p}");
         assert!(p.contains("←→ atoms/telos"), "no sub-pane keys: {p}");
         assert!(p.contains("j/k scroll"), "{p}");
         assert!(!view_header(View::Comments).contains("browser"));
+    }
+
+    #[test]
+    fn chat_header_shows_the_navigation_legend() {
+        // (AC-1) the session-switch, turn-move, and expand keys are visible.
+        let h = view_header(View::Chat);
+        assert!(h.contains("←→ session"), "no session-switch hint: {h}");
+        assert!(h.contains("j/k turn"), "no turn-move hint: {h}");
+        assert!(h.contains("Enter expand"), "no expand hint: {h}");
+    }
+
+    #[test]
+    fn chat_reread_plan_switches_appends_or_holds() {
+        // (AC-7 / review #3) The gate re-reads only on change, and resets the
+        // reading position on a *switch* while preserving it on an *append*.
+        use std::time::Duration;
+        let t1 = Some(SystemTime::UNIX_EPOCH + Duration::from_secs(1));
+        let t2 = Some(SystemTime::UNIX_EPOCH + Duration::from_secs(2));
+        // First load (nothing loaded yet) reads and resets.
+        assert_eq!(chat_reread_plan(None, None, "a", t1), ChatReread::Switch);
+        // A different session id resets cursor/expansions.
+        assert_eq!(chat_reread_plan(Some("a"), t1, "b", t2), ChatReread::Switch);
+        // Same session, newer mtime (a turn appended) re-reads but preserves.
+        assert_eq!(chat_reread_plan(Some("a"), t1, "a", t2), ChatReread::Append);
+        // Same session, unchanged mtime does nothing.
+        assert_eq!(chat_reread_plan(Some("a"), t1, "a", t1), ChatReread::None);
+    }
+
+    #[test]
+    fn chat_render_collapses_thinking_tool_and_sidechain_by_default() {
+        // (AC-6) collapsible turns show a one-line summary; expanding reveals the
+        // body; a plain message renders in full; a tool call is one summary line.
+        use crate::transcripts::{Event, EventKind, Harness, Role, Session};
+        let mk = |role, kind, is_sidechain, text: &str| Event {
+            role,
+            kind,
+            ts: None,
+            id: None,
+            parent: None,
+            is_sidechain,
+            text: text.to_string(),
+        };
+        let session = Session {
+            harness: Harness::ClaudeCode,
+            id: "s".into(),
+            title: "t".into(),
+            git_branch: None,
+            events: vec![
+                mk(Role::User, EventKind::Message, false, "please fix"),
+                mk(
+                    Role::Assistant,
+                    EventKind::Thinking,
+                    false,
+                    "reasoning teaser\nSECRET_DETAIL_LINE",
+                ),
+                mk(Role::Tool, EventKind::ToolCall, false, "Edit(x.rs)"),
+                mk(
+                    Role::Assistant,
+                    EventKind::Message,
+                    true,
+                    "chatter head\nHIDDEN_SIDECHAIN_BODY",
+                ),
+            ],
+        };
+        let none = HashSet::new();
+        let collapsed = chat_render_lines(&session, &none);
+        let joined = collapsed
+            .iter()
+            .map(|(_, l)| l.as_str())
+            .collect::<Vec<_>>()
+            .join("\n");
+        // The plain user message renders in full.
+        assert!(joined.contains("please fix"), "{joined}");
+        // Thinking is collapsed to a one-line teaser; the rest of its body hides.
+        assert!(joined.contains("⤷ thinking:"), "{joined}");
+        assert!(!joined.contains("SECRET_DETAIL_LINE"), "{joined}");
+        // The tool call is a single summary line; the sidechain body collapses.
+        assert!(joined.contains("⤷ tool:"), "{joined}");
+        assert!(joined.contains("⤷ sidechain:"), "{joined}");
+        assert!(!joined.contains("HIDDEN_SIDECHAIN_BODY"), "{joined}");
+
+        // Expanding the thinking turn (index 1) reveals its hidden body.
+        let mut exp = HashSet::new();
+        exp.insert(1usize);
+        let expanded = chat_render_lines(&session, &exp);
+        let joined2 = expanded
+            .iter()
+            .map(|(_, l)| l.as_str())
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(joined2.contains("SECRET_DETAIL_LINE"), "{joined2}");
     }
 
     #[test]

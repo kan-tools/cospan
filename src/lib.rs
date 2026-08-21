@@ -22,9 +22,11 @@
 //! optimisation, diffs against the *last-seen* contents rather than re-searching
 //! the whole file — but the fingerprint search below is the source of truth.
 
+pub mod command_bus;
 pub mod comments;
 pub mod markdown;
 pub mod substrate;
+pub mod transcripts;
 pub mod tui;
 
 /// A comment's fingerprint into a file: the text it sits on, plus the context
