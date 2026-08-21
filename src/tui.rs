@@ -1365,22 +1365,202 @@ fn render_message_body(text: &str) -> Vec<ratatui::text::Line<'static>> {
     out
 }
 
+/// Render one non-grouped event — a message (header + markdown/prompt-tag body)
+/// or a single collapsible turn (thinking / tool / sidechain) as a one-line
+/// summary — into `out`, marking its first row with `is_start`.
+fn push_single_event(
+    out: &mut Vec<ChatRow>,
+    e: &transcripts::Event,
+    msg: usize,
+    is_start: bool,
+    expanded: &HashSet<usize>,
+    rule_w: usize,
+) {
+    use ratatui::style::{Color, Modifier, Style};
+    use ratatui::text::{Line, Span};
+    use transcripts::{EventKind, Role};
+
+    let (name, accent) = match e.role {
+        Role::User => ("you", Color::Cyan),
+        Role::Assistant => ("assistant", Color::Green),
+        Role::Tool => ("tool", Color::Yellow),
+        Role::System => ("system", Color::Magenta),
+    };
+    // A colored left bar runs down the whole message; content sits two columns
+    // out (after "▌ "), flush with the header label.
+    let bar = || Span::styled("▌ ".to_string(), Style::new().fg(accent));
+
+    if (e.kind.collapses() || e.is_sidechain) && !expanded.contains(&msg) {
+        let tag = if e.is_sidechain {
+            "sidechain"
+        } else {
+            match e.kind {
+                EventKind::Thinking => "thinking",
+                EventKind::ToolCall => "tool",
+                EventKind::ToolResult => "result",
+                _ => "detail",
+            }
+        };
+        let first = e.text.lines().next().unwrap_or("");
+        out.push(ChatRow {
+            msg,
+            is_start,
+            line: Line::from(vec![
+                bar(),
+                Span::styled(format!("⤷ {tag} "), Style::new().fg(Color::DarkGray)),
+                Span::styled(
+                    truncate(first, rule_w.saturating_sub(18)),
+                    Style::new().fg(Color::DarkGray).add_modifier(Modifier::DIM),
+                ),
+                Span::styled("  [↵ expand]", Style::new().fg(Color::DarkGray)),
+            ]),
+        });
+        return;
+    }
+
+    // Header: the role label, after the bar.
+    out.push(ChatRow {
+        msg,
+        is_start,
+        line: Line::from(vec![
+            bar(),
+            Span::styled(
+                name.to_string(),
+                Style::new().fg(accent).add_modifier(Modifier::BOLD),
+            ),
+        ]),
+    });
+
+    // Body: markdown (with prompt-tag formatting) for real messages; dim raw
+    // text for tool/system turns.
+    let body: Vec<Line<'static>> = match (e.role, e.kind) {
+        (Role::User | Role::Assistant, EventKind::Message) if !e.text.is_empty() => {
+            render_message_body(&e.text)
+        }
+        _ if e.text.is_empty() => vec![Line::from(Span::styled(
+            "(empty)",
+            Style::new().add_modifier(Modifier::DIM),
+        ))],
+        _ => e
+            .text
+            .lines()
+            .map(|l| {
+                Line::from(Span::styled(
+                    l.to_string(),
+                    Style::new().fg(Color::Gray).add_modifier(Modifier::DIM),
+                ))
+            })
+            .collect(),
+    };
+    for l in body {
+        for wl in wrap_line(&l, rule_w.saturating_sub(2)) {
+            let mut spans = vec![bar()];
+            spans.extend(wl.spans);
+            out.push(ChatRow {
+                msg,
+                is_start: false,
+                line: Line::from(spans),
+            });
+        }
+    }
+}
+
+/// Render a run of ≥2 back-to-back tool turns as one collapsible group — a
+/// "N tool calls" line that expands to a per-call summary list. Keyed for
+/// expand/collapse by the run's first event index (`msg`), so it is one jump
+/// unit and `Enter` on it toggles the whole run.
+fn push_tool_group(
+    out: &mut Vec<ChatRow>,
+    run: &[transcripts::Event],
+    msg: usize,
+    is_start: bool,
+    expanded: &HashSet<usize>,
+    rule_w: usize,
+) {
+    use ratatui::style::{Color, Modifier, Style};
+    use ratatui::text::{Line, Span};
+    use transcripts::EventKind;
+
+    let accent = Color::Yellow;
+    let bar = || Span::styled("▌ ".to_string(), Style::new().fg(accent));
+    let open = expanded.contains(&msg);
+    let (glyph, hint) = if open {
+        ("▾", "[↵ collapse]")
+    } else {
+        ("▸", "[↵ expand]")
+    };
+    out.push(ChatRow {
+        msg,
+        is_start,
+        line: Line::from(vec![
+            bar(),
+            Span::styled(
+                format!("{glyph} {} tool calls ", run.len()),
+                Style::new().fg(accent).add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(hint.to_string(), Style::new().fg(Color::DarkGray)),
+        ]),
+    });
+    if open {
+        for e in run {
+            let label = if matches!(e.kind, EventKind::ToolResult) {
+                "result"
+            } else {
+                "tool"
+            };
+            let first = e.text.lines().next().unwrap_or("");
+            let line0 = Line::from(vec![
+                Span::styled(format!("{label}  "), Style::new().fg(accent)),
+                Span::styled(
+                    truncate(first, rule_w.saturating_sub(12)),
+                    Style::new().add_modifier(Modifier::DIM),
+                ),
+            ]);
+            for wl in wrap_line(&line0, rule_w.saturating_sub(2)) {
+                let mut spans = vec![bar()];
+                spans.extend(wl.spans);
+                out.push(ChatRow {
+                    msg,
+                    is_start: false,
+                    line: Line::from(spans),
+                });
+            }
+        }
+    }
+}
+
 pub fn chat_layout(
     session: &transcripts::Session,
     expanded: &HashSet<usize>,
     width: usize,
 ) -> Vec<ChatRow> {
-    use ratatui::style::{Color, Modifier, Style};
+    use ratatui::style::{Color, Style};
     use ratatui::text::{Line, Span};
-    use transcripts::{EventKind, Role};
+    use transcripts::EventKind;
 
     let mut out: Vec<ChatRow> = Vec::new();
     let rule_w = width.clamp(8, 200);
+    let events = &session.events;
+    let n = events.len();
+    let groupable = |e: &transcripts::Event| {
+        matches!(e.kind, EventKind::ToolCall | EventKind::ToolResult) && !e.is_sidechain
+    };
 
-    for (i, e) in session.events.iter().enumerate() {
-        // A dim separator rule above every message but the first — the visual
-        // break between one turn and the next.
-        if i > 0 {
+    let mut i = 0usize;
+    let mut first_unit = true;
+    while i < n {
+        // A run of consecutive groupable tool turns; folded only when ≥2.
+        let mut j = i;
+        while j < n && groupable(&events[j]) {
+            j += 1;
+        }
+        let group = j - i >= 2;
+
+        let is_first = first_unit;
+        first_unit = false;
+        // A dim separator rule opens every unit but the first (its start row);
+        // when there is no separator the content's first row is the start.
+        if !is_first {
             out.push(ChatRow {
                 msg: i,
                 is_start: true,
@@ -1390,94 +1570,12 @@ pub fn chat_layout(
                 )),
             });
         }
-
-        let (name, accent) = match e.role {
-            Role::User => ("you", Color::Cyan),
-            Role::Assistant => ("assistant", Color::Green),
-            Role::Tool => ("tool", Color::Yellow),
-            Role::System => ("system", Color::Magenta),
-        };
-        // A colored left bar runs down the whole message; content sits two
-        // columns out (after "▌ "), flush with the header label.
-        let bar = || Span::styled("▌ ".to_string(), Style::new().fg(accent));
-
-        let collapses = e.kind.collapses() || e.is_sidechain;
-        if collapses && !expanded.contains(&i) {
-            // A single dim summary row (its own message-start when it is the
-            // first turn; otherwise the rule above was the start).
-            let tag = if e.is_sidechain {
-                "sidechain"
-            } else {
-                match e.kind {
-                    EventKind::Thinking => "thinking",
-                    EventKind::ToolCall => "tool",
-                    EventKind::ToolResult => "result",
-                    _ => "detail",
-                }
-            };
-            let first = e.text.lines().next().unwrap_or("");
-            out.push(ChatRow {
-                msg: i,
-                is_start: i == 0,
-                line: Line::from(vec![
-                    bar(),
-                    Span::styled(format!("⤷ {tag} "), Style::new().fg(Color::DarkGray)),
-                    Span::styled(
-                        truncate(first, rule_w.saturating_sub(18)),
-                        Style::new().fg(Color::DarkGray).add_modifier(Modifier::DIM),
-                    ),
-                    Span::styled("  [↵ expand]", Style::new().fg(Color::DarkGray)),
-                ]),
-            });
-            continue;
-        }
-
-        // Header: the role label, after the bar.
-        out.push(ChatRow {
-            msg: i,
-            is_start: i == 0,
-            line: Line::from(vec![
-                bar(),
-                Span::styled(
-                    name.to_string(),
-                    Style::new().fg(accent).add_modifier(Modifier::BOLD),
-                ),
-            ]),
-        });
-
-        // Body: markdown (with prompt-tag formatting) for real messages; dim raw
-        // text for tool/system turns.
-        let body: Vec<Line<'static>> = match (e.role, e.kind) {
-            (Role::User | Role::Assistant, EventKind::Message) if !e.text.is_empty() => {
-                render_message_body(&e.text)
-            }
-            _ if e.text.is_empty() => vec![Line::from(Span::styled(
-                "(empty)",
-                Style::new().add_modifier(Modifier::DIM),
-            ))],
-            _ => e
-                .text
-                .lines()
-                .map(|l| {
-                    Line::from(Span::styled(
-                        l.to_string(),
-                        Style::new().fg(Color::Gray).add_modifier(Modifier::DIM),
-                    ))
-                })
-                .collect(),
-        };
-        for l in body {
-            // Wrap leaving room for the "▌ " bar, then prefix every visual line so
-            // the colored bar runs the full height and content stays flush.
-            for wl in wrap_line(&l, rule_w.saturating_sub(2)) {
-                let mut spans = vec![bar()];
-                spans.extend(wl.spans);
-                out.push(ChatRow {
-                    msg: i,
-                    is_start: false,
-                    line: Line::from(spans),
-                });
-            }
+        if group {
+            push_tool_group(&mut out, &events[i..j], i, is_first, expanded, rule_w);
+            i = j;
+        } else {
+            push_single_event(&mut out, &events[i], i, is_first, expanded, rule_w);
+            i += 1;
         }
     }
 
@@ -1485,7 +1583,7 @@ pub fn chat_layout(
         out.push(ChatRow {
             msg: 0,
             is_start: true,
-            line: ratatui::text::Line::from("(no turns)"),
+            line: Line::from("(no turns)"),
         });
     }
     out
@@ -3625,6 +3723,101 @@ mod tests {
         a.chat_dirty = true;
         a.chat_relayout();
         assert_eq!(a.chat_scroll, 0, "released follow does not jump to bottom");
+    }
+
+    #[test]
+    fn chat_layout_groups_back_to_back_tool_calls() {
+        use crate::transcripts::{Event, EventKind, Harness, Role, Session};
+        let tool = |kind, text: &str| Event {
+            role: Role::Tool,
+            kind,
+            ts: None,
+            id: None,
+            parent: None,
+            is_sidechain: false,
+            text: text.to_string(),
+        };
+        let msg = |text: &str| Event {
+            role: Role::Assistant,
+            kind: EventKind::Message,
+            ts: None,
+            id: None,
+            parent: None,
+            is_sidechain: false,
+            text: text.to_string(),
+        };
+        let session = Session {
+            harness: Harness::ClaudeCode,
+            id: "s".into(),
+            title: "t".into(),
+            git_branch: None,
+            events: vec![
+                msg("doing things"),
+                tool(EventKind::ToolCall, "Bash(ls)"),
+                tool(EventKind::ToolResult, "file1\nfile2"),
+                tool(EventKind::ToolCall, "Edit(x.rs)"),
+                msg("done"),
+            ],
+        };
+        let joined = |rows: &[ChatRow]| rows.iter().map(row_text).collect::<Vec<_>>().join("\n");
+
+        // Collapsed: one "3 tool calls" fold; no individual calls shown.
+        let collapsed = chat_layout(&session, &HashSet::new(), 80);
+        let j = joined(&collapsed);
+        assert!(j.contains("3 tool calls"), "{j}");
+        assert!(
+            !j.contains("Bash(ls)"),
+            "calls hidden when the group is collapsed: {j}"
+        );
+        // The whole run is a single message-jump unit (start at its first index).
+        let starts: Vec<usize> = collapsed
+            .iter()
+            .filter(|r| r.is_start)
+            .map(|r| r.msg)
+            .collect();
+        assert_eq!(starts, vec![0, 1, 4], "group is one jump unit: {starts:?}");
+
+        // Expanded (keyed by the run's first event index = 1): the calls appear.
+        let mut exp = HashSet::new();
+        exp.insert(1usize);
+        let j2 = joined(&chat_layout(&session, &exp, 80));
+        assert!(j2.contains("Bash(ls)") && j2.contains("Edit(x.rs)"), "{j2}");
+    }
+
+    #[test]
+    fn chat_layout_leaves_a_lone_tool_call_ungrouped() {
+        use crate::transcripts::{Event, EventKind, Harness, Role, Session};
+        let one = |kind, text: &str| Event {
+            role: Role::Tool,
+            kind,
+            ts: None,
+            id: None,
+            parent: None,
+            is_sidechain: false,
+            text: text.to_string(),
+        };
+        let session = Session {
+            harness: Harness::ClaudeCode,
+            id: "s".into(),
+            title: "t".into(),
+            git_branch: None,
+            // A single tool call between two thinking turns — no run to fold.
+            events: vec![
+                one(EventKind::Thinking, "pondering"),
+                one(EventKind::ToolCall, "Bash(ls)"),
+                one(EventKind::Thinking, "more"),
+            ],
+        };
+        let j = chat_layout(&session, &HashSet::new(), 80)
+            .iter()
+            .map(row_text)
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(
+            !j.contains("tool calls"),
+            "a lone tool call is not grouped: {j}"
+        );
+        assert!(j.contains("⤷ tool"), "it keeps its single summary: {j}");
     }
 
     #[test]
