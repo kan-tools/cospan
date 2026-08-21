@@ -109,6 +109,11 @@ pub struct SessionHandle {
     /// the session is listed but its turns read as unavailable rather than
     /// guessed (`telos/honest-ambiguity`).
     pub body_available: bool,
+    /// A key shared by a director and its subagents (Codex `session_id`), so the
+    /// rail can nest them; `None` for a standalone session.
+    pub group: Option<String>,
+    /// True for a spawned subagent thread — nested under its director in the rail.
+    pub is_subagent: bool,
 }
 
 /// How to read a handle's body back.
@@ -289,6 +294,8 @@ impl TranscriptSource for ClaudeCodeSource {
                     last_active,
                     locator: Locator::File(path),
                     body_available: true,
+                    group: None,
+                    is_subagent: false,
                 }
             })
             .collect()
@@ -530,8 +537,9 @@ impl TranscriptSource for CodexSource {
         newest
             .into_values()
             .map(|(path, meta, mtime)| {
+                let is_subagent = meta.agent.is_some();
                 let title = match &meta.agent {
-                    Some(a) => format!("↳ {a}"),        // a subagent, marked as a child
+                    Some(a) => a.clone(),               // a subagent (nested in the rail)
                     None => short_id(&meta.session_id), // the director thread
                 };
                 SessionHandle {
@@ -542,6 +550,8 @@ impl TranscriptSource for CodexSource {
                     last_active: Some(mtime),
                     locator: Locator::File(path),
                     body_available: true,
+                    group: Some(meta.session_id.clone()),
+                    is_subagent,
                 }
             })
             .collect()
@@ -817,6 +827,8 @@ impl TranscriptSource for OpencodeSource {
                     // Q1: the message/part `data` JSON shape is not yet decoded, so
                     // bodies read as unavailable rather than guessed.
                     body_available: false,
+                    group: None,
+                    is_subagent: false,
                 })
             })
             .collect()
@@ -1122,14 +1134,17 @@ mod tests {
             got.iter().map(|h| h.id.clone()).collect::<Vec<_>>(),
             vec!["T-dir".to_string(), "T-sub".to_string()]
         );
-        // The director is titled by its session; the subagent by its agent label.
+        // The director is titled by its session and heads the group; the subagent
+        // is flagged as a child of the same group, titled by its agent label.
         let dir = got.iter().find(|h| h.id == "T-dir").unwrap();
         assert_eq!(dir.title, "sess"); // short_id("sess-A")
+        assert!(!dir.is_subagent);
+        assert_eq!(dir.group.as_deref(), Some("sess-A"));
         let sub = got.iter().find(|h| h.id == "T-sub").unwrap();
+        assert!(sub.is_subagent);
+        assert_eq!(sub.group.as_deref(), Some("sess-A"));
         assert!(
-            sub.title.starts_with('↳')
-                && sub.title.contains("Lorentz")
-                && sub.title.contains("g10c_prover_04"),
+            sub.title.contains("Lorentz") && sub.title.contains("g10c_prover_04"),
             "subagent title: {}",
             sub.title
         );

@@ -163,6 +163,10 @@ pub struct AppState {
     /// Event indices whose collapsed turn (thinking / tool / sidechain) the
     /// operator has expanded with `Enter`.
     pub chat_expanded: HashSet<usize>,
+    /// Session group keys (Codex `session_id`) whose subagents are shown in the
+    /// rail. Default (absent) = collapsed, so a director's many subagents stay
+    /// folded under it until expanded.
+    pub chat_expanded_groups: HashSet<String>,
     /// The cached styled conversation rows, rebuilt by `chat_relayout` only when
     /// the session, expansions, or width change — not per frame (markdown is
     /// parsed once per change, not 4×/second).
@@ -301,6 +305,7 @@ impl AppState {
             chat_scroll: 0,
             chat_follow: true,
             chat_expanded: HashSet::new(),
+            chat_expanded_groups: HashSet::new(),
             chat_rows: Vec::new(),
             chat_dirty: true,
             chat_layout_w: 0,
@@ -701,13 +706,51 @@ impl AppState {
 
     /// Switch the selected session (`←`/`→`). The body re-read happens on the
     /// next tick via the `chat_loaded` mismatch in `refresh_chat`.
+    /// The visible rail rows (directors + standalone, plus the subagents of any
+    /// expanded group), in display order.
+    pub fn chat_rail(&self) -> Vec<RailRow> {
+        chat_rail_rows(&self.chat_sessions, &self.chat_expanded_groups)
+    }
+
+    /// Move the selection over the *visible* rail rows (`←`/`→`), so a collapsed
+    /// group's hidden subagents are skipped.
     pub fn select_chat_session(&mut self, delta: isize) {
-        let n = self.chat_sessions.len();
-        if n == 0 {
+        let rows = self.chat_rail();
+        if rows.is_empty() {
             return;
         }
-        self.chat_selected =
-            (self.chat_selected as isize + delta).clamp(0, n as isize - 1) as usize;
+        let cur = rows
+            .iter()
+            .position(|r| r.idx == self.chat_selected)
+            .unwrap_or(0);
+        let next = (cur as isize + delta).clamp(0, rows.len() as isize - 1) as usize;
+        self.chat_selected = rows[next].idx;
+    }
+
+    /// Fold/unfold the group of the selected session (`z`) — expanding a director
+    /// reveals its subagents; collapsing one with a subagent selected moves the
+    /// selection back to the director so it never lands on a hidden row.
+    pub fn chat_toggle_fold(&mut self) {
+        let Some(sel) = self.chat_sessions.get(self.chat_selected) else {
+            return;
+        };
+        let Some(group) = sel.group.clone() else {
+            return;
+        };
+        let was_subagent = sel.is_subagent;
+        if !self.chat_expanded_groups.remove(&group) {
+            self.chat_expanded_groups.insert(group.clone());
+        } else if was_subagent {
+            // The group just collapsed while a child was selected — snap to the
+            // director of that group.
+            if let Some(i) = self
+                .chat_sessions
+                .iter()
+                .position(|s| !s.is_subagent && s.group.as_deref() == Some(group.as_str()))
+            {
+                self.chat_selected = i;
+            }
+        }
     }
 
     /// Rebuild and cache the styled conversation rows plus their line metadata
@@ -1119,6 +1162,84 @@ pub fn chat_reread_plan(
     }
 }
 
+/// One visible row of the Chat session rail: which session it is, its tree
+/// depth (0 top-level, 1 a nested subagent), and — for a director with
+/// subagents — whether it heads a group and whether that group is expanded.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct RailRow {
+    pub idx: usize,
+    pub depth: usize,
+    pub is_parent: bool,
+    pub expanded: bool,
+    pub child_count: usize,
+}
+
+/// Flatten the session list into the visible rail rows: standalone sessions and
+/// directors at depth 0, each director's subagents nested at depth 1 and shown
+/// only when its group is expanded. A subagent whose director is absent is shown
+/// at top level rather than dropped (`telos/honest-ambiguity`). Pure/testable.
+pub fn chat_rail_rows(
+    sessions: &[transcripts::SessionHandle],
+    expanded_groups: &HashSet<String>,
+) -> Vec<RailRow> {
+    use std::collections::HashMap;
+    let mut director: HashMap<&str, usize> = HashMap::new();
+    let mut children: HashMap<&str, Vec<usize>> = HashMap::new();
+    for (i, s) in sessions.iter().enumerate() {
+        if let Some(g) = s.group.as_deref() {
+            if s.is_subagent {
+                children.entry(g).or_default().push(i);
+            } else {
+                director.entry(g).or_insert(i);
+            }
+        }
+    }
+    let mut rows = Vec::new();
+    for (i, s) in sessions.iter().enumerate() {
+        // Skip subagents that will be emitted under a present director.
+        if s.is_subagent {
+            if let Some(g) = s.group.as_deref() {
+                if director.contains_key(g) {
+                    continue;
+                }
+            }
+        }
+        let kids = if s.is_subagent {
+            &[][..]
+        } else {
+            s.group
+                .as_deref()
+                .and_then(|g| children.get(g))
+                .map(Vec::as_slice)
+                .unwrap_or(&[])
+        };
+        let expanded = s
+            .group
+            .as_deref()
+            .map(|g| expanded_groups.contains(g))
+            .unwrap_or(false);
+        rows.push(RailRow {
+            idx: i,
+            depth: 0,
+            is_parent: !kids.is_empty(),
+            expanded,
+            child_count: kids.len(),
+        });
+        if !kids.is_empty() && expanded {
+            for &c in kids {
+                rows.push(RailRow {
+                    idx: c,
+                    depth: 1,
+                    is_parent: false,
+                    expanded: false,
+                    child_count: 0,
+                });
+            }
+        }
+    }
+    rows
+}
+
 /// The detail pane's lines for a subject, from its cached fold outcome. Each
 /// state is explicit — loading, error, empty, or the newest-first claim lines —
 /// so the pane is never blank or fabricated (`telos/honest-ambiguity`).
@@ -1159,7 +1280,9 @@ const CLAUDE_PROMPT_TAGS: &[&str] = &[
     "user-prompt-submit-hook",
 ];
 
-/// Codex's injected-context wrappers (see `~/.codex/sessions` rollouts).
+/// Codex's injected-context wrappers (see `~/.codex/sessions` rollouts),
+/// including the `<heartbeat>` block and its nested sub-tags so an automation
+/// heartbeat renders as a structured, indented block.
 const CODEX_PROMPT_TAGS: &[&str] = &[
     "app-context",
     "environment_context",
@@ -1171,6 +1294,10 @@ const CODEX_PROMPT_TAGS: &[&str] = &[
     "recommended_plugins",
     "multi_agent_mode",
     "permission_profile",
+    "heartbeat",
+    "automation_id",
+    "current_time_iso",
+    "instructions",
 ];
 
 /// The prompt-tag registry for a harness (opencode's is not yet catalogued).
@@ -1408,6 +1535,25 @@ fn push_single_event(
     // out (after "▌ "), flush with the header label.
     let bar = || Span::styled("▌ ".to_string(), Style::new().fg(accent));
 
+    // User messages get a faint background band to set them apart. `banded`
+    // paints every span's background and pads the line to full width so the band
+    // is a solid strip, not just behind the text.
+    let user_bg = (e.role == Role::User).then_some(Color::Indexed(236));
+    let banded = |spans: Vec<Span<'static>>| -> Line<'static> {
+        let Some(bg) = user_bg else {
+            return Line::from(spans);
+        };
+        let mut spans: Vec<Span<'static>> = spans
+            .into_iter()
+            .map(|s| Span::styled(s.content, s.style.bg(bg)))
+            .collect();
+        let used: usize = spans.iter().map(|s| s.content.chars().count()).sum();
+        if used < rule_w {
+            spans.push(Span::styled(" ".repeat(rule_w - used), Style::new().bg(bg)));
+        }
+        Line::from(spans)
+    };
+
     if (e.kind.collapses() || e.is_sidechain) && !expanded.contains(&msg) {
         let tag = if e.is_sidechain {
             "sidechain"
@@ -1440,7 +1586,7 @@ fn push_single_event(
     out.push(ChatRow {
         msg,
         is_start,
-        line: Line::from(vec![
+        line: banded(vec![
             bar(),
             Span::styled(
                 name.to_string(),
@@ -1478,7 +1624,7 @@ fn push_single_event(
             out.push(ChatRow {
                 msg,
                 is_start: false,
-                line: Line::from(spans),
+                line: banded(spans),
             });
         }
     }
@@ -2075,6 +2221,8 @@ pub fn run(repo: PathBuf) -> std::io::Result<()> {
                         state.process_pane = state.process_pane.toggled();
                         state.process_detail = false; // leave any drill-down on a pane switch
                     }
+                    // Fold/unfold the selected session's subagent group (Chat).
+                    KeyCode::Char('z') if state.view == View::Chat => state.chat_toggle_fold(),
                     // Skip to the previous/next message (Chat): Shift+↑/↓ or { / }.
                     KeyCode::Char('{') if state.view == View::Chat => state.chat_msg_jump(-1),
                     KeyCode::Char('}') if state.view == View::Chat => state.chat_msg_jump(1),
@@ -2175,7 +2323,7 @@ fn view_header(view: View) -> String {
     };
     // A per-view key legend so navigation is discoverable without reading source.
     let keys = match view {
-        View::Chat => "· ←→ session · j/k scroll · ⇧↑↓ msg · ↵ expand ",
+        View::Chat => "· ←→ session · z fold · j/k scroll · ⇧↑↓ msg · ↵ expand ",
         View::Comments => "· ←→ file · j/k comment ",
         View::Process => "· ←→ atoms/telos · j/k scroll ",
         View::Ledger => "",
@@ -2362,10 +2510,12 @@ fn draw_chat(
     };
 
     if let Some(area) = rail_area {
-        let items: Vec<ListItem> = state
-            .chat_sessions
+        use ratatui::text::{Line, Span};
+        let rail = state.chat_rail();
+        let items: Vec<ListItem> = rail
             .iter()
-            .map(|h| {
+            .map(|row| {
+                let h = &state.chat_sessions[row.idx];
                 let branch = h
                     .git_branch
                     .as_deref()
@@ -2378,28 +2528,51 @@ fn draw_chat(
                 };
                 // A "new activity" dot for a session with unread turns.
                 let dot = if state.chat_session_stale(h) {
-                    ratatui::text::Span::styled("● ", Style::new().fg(Color::Yellow))
+                    Span::styled("●", Style::new().fg(Color::Yellow))
                 } else {
-                    ratatui::text::Span::raw("  ")
+                    Span::raw(" ")
                 };
-                let text = format!("[{}] {}{branch}{flag}", h.harness.label(), h.title);
-                ListItem::new(ratatui::text::Line::from(vec![
-                    dot,
-                    ratatui::text::Span::raw(text),
-                ]))
+                // A fold caret for a director with subagents; a nesting mark for a
+                // child; the harness tag only at top level.
+                let (lead, label) = if row.depth > 0 {
+                    (
+                        Span::styled("  ↳ ", Style::new().fg(Color::DarkGray)),
+                        format!("{}{branch}{flag}", h.title),
+                    )
+                } else {
+                    let caret = if row.is_parent {
+                        if row.expanded {
+                            "▾ "
+                        } else {
+                            "▸ "
+                        }
+                    } else {
+                        "  "
+                    };
+                    let count = if row.is_parent {
+                        format!("  ({})", row.child_count)
+                    } else {
+                        String::new()
+                    };
+                    (
+                        Span::styled(caret.to_string(), Style::new().fg(Color::DarkGray)),
+                        format!("[{}] {}{branch}{flag}{count}", h.harness.label(), h.title),
+                    )
+                };
+                ListItem::new(Line::from(vec![dot, lead, Span::raw(label)]))
             })
             .collect();
         let mut ls = ListState::default();
-        ls.select(Some(state.chat_selected));
+        ls.select(rail.iter().position(|r| r.idx == state.chat_selected));
         // The rail is a picker, not the scroll target — dim (unfocused) border.
         frame.render_stateful_widget(
             List::new(items)
                 .block(pane_block(
-                    format!(" sessions · {} · ←/→ ", state.chat_sessions.len()),
+                    format!(" sessions · {} · z fold ", state.chat_sessions.len()),
                     false,
                 ))
                 .highlight_style(Style::new().fg(Color::Cyan).add_modifier(Modifier::BOLD))
-                .highlight_symbol("▌ "),
+                .highlight_symbol("▌"),
             area,
             &mut ls,
         );
@@ -3761,6 +3934,71 @@ mod tests {
         );
     }
 
+    fn rail_handle(
+        id: &str,
+        title: &str,
+        group: Option<&str>,
+        is_subagent: bool,
+    ) -> transcripts::SessionHandle {
+        transcripts::SessionHandle {
+            harness: transcripts::Harness::Codex,
+            id: id.into(),
+            title: title.into(),
+            git_branch: None,
+            last_active: None,
+            locator: transcripts::Locator::File(std::path::PathBuf::from("/x")),
+            body_available: true,
+            group: group.map(str::to_string),
+            is_subagent,
+        }
+    }
+
+    #[test]
+    fn chat_rail_nests_subagents_under_their_director() {
+        let sessions = vec![
+            rail_handle("dir", "01a0", Some("G"), false),
+            rail_handle("s1", "Lorentz", Some("G"), true),
+            rail_handle("s2", "Kant", Some("G"), true),
+            rail_handle("solo", "claude", None, false),
+        ];
+        // Collapsed: the director (a parent with 2 kids) and the standalone; the
+        // subagents are hidden.
+        let collapsed = chat_rail_rows(&sessions, &HashSet::new());
+        assert_eq!(collapsed.len(), 2);
+        assert!(collapsed[0].is_parent && collapsed[0].child_count == 2 && !collapsed[0].expanded);
+        assert_eq!(collapsed[0].idx, 0);
+        assert_eq!(collapsed[1].idx, 3);
+        // Expanded: the two subagents appear nested at depth 1.
+        let mut g = HashSet::new();
+        g.insert("G".to_string());
+        let exp = chat_rail_rows(&sessions, &g);
+        assert_eq!(exp.len(), 4);
+        assert_eq!((exp[1].idx, exp[1].depth), (1, 1));
+        assert_eq!((exp[2].idx, exp[2].depth), (2, 1));
+        assert_eq!(exp[3].idx, 3);
+    }
+
+    #[test]
+    fn chat_fold_toggles_group_and_snaps_selection() {
+        let mut a = app(&["x"]);
+        a.view = View::Chat;
+        a.chat_sessions = vec![
+            rail_handle("dir", "01a0", Some("G"), false),
+            rail_handle("s1", "Lorentz", Some("G"), true),
+        ];
+        a.chat_selected = 0; // director
+        a.chat_toggle_fold();
+        assert!(a.chat_expanded_groups.contains("G"), "expands the group");
+        // Select the subagent, then collapse — selection snaps to the director.
+        a.chat_selected = 1;
+        a.chat_toggle_fold();
+        assert!(!a.chat_expanded_groups.contains("G"), "collapses the group");
+        assert_eq!(
+            a.chat_selected, 0,
+            "selection snaps off the now-hidden child"
+        );
+    }
+
     #[test]
     fn chat_session_stale_flags_new_activity() {
         use crate::transcripts::{Harness, Locator, SessionHandle};
@@ -3775,6 +4013,8 @@ mod tests {
             last_active: Some(active),
             locator: Locator::File(std::path::PathBuf::from("/x")),
             body_available: true,
+            group: None,
+            is_subagent: false,
         };
         let mut a = app(&["x"]);
         // Never seen → the dot shows (unseen activity).
