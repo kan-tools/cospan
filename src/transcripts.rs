@@ -509,6 +509,11 @@ impl TranscriptSource for CodexSource {
         let mut newest: std::collections::HashMap<String, (PathBuf, CodexMeta, SystemTime)> =
             std::collections::HashMap::new();
         for (path, meta) in self.for_repo(repo) {
+            // Guardian threads are Codex's auto-approval determinations (the
+            // equivalent of Claude Code's auto mode), not conversations — omit them.
+            if meta.is_guardian() {
+                continue;
+            }
             let mtime = std::fs::metadata(&path)
                 .ok()
                 .and_then(|m| m.modified().ok())
@@ -587,6 +592,12 @@ impl CodexMeta {
     /// Whether this is the human-facing (director) thread rather than a subagent.
     pub fn is_user_thread(&self) -> bool {
         self.thread_source.as_deref() == Some("user")
+    }
+
+    /// Whether this is a Codex "guardian" thread — an auto-approval
+    /// determination (like Claude Code's auto mode), not a conversation.
+    pub fn is_guardian(&self) -> bool {
+        self.agent.as_deref() == Some("guardian")
     }
 }
 
@@ -1076,6 +1087,11 @@ mod tests {
                 "{{\"type\":\"session_meta\",\"timestamp\":\"t\",\"payload\":{{\"session_id\":\"sess-A\",\"id\":\"{id}\",\"cwd\":\"/repo\",\"thread_source\":\"subagent\",\"source\":{{\"subagent\":{{\"thread_spawn\":{{\"agent_nickname\":\"{nick}\",\"agent_path\":\"{path}\"}}}}}},\"git\":{{\"branch\":\"main\"}}}}}}"
             )
         };
+        let guardian = |id: &str| {
+            format!(
+                "{{\"type\":\"session_meta\",\"timestamp\":\"t\",\"payload\":{{\"session_id\":\"sess-A\",\"id\":\"{id}\",\"cwd\":\"/repo\",\"thread_source\":\"subagent\",\"source\":{{\"subagent\":{{\"other\":\"guardian\"}}}},\"git\":{{\"branch\":\"main\"}}}}}}"
+            )
+        };
         std::fs::write(day.join("rollout-dir.jsonl"), director("T-dir"))?;
         std::fs::write(
             day.join("rollout-sub.jsonl"),
@@ -1086,11 +1102,21 @@ mod tests {
             day.join("rollout-sub2.jsonl"),
             subagent("T-sub", "Lorentz", "/root/g10c_prover_04"),
         )?;
+        // A guardian thread — an auto-mode determination, must be omitted.
+        std::fs::write(day.join("rollout-guard.jsonl"), guardian("T-guard"))?;
 
         let src = CodexSource { root: tmp.clone() };
         let mut got = src.discover(Path::new("/repo"));
         got.sort_by(|a, b| a.id.cmp(&b.id));
-        assert_eq!(got.len(), 2, "director + one subagent (snapshot deduped)");
+        assert_eq!(
+            got.len(),
+            2,
+            "director + one subagent (snapshot deduped, guardian omitted)"
+        );
+        assert!(
+            !got.iter().any(|h| h.id == "T-guard"),
+            "guardian threads are omitted"
+        );
         // Keyed by thread id — the director and the subagent are distinct.
         assert_eq!(
             got.iter().map(|h| h.id.clone()).collect::<Vec<_>>(),
