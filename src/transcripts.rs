@@ -499,36 +499,42 @@ impl TranscriptSource for CodexSource {
     }
 
     fn discover(&self, repo: &Path) -> Vec<SessionHandle> {
-        // Codex writes a fresh full-snapshot rollout file per resume/turn, all
-        // sharing one `session_id`. Collapse them to ONE logical session, keyed
-        // by `session_id`, whose body is the newest snapshot — otherwise a long
-        // session shows as dozens of duplicate rail entries that also thrash the
-        // re-read gate as their differing mtimes fight over the same id.
-        let mut newest: std::collections::HashMap<String, (PathBuf, CodexMeta, SystemTime)> =
-            std::collections::HashMap::new();
+        // A Codex "session" (one `session_id`) is a whole multi-agent tree: the
+        // human/director thread plus every spawned subagent, each written as its
+        // own full-snapshot rollout file (one real session had 120). Collapse the
+        // tree to ONE rail entry per `session_id`, and — crucially — represent it
+        // with the **user/director** thread, never a subagent: subagents run last,
+        // so "newest file" would show a prover's reasoning as the conversation.
+        // Rank candidates by (is_user_thread, mtime): a user thread always wins;
+        // among the same kind, the newest. Only if a session has no user thread
+        // at all does its newest subagent stand in.
+        struct Pick {
+            path: PathBuf,
+            meta: CodexMeta,
+            mtime: SystemTime,
+        }
+        let mut best: std::collections::HashMap<String, Pick> = std::collections::HashMap::new();
         for (path, meta) in self.for_repo(repo) {
             let mtime = std::fs::metadata(&path)
                 .ok()
                 .and_then(|m| m.modified().ok())
                 .unwrap_or(SystemTime::UNIX_EPOCH);
-            newest
-                .entry(meta.session_id.clone())
-                .and_modify(|slot| {
-                    if mtime > slot.2 {
-                        *slot = (path.clone(), meta.clone(), mtime);
-                    }
-                })
-                .or_insert((path, meta, mtime));
+            let rank = (meta.is_user_thread(), mtime);
+            match best.get(&meta.session_id) {
+                Some(cur) if (cur.meta.is_user_thread(), cur.mtime) >= rank => {}
+                _ => {
+                    best.insert(meta.session_id.clone(), Pick { path, meta, mtime });
+                }
+            }
         }
-        newest
-            .into_values()
-            .map(|(path, meta, mtime)| SessionHandle {
+        best.into_values()
+            .map(|p| SessionHandle {
                 harness: Harness::Codex,
-                id: meta.session_id.clone(),
-                title: short_id(&meta.session_id),
-                git_branch: meta.branch,
-                last_active: Some(mtime),
-                locator: Locator::File(path),
+                id: p.meta.session_id.clone(),
+                title: short_id(&p.meta.session_id),
+                git_branch: p.meta.branch,
+                last_active: Some(p.mtime),
+                locator: Locator::File(p.path),
                 body_available: true,
             })
             .collect()
@@ -564,6 +570,17 @@ pub struct CodexMeta {
     pub session_id: String,
     pub cwd: String,
     pub branch: Option<String>,
+    /// `"user"` for the human/director thread, `"subagent"` for a spawned agent
+    /// thread. All threads in a multi-agent session share one `session_id`, so
+    /// this is what tells the parent conversation apart from its subagents.
+    pub thread_source: Option<String>,
+}
+
+impl CodexMeta {
+    /// Whether this is the human-facing (director) thread rather than a subagent.
+    pub fn is_user_thread(&self) -> bool {
+        self.thread_source.as_deref() == Some("user")
+    }
 }
 
 /// Parse a Codex `session_meta` line. Returns `None` for any other line type.
@@ -582,6 +599,10 @@ pub fn parse_codex_meta(line: &str) -> Option<CodexMeta> {
         cwd: p.get("cwd").and_then(Value::as_str)?.to_string(),
         branch: p
             .pointer("/git/branch")
+            .and_then(Value::as_str)
+            .map(str::to_string),
+        thread_source: p
+            .get("thread_source")
             .and_then(Value::as_str)
             .map(str::to_string),
     })
@@ -1024,6 +1045,38 @@ mod tests {
             got.iter().map(|h| h.id.clone()).collect::<Vec<_>>(),
             vec!["sess-A".to_string(), "sess-B".to_string()]
         );
+
+        std::fs::remove_dir_all(&tmp).ok();
+        Ok(())
+    }
+
+    #[test]
+    fn codex_discover_represents_a_session_by_its_user_thread(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        // A session's rail entry must be its human/director thread, never a
+        // subagent — even though subagents are written later (newer mtime).
+        let tmp = std::env::temp_dir().join(format!("cospan-codex-agent-{}", std::process::id()));
+        let day = tmp.join("2026/08/20");
+        std::fs::create_dir_all(&day)?;
+        let meta = |src: &str| {
+            format!(
+                "{{\"type\":\"session_meta\",\"timestamp\":\"t\",\"payload\":{{\"session_id\":\"S\",\"cwd\":\"/repo\",\"thread_source\":\"{src}\",\"git\":{{\"branch\":\"main\"}}}}}}"
+            )
+        };
+        // User thread written first; subagent second (newer-or-equal mtime).
+        std::fs::write(day.join("rollout-user.jsonl"), meta("user"))?;
+        std::fs::write(day.join("rollout-sub.jsonl"), meta("subagent"))?;
+
+        let src = CodexSource { root: tmp.clone() };
+        let got = src.discover(Path::new("/repo"));
+        assert_eq!(got.len(), 1, "the tree collapses to one session");
+        match &got[0].locator {
+            Locator::File(p) => assert!(
+                p.to_string_lossy().contains("rollout-user"),
+                "the user thread represents the session, not the subagent: {p:?}"
+            ),
+            other => panic!("expected a file locator, got {other:?}"),
+        }
 
         std::fs::remove_dir_all(&tmp).ok();
         Ok(())
