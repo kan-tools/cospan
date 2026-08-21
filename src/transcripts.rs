@@ -499,43 +499,45 @@ impl TranscriptSource for CodexSource {
     }
 
     fn discover(&self, repo: &Path) -> Vec<SessionHandle> {
-        // A Codex "session" (one `session_id`) is a whole multi-agent tree: the
-        // human/director thread plus every spawned subagent, each written as its
-        // own full-snapshot rollout file (one real session had 120). Collapse the
-        // tree to ONE rail entry per `session_id`, and — crucially — represent it
-        // with the **user/director** thread, never a subagent: subagents run last,
-        // so "newest file" would show a prover's reasoning as the conversation.
-        // Rank candidates by (is_user_thread, mtime): a user thread always wins;
-        // among the same kind, the newest. Only if a session has no user thread
-        // at all does its newest subagent stand in.
-        struct Pick {
-            path: PathBuf,
-            meta: CodexMeta,
-            mtime: SystemTime,
-        }
-        let mut best: std::collections::HashMap<String, Pick> = std::collections::HashMap::new();
+        // A multi-agent Codex session shares one `session_id` across many
+        // threads — the human/director plus every spawned subagent — each written
+        // as its OWN rollout with a distinct thread `id` (one real session had a
+        // director + 119 subagents). List them as SEPARATE conversations keyed by
+        // thread id: the director titled by its session, each subagent by its
+        // agent label. (If Codex ever writes multiple snapshots of one thread,
+        // they dedup here to the newest.)
+        let mut newest: std::collections::HashMap<String, (PathBuf, CodexMeta, SystemTime)> =
+            std::collections::HashMap::new();
         for (path, meta) in self.for_repo(repo) {
             let mtime = std::fs::metadata(&path)
                 .ok()
                 .and_then(|m| m.modified().ok())
                 .unwrap_or(SystemTime::UNIX_EPOCH);
-            let rank = (meta.is_user_thread(), mtime);
-            match best.get(&meta.session_id) {
-                Some(cur) if (cur.meta.is_user_thread(), cur.mtime) >= rank => {}
-                _ => {
-                    best.insert(meta.session_id.clone(), Pick { path, meta, mtime });
-                }
-            }
+            newest
+                .entry(meta.id.clone())
+                .and_modify(|slot| {
+                    if mtime > slot.2 {
+                        *slot = (path.clone(), meta.clone(), mtime);
+                    }
+                })
+                .or_insert((path, meta, mtime));
         }
-        best.into_values()
-            .map(|p| SessionHandle {
-                harness: Harness::Codex,
-                id: p.meta.session_id.clone(),
-                title: short_id(&p.meta.session_id),
-                git_branch: p.meta.branch,
-                last_active: Some(p.mtime),
-                locator: Locator::File(p.path),
-                body_available: true,
+        newest
+            .into_values()
+            .map(|(path, meta, mtime)| {
+                let title = match &meta.agent {
+                    Some(a) => format!("↳ {a}"),        // a subagent, marked as a child
+                    None => short_id(&meta.session_id), // the director thread
+                };
+                SessionHandle {
+                    harness: Harness::Codex,
+                    id: meta.id.clone(),
+                    title,
+                    git_branch: meta.branch,
+                    last_active: Some(mtime),
+                    locator: Locator::File(path),
+                    body_available: true,
+                }
             })
             .collect()
     }
@@ -567,13 +569,18 @@ impl TranscriptSource for CodexSource {
 /// The fields cospan needs out of a Codex `session_meta` payload.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CodexMeta {
+    /// The multi-agent session root — shared by the director and every subagent.
     pub session_id: String,
+    /// This thread's own id — unique per rollout, so each director/subagent
+    /// thread is a distinct conversation.
+    pub id: String,
     pub cwd: String,
     pub branch: Option<String>,
-    /// `"user"` for the human/director thread, `"subagent"` for a spawned agent
-    /// thread. All threads in a multi-agent session share one `session_id`, so
-    /// this is what tells the parent conversation apart from its subagents.
+    /// `"user"` for the human/director thread, `"subagent"` for a spawned agent.
     pub thread_source: Option<String>,
+    /// A label for a subagent thread (`Lorentz · g10c_prover_04`, `guardian`);
+    /// `None` for the director thread.
+    pub agent: Option<String>,
 }
 
 impl CodexMeta {
@@ -581,6 +588,29 @@ impl CodexMeta {
     pub fn is_user_thread(&self) -> bool {
         self.thread_source.as_deref() == Some("user")
     }
+}
+
+/// A short label for a Codex subagent from its `source` payload, or `None` if
+/// the source is not a subagent (i.e. the director thread).
+fn codex_agent_label(source: &Value) -> Option<String> {
+    let sa = source.get("subagent")?;
+    if let Some(ts) = sa.get("thread_spawn") {
+        let nick = ts.get("agent_nickname").and_then(Value::as_str);
+        let path = ts
+            .get("agent_path")
+            .and_then(Value::as_str)
+            .map(|p| p.trim_start_matches("/root/").to_string());
+        return Some(match (nick, path) {
+            (Some(n), Some(p)) => format!("{n} · {p}"),
+            (Some(n), None) => n.to_string(),
+            (None, Some(p)) => p,
+            _ => "subagent".to_string(),
+        });
+    }
+    if let Some(other) = sa.get("other").and_then(Value::as_str) {
+        return Some(other.to_string()); // e.g. "guardian"
+    }
+    Some("subagent".to_string())
 }
 
 /// Parse a Codex `session_meta` line. Returns `None` for any other line type.
@@ -596,6 +626,11 @@ pub fn parse_codex_meta(line: &str) -> Option<CodexMeta> {
             .and_then(Value::as_str)
             .unwrap_or("?")
             .to_string(),
+        id: p
+            .get("id")
+            .and_then(Value::as_str)
+            .unwrap_or("?")
+            .to_string(),
         cwd: p.get("cwd").and_then(Value::as_str)?.to_string(),
         branch: p
             .pointer("/git/branch")
@@ -605,6 +640,7 @@ pub fn parse_codex_meta(line: &str) -> Option<CodexMeta> {
             .get("thread_source")
             .and_then(Value::as_str)
             .map(str::to_string),
+        agent: p.get("source").and_then(codex_agent_label),
     })
 }
 
@@ -1004,7 +1040,7 @@ mod tests {
         std::fs::create_dir_all(&day)?;
         let meta = |sid: &str, cwd: &str| {
             format!(
-                "{{\"type\":\"session_meta\",\"timestamp\":\"t\",\"payload\":{{\"session_id\":\"{sid}\",\"cwd\":\"{cwd}\",\"git\":{{\"branch\":\"main\"}}}}}}"
+                "{{\"type\":\"session_meta\",\"timestamp\":\"t\",\"payload\":{{\"session_id\":\"{sid}\",\"id\":\"{sid}\",\"cwd\":\"{cwd}\",\"git\":{{\"branch\":\"main\"}}}}}}"
             )
         };
         std::fs::write(day.join("rollout-a.jsonl"), meta("s-a", "/my/repo"))?;
@@ -1022,61 +1058,55 @@ mod tests {
     }
 
     #[test]
-    fn codex_discover_collapses_files_by_session_id() -> Result<(), Box<dyn std::error::Error>> {
-        // Codex writes many full-snapshot rollouts sharing one session_id; they
-        // must collapse to a single rail entry, not one per file.
-        let tmp = std::env::temp_dir().join(format!("cospan-codex-dedup-{}", std::process::id()));
+    fn codex_discover_lists_each_thread_and_labels_agents() -> Result<(), Box<dyn std::error::Error>>
+    {
+        // A multi-agent session's director and its subagents are SEPARATE
+        // conversations, keyed by distinct thread ids; only genuine snapshots of
+        // one thread id collapse.
+        let tmp = std::env::temp_dir().join(format!("cospan-codex-threads-{}", std::process::id()));
         let day = tmp.join("2026/08/20");
         std::fs::create_dir_all(&day)?;
-        let meta = |sid: &str, cwd: &str| {
+        let director = |id: &str| {
             format!(
-                "{{\"type\":\"session_meta\",\"timestamp\":\"t\",\"payload\":{{\"session_id\":\"{sid}\",\"cwd\":\"{cwd}\",\"git\":{{\"branch\":\"main\"}}}}}}"
+                "{{\"type\":\"session_meta\",\"timestamp\":\"t\",\"payload\":{{\"session_id\":\"sess-A\",\"id\":\"{id}\",\"cwd\":\"/repo\",\"thread_source\":\"user\",\"git\":{{\"branch\":\"main\"}}}}}}"
             )
         };
-        std::fs::write(day.join("rollout-a1.jsonl"), meta("sess-A", "/repo"))?;
-        std::fs::write(day.join("rollout-a2.jsonl"), meta("sess-A", "/repo"))?;
-        std::fs::write(day.join("rollout-b.jsonl"), meta("sess-B", "/repo"))?;
+        let subagent = |id: &str, nick: &str, path: &str| {
+            format!(
+                "{{\"type\":\"session_meta\",\"timestamp\":\"t\",\"payload\":{{\"session_id\":\"sess-A\",\"id\":\"{id}\",\"cwd\":\"/repo\",\"thread_source\":\"subagent\",\"source\":{{\"subagent\":{{\"thread_spawn\":{{\"agent_nickname\":\"{nick}\",\"agent_path\":\"{path}\"}}}}}},\"git\":{{\"branch\":\"main\"}}}}}}"
+            )
+        };
+        std::fs::write(day.join("rollout-dir.jsonl"), director("T-dir"))?;
+        std::fs::write(
+            day.join("rollout-sub.jsonl"),
+            subagent("T-sub", "Lorentz", "/root/g10c_prover_04"),
+        )?;
+        // A second snapshot of the SAME subagent thread id — must dedup.
+        std::fs::write(
+            day.join("rollout-sub2.jsonl"),
+            subagent("T-sub", "Lorentz", "/root/g10c_prover_04"),
+        )?;
 
         let src = CodexSource { root: tmp.clone() };
         let mut got = src.discover(Path::new("/repo"));
         got.sort_by(|a, b| a.id.cmp(&b.id));
-        assert_eq!(got.len(), 2, "the two sess-A files collapse to one entry");
+        assert_eq!(got.len(), 2, "director + one subagent (snapshot deduped)");
+        // Keyed by thread id — the director and the subagent are distinct.
         assert_eq!(
             got.iter().map(|h| h.id.clone()).collect::<Vec<_>>(),
-            vec!["sess-A".to_string(), "sess-B".to_string()]
+            vec!["T-dir".to_string(), "T-sub".to_string()]
         );
-
-        std::fs::remove_dir_all(&tmp).ok();
-        Ok(())
-    }
-
-    #[test]
-    fn codex_discover_represents_a_session_by_its_user_thread(
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        // A session's rail entry must be its human/director thread, never a
-        // subagent — even though subagents are written later (newer mtime).
-        let tmp = std::env::temp_dir().join(format!("cospan-codex-agent-{}", std::process::id()));
-        let day = tmp.join("2026/08/20");
-        std::fs::create_dir_all(&day)?;
-        let meta = |src: &str| {
-            format!(
-                "{{\"type\":\"session_meta\",\"timestamp\":\"t\",\"payload\":{{\"session_id\":\"S\",\"cwd\":\"/repo\",\"thread_source\":\"{src}\",\"git\":{{\"branch\":\"main\"}}}}}}"
-            )
-        };
-        // User thread written first; subagent second (newer-or-equal mtime).
-        std::fs::write(day.join("rollout-user.jsonl"), meta("user"))?;
-        std::fs::write(day.join("rollout-sub.jsonl"), meta("subagent"))?;
-
-        let src = CodexSource { root: tmp.clone() };
-        let got = src.discover(Path::new("/repo"));
-        assert_eq!(got.len(), 1, "the tree collapses to one session");
-        match &got[0].locator {
-            Locator::File(p) => assert!(
-                p.to_string_lossy().contains("rollout-user"),
-                "the user thread represents the session, not the subagent: {p:?}"
-            ),
-            other => panic!("expected a file locator, got {other:?}"),
-        }
+        // The director is titled by its session; the subagent by its agent label.
+        let dir = got.iter().find(|h| h.id == "T-dir").unwrap();
+        assert_eq!(dir.title, "sess"); // short_id("sess-A")
+        let sub = got.iter().find(|h| h.id == "T-sub").unwrap();
+        assert!(
+            sub.title.starts_with('↳')
+                && sub.title.contains("Lorentz")
+                && sub.title.contains("g10c_prover_04"),
+            "subagent title: {}",
+            sub.title
+        );
 
         std::fs::remove_dir_all(&tmp).ok();
         Ok(())
