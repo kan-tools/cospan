@@ -1112,6 +1112,44 @@ pub struct ChatRow {
 /// keeping the conversation readable (`telos/honest-ambiguity`: collapsed
 /// content is available, never dropped). `width` sizes the separator rule. Pure,
 /// so the layout is testable without a terminal.
+/// The harness prompt tags cospan formats. Deliberately a fixed registry, not
+/// "any paired tag": a message *discussing* tags (or an assistant emitting
+/// `<Foo>` generics) must not be reformatted as if the tags were real. These are
+/// the distinctive hyphenated wrappers the harnesses actually inject.
+const KNOWN_PROMPT_TAGS: &[&str] = &[
+    "system-reminder",
+    "command-message",
+    "command-name",
+    "command-args",
+    "command-stdout",
+    "local-command-stdout",
+    "task-notification",
+    "task-reminder",
+    "user-prompt-submit-hook",
+];
+
+/// Byte ranges of the text that Markdown treats as code — inline code spans and
+/// fenced/indented code blocks — computed by the real parser (`pulldown-cmark`),
+/// so a tag written inside `` `…` `` or a ``` fence is never mistaken for a live
+/// prompt tag. Robust to the code-fence edge cases a hand-rolled scan would miss.
+fn code_ranges(text: &str) -> Vec<(usize, usize)> {
+    use pulldown_cmark::{Event, Parser, Tag, TagEnd};
+    let mut out: Vec<(usize, usize)> = Vec::new();
+    let mut block_start: Option<usize> = None;
+    for (ev, range) in Parser::new(text).into_offset_iter() {
+        match ev {
+            Event::Code(_) => out.push((range.start, range.end)),
+            Event::Start(Tag::CodeBlock(_)) => block_start = Some(range.start),
+            Event::End(TagEnd::CodeBlock) => {
+                let s = block_start.take().unwrap_or(range.start);
+                out.push((s, range.end));
+            }
+            _ => {}
+        }
+    }
+    out
+}
+
 /// Whether a prompt tag opens, closes, or is self-closing.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum TagKind {
@@ -1197,7 +1235,10 @@ fn scan_prompt_tags(text: &str) -> Vec<Seg<'_>> {
         }
     }
 
-    // Pass 2: accept self-closing tags and open/close tags whose name is paired.
+    // Pass 2: accept a tag only when it is a KNOWN prompt tag, is paired (or
+    // self-closing), and lies OUTSIDE any Markdown code span/block.
+    let code = code_ranges(text);
+    let in_code = |a: usize, b: usize| code.iter().any(|&(cs, ce)| a < ce && cs < b);
     let mut segs: Vec<Seg> = Vec::new();
     let mut cursor = 0;
     for (start, end, kind) in tags {
@@ -1212,7 +1253,8 @@ fn scan_prompt_tags(text: &str) -> Vec<Seg<'_>> {
                 .unwrap_or(after.len());
             &after[..n]
         };
-        let accept = kind == TagKind::SelfClose || (opened.contains(name) && closed.contains(name));
+        let paired = kind == TagKind::SelfClose || (opened.contains(name) && closed.contains(name));
+        let accept = KNOWN_PROMPT_TAGS.contains(&name) && paired && !in_code(start, end);
         if !accept {
             continue;
         }
@@ -3379,6 +3421,41 @@ mod tests {
         assert!(
             tagline.spans.iter().any(|s| s.style.fg.is_some()),
             "prompt tag should be colored"
+        );
+    }
+
+    #[test]
+    fn render_message_body_ignores_unknown_and_in_code_tags() {
+        // An unknown (non-registry) paired tag stays plain text…
+        let unknown = render_message_body("<inner>deep</inner> and more");
+        assert!(
+            !unknown.iter().any(|l| {
+                let t: String = l.spans.iter().map(|s| s.content.as_ref()).collect();
+                t.trim() == "<inner>"
+            }),
+            "an unknown tag must not be broken out"
+        );
+
+        // …and a *known* tag written inside a code fence stays literal code —
+        // this is the failure mode where discussing tags rendered as if real.
+        let text = "example:\n\n```\n<system-reminder>fake</system-reminder>\n```\n";
+        let lines = render_message_body(text);
+        let broken_out = lines.iter().any(|l| {
+            let t: String = l.spans.iter().map(|s| s.content.as_ref()).collect();
+            t.trim() == "<system-reminder>" && l.spans.iter().any(|s| s.style.fg.is_some())
+        });
+        assert!(
+            !broken_out,
+            "a tag inside a code fence must not be formatted"
+        );
+        let joined = lines
+            .iter()
+            .flat_map(|l| l.spans.iter().map(|s| s.content.as_ref().to_string()))
+            .collect::<Vec<_>>()
+            .join("");
+        assert!(
+            joined.contains("system-reminder"),
+            "the literal text survives"
         );
     }
 
