@@ -139,6 +139,11 @@ pub struct AppState {
     pub chat_selected: usize,
     /// The read body of the selected session (its ordered turns).
     pub chat_session: Option<transcripts::Session>,
+    /// Per-session mtime the reader is "caught up" to — set when a session is
+    /// read (opened, or tailed at the bottom). A session whose `last_active` is
+    /// newer than this carries a "new activity" dot in the rail, and is re-read
+    /// only when the reader is at its bottom (no yank while scrolled up).
+    chat_seen: std::collections::HashMap<String, SystemTime>,
     /// The session id whose body is loaded into `chat_session`, so a switch
     /// forces a re-read (distinct from the *selected* index).
     pub chat_loaded: Option<String>,
@@ -292,6 +297,7 @@ impl AppState {
             chat_loaded: None,
             chat_loaded_active: None,
             chat_signal: None,
+            chat_seen: std::collections::HashMap::new(),
             chat_scroll: 0,
             chat_follow: true,
             chat_expanded: HashSet::new(),
@@ -601,6 +607,23 @@ impl AppState {
         self.chat_selected = self
             .chat_selected
             .min(self.chat_sessions.len().saturating_sub(1));
+        // Seed "caught up" at the current mtimes so nothing shows a stale dot on
+        // first open; genuinely new activity after this raises the dot.
+        for h in &self.chat_sessions {
+            if let Some(t) = h.last_active {
+                self.chat_seen.entry(h.id.clone()).or_insert(t);
+            }
+        }
+    }
+
+    /// Whether a session has activity newer than the reader has caught up to —
+    /// the rail's "new activity" dot.
+    pub fn chat_session_stale(&self, h: &transcripts::SessionHandle) -> bool {
+        match (h.last_active, self.chat_seen.get(&h.id)) {
+            (Some(cur), Some(&seen)) => cur > seen,
+            (Some(_), None) => true, // appeared after we seeded — unseen
+            _ => false,
+        }
     }
 
     /// Refresh the Chat view. Re-enumerates sessions only when the aggregate
@@ -644,21 +667,35 @@ impl AppState {
             handle.last_active,
         ) {
             ChatReread::None => {}
-            ChatReread::Append => {
-                // Same session, new turns: re-read but keep the reading position.
+            ChatReread::Append if self.chat_follow => {
+                // At the bottom: catch up to the new turns and keep tailing.
                 self.chat_session = Some(transcripts::read(handle));
                 self.chat_loaded_active = handle.last_active;
+                self.mark_chat_seen();
                 self.chat_dirty = true;
+            }
+            ChatReread::Append => {
+                // Scrolled up: do NOT re-read or move the pane — the rail's dot
+                // shows the session has new activity; scrolling back to the bottom
+                // (which re-arms follow) catches up on the next tick.
             }
             ChatReread::Switch => {
                 self.chat_session = Some(transcripts::read(handle));
                 self.chat_loaded = Some(handle.id.clone());
                 self.chat_loaded_active = handle.last_active;
                 self.chat_expanded.clear();
+                self.mark_chat_seen();
                 // Open a session at its newest turn, and tail it.
                 self.chat_follow = true;
                 self.chat_dirty = true;
             }
+        }
+    }
+
+    /// Mark the loaded session caught up to its current mtime (clears its dot).
+    fn mark_chat_seen(&mut self) {
+        if let (Some(id), Some(t)) = (self.chat_loaded.clone(), self.chat_loaded_active) {
+            self.chat_seen.insert(id, t);
         }
     }
 
@@ -1354,12 +1391,15 @@ pub fn chat_layout(
             });
         }
 
-        let (label, accent) = match e.role {
-            Role::User => ("▌ you", Color::Cyan),
-            Role::Assistant => ("▌ assistant", Color::Green),
-            Role::Tool => ("▌ tool", Color::Yellow),
-            Role::System => ("▌ system", Color::Magenta),
+        let (name, accent) = match e.role {
+            Role::User => ("you", Color::Cyan),
+            Role::Assistant => ("assistant", Color::Green),
+            Role::Tool => ("tool", Color::Yellow),
+            Role::System => ("system", Color::Magenta),
         };
+        // A colored left bar runs down the whole message; content sits two
+        // columns out (after "▌ "), flush with the header label.
+        let bar = || Span::styled("▌ ".to_string(), Style::new().fg(accent));
 
         let collapses = e.kind.collapses() || e.is_sidechain;
         if collapses && !expanded.contains(&i) {
@@ -1380,7 +1420,8 @@ pub fn chat_layout(
                 msg: i,
                 is_start: i == 0,
                 line: Line::from(vec![
-                    Span::styled(format!("  ⤷ {tag} "), Style::new().fg(Color::DarkGray)),
+                    bar(),
+                    Span::styled(format!("⤷ {tag} "), Style::new().fg(Color::DarkGray)),
                     Span::styled(
                         truncate(first, rule_w.saturating_sub(18)),
                         Style::new().fg(Color::DarkGray).add_modifier(Modifier::DIM),
@@ -1391,14 +1432,17 @@ pub fn chat_layout(
             continue;
         }
 
-        // Header: a color-coded role bar.
+        // Header: the role label, after the bar.
         out.push(ChatRow {
             msg: i,
             is_start: i == 0,
-            line: Line::from(Span::styled(
-                label.to_string(),
-                Style::new().fg(accent).add_modifier(Modifier::BOLD),
-            )),
+            line: Line::from(vec![
+                bar(),
+                Span::styled(
+                    name.to_string(),
+                    Style::new().fg(accent).add_modifier(Modifier::BOLD),
+                ),
+            ]),
         });
 
         // Body: markdown (with prompt-tag formatting) for real messages; dim raw
@@ -1422,15 +1466,16 @@ pub fn chat_layout(
                 })
                 .collect(),
         };
-        for mut l in body {
-            // A two-space indent associates the body with its role bar, then
-            // wrap to the pane width so the line count is exact (scroll/jump).
-            l.spans.insert(0, Span::raw("  "));
-            for wl in wrap_line(&l, rule_w) {
+        for l in body {
+            // Wrap leaving room for the "▌ " bar, then prefix every visual line so
+            // the colored bar runs the full height and content stays flush.
+            for wl in wrap_line(&l, rule_w.saturating_sub(2)) {
+                let mut spans = vec![bar()];
+                spans.extend(wl.spans);
                 out.push(ChatRow {
                     msg: i,
                     is_start: false,
-                    line: wl,
+                    line: Line::from(spans),
                 });
             }
         }
@@ -1739,7 +1784,7 @@ pub fn plain_frame(state: &AppState) -> String {
 /// (with ratatui's panic hook restoring the terminal on a crash) and restores it
 /// on exit — `telos/disposable`: a crash never leaves the terminal broken.
 pub fn run(repo: PathBuf) -> std::io::Result<()> {
-    use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
+    use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers, MouseEventKind};
 
     if !repo.join(".kan").is_dir() {
         eprintln!(
@@ -1749,6 +1794,8 @@ pub fn run(repo: PathBuf) -> std::io::Result<()> {
     }
 
     let mut terminal = ratatui::init();
+    // Enable mouse reporting for scroll-wheel support (hold Shift to select text).
+    let _ = crossterm::execute!(std::io::stdout(), crossterm::event::EnableMouseCapture);
     let mtime = head_mtime(&repo);
     let fold = substrate::fold(&repo);
     let mut state = AppState::new(repo, fold, mtime);
@@ -1867,6 +1914,12 @@ pub fn run(repo: PathBuf) -> std::io::Result<()> {
                     KeyCode::Esc if state.view == View::Ledger => state.ascend(),
                     _ => {}
                 },
+                // Mouse wheel scrolls the active view a few lines at a time.
+                Ok(Event::Mouse(m)) => match m.kind {
+                    MouseEventKind::ScrollDown => state.nav_step(3),
+                    MouseEventKind::ScrollUp => state.nav_step(-3),
+                    _ => {}
+                },
                 Ok(_) => {}
                 Err(e) => break Err(e),
             },
@@ -1875,6 +1928,7 @@ pub fn run(repo: PathBuf) -> std::io::Result<()> {
         }
     };
 
+    let _ = crossterm::execute!(std::io::stdout(), crossterm::event::DisableMouseCapture);
     ratatui::restore();
     result
 }
@@ -2130,7 +2184,17 @@ fn draw_chat(
                 } else {
                     " ·(list-only)"
                 };
-                ListItem::new(format!("[{}] {}{branch}{flag}", h.harness.label(), h.title))
+                // A "new activity" dot for a session with unread turns.
+                let dot = if state.chat_session_stale(h) {
+                    ratatui::text::Span::styled("● ", Style::new().fg(Color::Yellow))
+                } else {
+                    ratatui::text::Span::raw("  ")
+                };
+                let text = format!("[{}] {}{branch}{flag}", h.harness.label(), h.title);
+                ListItem::new(ratatui::text::Line::from(vec![
+                    dot,
+                    ratatui::text::Span::raw(text),
+                ]))
             })
             .collect();
         let mut ls = ListState::default();
@@ -3477,6 +3541,31 @@ mod tests {
             }),
             "a generic must not be broken out as a tag"
         );
+    }
+
+    #[test]
+    fn chat_session_stale_flags_new_activity() {
+        use crate::transcripts::{Harness, Locator, SessionHandle};
+        use std::time::Duration;
+        let t1 = SystemTime::UNIX_EPOCH + Duration::from_secs(10);
+        let t2 = SystemTime::UNIX_EPOCH + Duration::from_secs(20);
+        let handle = |active| SessionHandle {
+            harness: Harness::ClaudeCode,
+            id: "s1".into(),
+            title: "t".into(),
+            git_branch: None,
+            last_active: Some(active),
+            locator: Locator::File(std::path::PathBuf::from("/x")),
+            body_available: true,
+        };
+        let mut a = app(&["x"]);
+        // Never seen → the dot shows (unseen activity).
+        assert!(a.chat_session_stale(&handle(t1)));
+        // Caught up at t1 → no dot.
+        a.chat_seen.insert("s1".into(), t1);
+        assert!(!a.chat_session_stale(&handle(t1)));
+        // Newer activity than caught-up → the dot returns.
+        assert!(a.chat_session_stale(&handle(t2)));
     }
 
     #[test]
