@@ -1614,17 +1614,24 @@ fn push_single_event(
         return;
     }
 
-    // Header: the role label, after the bar.
+    // Header: the role label, after the bar, with a faded time on the right.
+    let mut head = vec![
+        bar(),
+        Span::styled(
+            name.to_string(),
+            Style::new().fg(accent).add_modifier(Modifier::BOLD),
+        ),
+    ];
+    if let Some(when) = e.ts.as_deref().and_then(iso_short) {
+        head.push(Span::styled(
+            format!("  {when}"),
+            Style::new().fg(Color::DarkGray),
+        ));
+    }
     out.push(ChatRow {
         msg,
         is_start,
-        line: banded(vec![
-            bar(),
-            Span::styled(
-                name.to_string(),
-                Style::new().fg(accent).add_modifier(Modifier::BOLD),
-            ),
-        ]),
+        line: banded(head),
     });
 
     // Body: markdown (with prompt-tag formatting) for message turns — including
@@ -1921,6 +1928,18 @@ fn coalesce_runs(seg: &[(char, ratatui::style::Style)]) -> ratatui::text::Line<'
         spans.push(Span::styled(buf, s));
     }
     Line::from(spans)
+}
+
+/// A compact `MM-DD HH:MM` from an ISO-8601 timestamp string
+/// (`YYYY-MM-DDTHH:MM:SS…` / `… …`), or `None` if it doesn't look like one — for
+/// the faded time label on a message.
+pub fn iso_short(ts: &str) -> Option<String> {
+    let b = ts.as_bytes();
+    if b.len() >= 16 && b[4] == b'-' && b[7] == b'-' && (b[10] == b'T' || b[10] == b' ') {
+        Some(format!("{} {}", &ts[5..10], &ts[11..16]))
+    } else {
+        None
+    }
 }
 
 fn truncate(s: &str, n: usize) -> String {
@@ -2591,7 +2610,17 @@ fn draw_chat(
                         format!("[{}] {}{branch}{flag}{count}", h.harness.label(), h.title),
                     )
                 };
-                ListItem::new(Line::from(vec![dot, lead, Span::raw(label)]))
+                // A faded last-active stamp helps tell sessions apart by recency.
+                let when = h
+                    .last_active
+                    .map(|t| format!("  {}", substrate::stamp_short(t)))
+                    .unwrap_or_default();
+                ListItem::new(Line::from(vec![
+                    dot,
+                    lead,
+                    Span::raw(label),
+                    Span::styled(when, Style::new().fg(Color::DarkGray)),
+                ]))
             })
             .collect();
         let mut ls = ListState::default();
@@ -4334,6 +4363,49 @@ mod tests {
         a.chat_dirty = true;
         a.chat_relayout();
         assert_eq!(a.chat_scroll, 0, "released follow does not jump to bottom");
+    }
+
+    #[test]
+    fn iso_short_extracts_month_day_time() {
+        assert_eq!(
+            iso_short("2026-08-21T15:12:09.279Z").as_deref(),
+            Some("08-21 15:12")
+        );
+        assert_eq!(
+            iso_short("2026-08-21 15:12:09").as_deref(),
+            Some("08-21 15:12")
+        );
+        assert_eq!(iso_short("not a timestamp"), None);
+        assert_eq!(iso_short("short"), None);
+    }
+
+    #[test]
+    fn chat_layout_shows_a_faded_time_on_message_headers() {
+        use crate::transcripts::{Event, EventKind, Harness, Role, Session};
+        let session = Session {
+            harness: Harness::ClaudeCode,
+            id: "s".into(),
+            title: "t".into(),
+            git_branch: None,
+            events: vec![Event {
+                role: Role::User,
+                kind: EventKind::Message,
+                ts: Some("2026-08-21T15:12:09.279Z".into()),
+                id: None,
+                parent: None,
+                is_sidechain: false,
+                text: "hi".into(),
+            }],
+        };
+        let joined = chat_layout(&session, &HashSet::new(), 80)
+            .iter()
+            .map(row_text)
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(
+            joined.contains("08-21 15:12"),
+            "header carries the time: {joined}"
+        );
     }
 
     #[test]

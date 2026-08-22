@@ -789,6 +789,17 @@ fn populate_fold(f: &mut Fold, json: &Value) {
 ///
 /// Integer-only (Howard Hinnant's civil-from-days) so the P0 spine stays
 /// dependency-free — a calendar crate is not worth pulling in for one column.
+/// A compact UTC stamp `MM-DD HH:MM` from a `SystemTime` — for faded recency
+/// labels (session last-active, message time). Pre-epoch times clamp to 0.
+pub fn stamp_short(t: std::time::SystemTime) -> String {
+    let us = t
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_micros() as i64)
+        .unwrap_or(0);
+    let full = fmt_utc(us); // YYYY-MM-DD HH:MM
+    full.get(5..).unwrap_or(&full).to_string()
+}
+
 fn fmt_utc(micros: i64) -> String {
     let secs = micros.div_euclid(1_000_000);
     let days = secs.div_euclid(86_400);
@@ -1225,6 +1236,11 @@ mod tests {
         let joined = block_summary("day-injection", &inj).unwrap().join("\n");
         assert!(joined.contains("cadence: turn"), "{joined}");
         assert!(joined.contains("max_practice_items: 3"), "{joined}");
+    }
+
+    #[test]
+    fn stamp_short_is_month_day_time() {
+        assert_eq!(stamp_short(std::time::UNIX_EPOCH), "01-01 00:00");
     }
 
     #[test]
