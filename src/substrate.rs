@@ -341,11 +341,34 @@ pub struct TelosView {
     pub witnesses: Vec<String>,
 }
 
+/// A recorded telos tension: the two teloi it holds between, and the rationale
+/// text (the claim body, minus its `day-tension` fence) explaining the trade-off.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Tension {
+    pub between: (String, String),
+    pub why: String,
+}
+
+impl Tension {
+    /// Whether this tension names `slug` as one of its two teloi.
+    pub fn names(&self, slug: &str) -> bool {
+        self.between.0 == slug || self.between.1 == slug
+    }
+    /// `a <-> b`.
+    pub fn pair(&self) -> String {
+        format!("{} <-> {}", self.between.0, self.between.1)
+    }
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct ProcessSnapshot {
     pub atoms: Vec<Atom>,
     pub teloi: Vec<TelosView>,
-    pub tensions: Vec<String>,
+    pub tensions: Vec<Tension>,
+    /// Witness type -> a human description of how it is probed, from the
+    /// `schema/witness` day-witness map. Lets a telos show what each of its
+    /// witnesses actually means, not just its type name.
+    pub witnesses: std::collections::BTreeMap<String, String>,
 }
 
 /// The body of the newest claim carrying a `name` fenced block, if any.
@@ -420,10 +443,50 @@ fn flatten_witnesses(j: &Value) -> Vec<String> {
     out
 }
 
-fn parse_tension(claims: &[Claim]) -> Option<String> {
-    let j: Value = serde_json::from_str(&newest_block(claims, "day-tension")?).ok()?;
+/// Parse the `schema/witness` day-witness map (witness name -> probe) into a
+/// name -> human probe description map. A lone-probe block (not a name map) or a
+/// missing/invalid block yields an empty map.
+fn parse_witness_probes(claims: &[Claim]) -> std::collections::BTreeMap<String, String> {
+    let mut out = std::collections::BTreeMap::new();
+    let Some(block) = newest_block(claims, "day-witness") else {
+        return out;
+    };
+    let Ok(j) = serde_json::from_str::<Value>(&block) else {
+        return out;
+    };
+    if is_probe(&j) {
+        return out; // a single probe, not a witness-name -> probe map
+    }
+    if let Some(map) = j.as_object() {
+        for (name, probe) in map {
+            out.insert(name.clone(), describe_probe_rich(probe));
+        }
+    }
+    out
+}
+
+fn parse_tension(claims: &[Claim]) -> Option<Tension> {
+    // The newest claim carrying a day-tension block; its prose (before the fence)
+    // is the rationale for the trade-off, which the flat list used to drop.
+    let text = claims
+        .iter()
+        .filter_map(|c| c.text.as_deref())
+        .find(|t| extract_fenced(t, "day-tension").is_some())?;
+    let j: Value = serde_json::from_str(extract_fenced(text, "day-tension")?).ok()?;
     let between = str_array_at(&j, "between");
-    (between.len() == 2).then(|| format!("{} <-> {}", between[0], between[1]))
+    if between.len() != 2 {
+        return None;
+    }
+    let why = text
+        .split("```day-tension")
+        .next()
+        .unwrap_or("")
+        .trim()
+        .to_string();
+    Some(Tension {
+        between: (between[0].clone(), between[1].clone()),
+        why,
+    })
 }
 
 /// Append every top-level key of `j` not already `covered` (and not a `_version`
@@ -502,6 +565,40 @@ fn describe_probe(j: &Value) -> String {
         }
     }
     probe_kind(j)
+}
+
+/// A richer, one-line probe description that unfolds one level of nesting — so a
+/// compound witness reads `material path src/*.rs, record claim` instead of the
+/// opaque `material+record`. Used for the telos detail view (block summaries keep
+/// the terser `describe_probe`).
+fn describe_probe_rich(v: &Value) -> String {
+    match v {
+        Value::String(s) => s.clone(),
+        Value::Object(o) if o.is_empty() => "?".to_string(),
+        Value::Object(o) => {
+            let sep = if o.len() == 1 { "" } else { ", " };
+            let parts: Vec<String> = o
+                .iter()
+                .map(|(k, val)| {
+                    let inner = match val {
+                        Value::String(s) => s.clone(),
+                        Value::Object(inner) if inner.len() == 1 => {
+                            let (ik, iv) = inner.iter().next().unwrap();
+                            match iv {
+                                Value::String(s) => format!("{ik} {s}"),
+                                _ => ik.clone(),
+                            }
+                        }
+                        Value::Object(inner) => inner.keys().cloned().collect::<Vec<_>>().join("+"),
+                        other => other.to_string(),
+                    };
+                    format!("{k} {inner}")
+                })
+                .collect();
+            parts.join(sep)
+        }
+        other => other.to_string(),
+    }
 }
 
 /// A human-readable view of a supported fenced block's parsed JSON, or `None`
@@ -676,6 +773,8 @@ fn populate_fold(f: &mut Fold, json: &Value) {
             if let Some(t) = parse_tension(&claims) {
                 f.process.tensions.push(t);
             }
+        } else if name == "schema/witness" {
+            f.process.witnesses = parse_witness_probes(&claims);
         }
         f.subjects.push(name.clone());
         f.claims.insert(name, claims);
@@ -683,7 +782,7 @@ fn populate_fold(f: &mut Fold, json: &Value) {
     f.subjects.sort();
     f.process.atoms.sort_by(|a, b| a.slug.cmp(&b.slug));
     f.process.teloi.sort_by(|a, b| a.slug.cmp(&b.slug));
-    f.process.tensions.sort();
+    f.process.tensions.sort_by(|a, b| a.between.cmp(&b.between));
 }
 
 /// Format microseconds-since-epoch as a compact UTC stamp `YYYY-MM-DD HH:MM`.
@@ -945,7 +1044,8 @@ mod tests {
         assert_eq!(snap.teloi.len(), 1);
         assert_eq!(snap.teloi[0].title, "Telos X");
         assert_eq!(snap.teloi[0].witnesses, vec!["code-change", "a|b"]);
-        assert_eq!(snap.tensions, vec!["x <-> y"]);
+        assert_eq!(snap.tensions.len(), 1);
+        assert_eq!(snap.tensions[0].pair(), "x <-> y");
     }
 
     #[test]

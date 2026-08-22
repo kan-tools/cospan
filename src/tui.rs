@@ -103,9 +103,14 @@ pub struct AppState {
     pub process_pane: ProcessPane,
     /// The highlighted atom box in the flowchart.
     pub atom_selected: usize,
-    /// Whether the Process atoms pane is drilled into an atom's detail.
+    /// The highlighted telos in the telos list.
+    pub telos_selected: usize,
+    /// Whether the Process pane is drilled into the selected item's detail
+    /// (shared by the Atoms and Telos sub-panes).
     pub process_detail: bool,
     pub atom_scroll: usize,
+    /// Scroll offset into the drilled telos detail (reused; the list itself uses
+    /// `telos_selected`).
     pub telos_scroll: usize,
     /// Keys of collapsed tree nodes (`sec:<label>` / `path:<prefix>`).
     pub collapsed: HashSet<String>,
@@ -283,6 +288,7 @@ impl AppState {
             view: View::Comments,
             process_pane: ProcessPane::Atoms,
             atom_selected: 0,
+            telos_selected: 0,
             process_detail: false,
             atom_scroll: 0,
             telos_scroll: 0,
@@ -928,9 +934,15 @@ impl AppState {
                 self.atom_scroll =
                     (self.atom_scroll as isize + delta).clamp(0, max as isize) as usize;
             }
-            (ProcessPane::Telos, _) => {
-                let max = process_view_lines(&self.fold.process, ProcessPane::Telos)
-                    .len()
+            (ProcessPane::Telos, false) => self.telos_select(delta),
+            (ProcessPane::Telos, true) => {
+                let p = &self.fold.process;
+                let w = self.telos_detail_width();
+                let max = p
+                    .teloi
+                    .get(self.telos_selected)
+                    .map(|t| telos_detail(t, &p.tensions, &p.witnesses, w).len())
+                    .unwrap_or(1)
                     .saturating_sub(1);
                 self.telos_scroll =
                     (self.telos_scroll as isize + delta).clamp(0, max as isize) as usize;
@@ -948,12 +960,32 @@ impl AppState {
             (self.atom_selected as isize + delta).clamp(0, n as isize - 1) as usize;
     }
 
-    /// Enter/leave the atom drill-down detail (Enter/Esc in the Process atoms pane).
-    pub fn process_drill(&mut self, into: bool) {
-        if self.process_pane == ProcessPane::Atoms {
-            self.process_detail = into;
-            self.atom_scroll = 0;
+    /// Width the telos detail wraps to — the detail pane's inner width, matching
+    /// `draw_telos`'s split (62% when wide, full when narrow), for the scroll clamp.
+    fn telos_detail_width(&self) -> usize {
+        let w = match layout_mode(self.body_w) {
+            Fit::Wide => (self.body_w as usize) * 62 / 100,
+            Fit::Narrow => self.body_w as usize,
+        };
+        w.saturating_sub(2).max(1)
+    }
+
+    /// Move the highlighted telos in the list, clamped.
+    pub fn telos_select(&mut self, delta: isize) {
+        let n = self.fold.process.teloi.len();
+        if n == 0 {
+            return;
         }
+        self.telos_selected =
+            (self.telos_selected as isize + delta).clamp(0, n as isize - 1) as usize;
+    }
+
+    /// Enter/leave the drill-down detail of the selected atom or telos
+    /// (Enter/Esc in the Process view).
+    pub fn process_drill(&mut self, into: bool) {
+        self.process_detail = into;
+        self.atom_scroll = 0;
+        self.telos_scroll = 0;
     }
 
     /// Switch the selected commented file, resetting the per-file re-read gate.
@@ -2846,7 +2878,7 @@ pub fn process_view_lines(p: &ProcessSnapshot, pane: ProcessPane) -> Vec<String>
             if !p.tensions.is_empty() {
                 lines.push("tensions:".to_string());
                 for tension in &p.tensions {
-                    lines.push(format!("  {tension}"));
+                    lines.push(format!("  {}", tension.pair()));
                 }
             }
             if p.teloi.is_empty() && p.tensions.is_empty() {
@@ -3077,6 +3109,135 @@ pub fn atom_detail(a: &Atom) -> Vec<String> {
     out
 }
 
+/// The telos detail as styled lines: slug/title header, the statement rendered
+/// as markdown, each witness with the probe description from `schema/witness`
+/// (colored, dim probe), and each tension naming the telos — its pair plus the
+/// recorded rationale (the "why") rendered as markdown. Live per-witness state
+/// still needs machine-readable day, so this is declared structure only.
+/// Pure/testable.
+pub fn telos_detail(
+    t: &substrate::TelosView,
+    tensions: &[substrate::Tension],
+    probes: &std::collections::BTreeMap<String, String>,
+    width: usize,
+) -> Vec<ratatui::text::Line<'static>> {
+    use ratatui::style::{Color, Modifier, Style};
+    use ratatui::text::{Line, Span};
+
+    let dim = Style::new().add_modifier(Modifier::DIM);
+    let header_style = Style::new().fg(Color::Cyan).add_modifier(Modifier::BOLD);
+
+    let mut out: Vec<Line<'static>> = Vec::new();
+    // Push `line` at `indent` columns, wrapping to the pane width with a hanging
+    // indent — every wrapped continuation keeps the indent instead of falling
+    // back to column 0.
+    let push = |out: &mut Vec<Line<'static>>, indent: usize, line: Line<'static>| {
+        let inner = width.saturating_sub(indent).max(1);
+        for wl in wrap_line(&line, inner) {
+            let mut spans: Vec<Span<'static>> = Vec::new();
+            if indent > 0 {
+                spans.push(Span::raw(" ".repeat(indent)));
+            }
+            spans.extend(wl.spans);
+            out.push(Line::from(spans));
+        }
+    };
+
+    push(
+        &mut out,
+        0,
+        Line::from(Span::styled(
+            format!("telos/{}", t.slug),
+            Style::new().fg(Color::Magenta).add_modifier(Modifier::BOLD),
+        )),
+    );
+    if !t.title.is_empty() && t.title != t.slug {
+        push(
+            &mut out,
+            0,
+            Line::from(Span::styled(
+                t.title.clone(),
+                Style::new().add_modifier(Modifier::BOLD),
+            )),
+        );
+    }
+
+    out.push(Line::from(""));
+    push(
+        &mut out,
+        0,
+        Line::from(Span::styled("statement", header_style)),
+    );
+    for l in crate::markdown::render(&t.statement) {
+        push(&mut out, 2, l);
+    }
+
+    out.push(Line::from(""));
+    push(
+        &mut out,
+        0,
+        Line::from(Span::styled(
+            format!("witnesses ({})", t.witnesses.len()),
+            header_style,
+        )),
+    );
+    if t.witnesses.is_empty() {
+        push(
+            &mut out,
+            2,
+            Line::from(Span::styled("(none declared)", dim)),
+        );
+    }
+    for w in &t.witnesses {
+        let mut spans = vec![
+            Span::styled("· ", dim),
+            Span::styled(w.clone(), Style::new().fg(Color::Green)),
+        ];
+        if let Some(p) = probes.get(w) {
+            spans.push(Span::styled(format!("   {p}"), dim));
+        }
+        push(&mut out, 2, Line::from(spans));
+    }
+
+    out.push(Line::from(""));
+    let related: Vec<&substrate::Tension> = tensions.iter().filter(|x| x.names(&t.slug)).collect();
+    push(
+        &mut out,
+        0,
+        Line::from(Span::styled(
+            format!("tensions ({})", related.len()),
+            header_style,
+        )),
+    );
+    if related.is_empty() {
+        push(&mut out, 2, Line::from(Span::styled("(none)", dim)));
+    }
+    for x in &related {
+        let other = if x.between.0 == t.slug {
+            &x.between.1
+        } else {
+            &x.between.0
+        };
+        push(
+            &mut out,
+            2,
+            Line::from(vec![
+                Span::styled("· ", dim),
+                Span::styled(
+                    format!("{} <-> {}", t.slug, other),
+                    Style::new().fg(Color::Yellow),
+                ),
+            ]),
+        );
+        if !x.why.is_empty() {
+            for l in crate::markdown::render(&x.why) {
+                push(&mut out, 4, l);
+            }
+        }
+    }
+    out
+}
+
 fn render_scrolled(
     frame: &mut ratatui::Frame,
     area: ratatui::layout::Rect,
@@ -3084,10 +3245,11 @@ fn render_scrolled(
     lines: &[String],
     scroll: usize,
 ) {
-    use ratatui::widgets::{Block, Paragraph};
+    use ratatui::widgets::{Block, Paragraph, Wrap};
     let scroll = scroll.min(lines.len().saturating_sub(1));
     frame.render_widget(
         Paragraph::new(lines[scroll..].join("\n"))
+            .wrap(Wrap { trim: false })
             .block(Block::bordered().title(title.to_string())),
         area,
     );
@@ -3120,14 +3282,89 @@ fn draw_atoms(frame: &mut ratatui::Frame, state: &AppState, area: ratatui::layou
 }
 
 fn draw_telos(frame: &mut ratatui::Frame, state: &AppState, area: ratatui::layout::Rect) {
-    let lines = process_view_lines(&state.fold.process, ProcessPane::Telos);
-    render_scrolled(
-        frame,
-        area,
-        " process · telos · ←→ atoms ",
-        &lines,
-        state.telos_scroll,
-    );
+    use ratatui::layout::{Constraint, Layout};
+    use ratatui::style::{Color, Modifier, Style};
+    use ratatui::widgets::{List, ListItem, ListState, Paragraph};
+    let p = &state.fold.process;
+
+    if p.teloi.is_empty() {
+        render_scrolled(
+            frame,
+            area,
+            " process · telos · ←→ atoms ",
+            &["(no teloi declared)".to_string()],
+            0,
+        );
+        return;
+    }
+    // A list of teloi (left) beside the selected telos's detail (right); `Enter`
+    // moves focus into the detail to scroll it, `Esc` back to the list. A narrow
+    // terminal shows only the focused pane.
+    let detail_focused = state.process_detail;
+    let sel = state.telos_selected.min(p.teloi.len().saturating_sub(1));
+
+    let render_list = |frame: &mut ratatui::Frame, a: ratatui::layout::Rect| {
+        let items: Vec<ListItem> = p
+            .teloi
+            .iter()
+            .map(|t| {
+                ListItem::new(ratatui::text::Line::from(vec![
+                    ratatui::text::Span::raw(t.title.clone()),
+                    ratatui::text::Span::styled(
+                        format!("  ({})", t.slug),
+                        Style::new().fg(Color::DarkGray),
+                    ),
+                ]))
+            })
+            .collect();
+        let mut ls = ListState::default();
+        ls.select(Some(sel));
+        frame.render_stateful_widget(
+            List::new(items)
+                .block(pane_block(
+                    " telos · ←→ atoms · ↵ detail ".to_string(),
+                    !detail_focused,
+                ))
+                .highlight_style(Style::new().fg(Color::Cyan).add_modifier(Modifier::BOLD))
+                .highlight_symbol("> "),
+            a,
+            &mut ls,
+        );
+    };
+    // Lay the detail out to the actual pane width so hanging indents wrap exactly
+    // (no double-wrap: the lines are already wrapped, so no `Wrap` on the widget).
+    let render_detail = |frame: &mut ratatui::Frame, a: ratatui::layout::Rect| {
+        let inner_w = (a.width as usize).saturating_sub(2).max(1);
+        let lines = telos_detail(&p.teloi[sel], &p.tensions, &p.witnesses, inner_w);
+        let scroll = state.telos_scroll.min(lines.len().saturating_sub(1));
+        let title = if detail_focused {
+            " detail · Esc back "
+        } else {
+            " detail "
+        };
+        frame.render_widget(
+            Paragraph::new(lines[scroll..].to_vec())
+                .block(pane_block(title.to_string(), detail_focused)),
+            a,
+        );
+    };
+
+    match layout_mode(area.width) {
+        Fit::Wide => {
+            let [l, r] =
+                Layout::horizontal([Constraint::Percentage(38), Constraint::Percentage(62)])
+                    .areas(area);
+            render_list(frame, l);
+            render_detail(frame, r);
+        }
+        Fit::Narrow => {
+            if detail_focused {
+                render_detail(frame, area);
+            } else {
+                render_list(frame, area);
+            }
+        }
+    }
 }
 
 /// A foreground color per top-level section, from the ANSI-16 palette so it reads
@@ -3735,6 +3972,20 @@ mod tests {
         r.line.spans.iter().map(|s| s.content.as_ref()).collect()
     }
 
+    /// The plain text of styled lines, joined by newlines (for assertions).
+    fn lines_text(lines: &[ratatui::text::Line<'static>]) -> String {
+        lines
+            .iter()
+            .map(|l| {
+                l.spans
+                    .iter()
+                    .map(|s| s.content.as_ref())
+                    .collect::<String>()
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
     #[test]
     fn chat_reread_plan_switches_appends_or_holds() {
         // (AC-7 / review #3) The gate re-reads only on change, and resets the
@@ -4321,6 +4572,100 @@ mod tests {
         assert_eq!(a.process_pane, ProcessPane::Telos);
     }
 
+    fn tv(slug: &str) -> crate::substrate::TelosView {
+        crate::substrate::TelosView {
+            slug: slug.into(),
+            title: format!("{slug} title"),
+            statement: format!("the {slug} statement"),
+            witnesses: vec!["published-artifact".into()],
+        }
+    }
+
+    #[test]
+    fn telos_select_moves_and_clamps() {
+        // (AC-1) the telos list cursor moves ±1 and clamps at both ends.
+        let mut a = app(&["telos/a"]);
+        a.view = View::Process;
+        a.process_pane = ProcessPane::Telos;
+        a.fold.process.teloi = vec![tv("a"), tv("b"), tv("c")];
+        a.telos_select(1);
+        assert_eq!(a.telos_selected, 1);
+        a.telos_select(9);
+        assert_eq!(a.telos_selected, 2, "clamps at the last telos");
+        a.telos_select(-9);
+        assert_eq!(a.telos_selected, 0, "clamps at the first");
+    }
+
+    #[test]
+    fn process_drill_toggles_detail_for_telos() {
+        // (AC-2) Enter/Esc drills the Telos pane too, not only Atoms.
+        let mut a = app(&["telos/a"]);
+        a.view = View::Process;
+        a.process_pane = ProcessPane::Telos;
+        a.fold.process.teloi = vec![tv("a")];
+        a.process_drill(true);
+        assert!(a.process_detail, "Enter drills into the telos detail");
+        a.process_drill(false);
+        assert!(!a.process_detail, "Esc backs out");
+    }
+
+    #[test]
+    fn telos_detail_shows_statement_witnesses_and_only_matching_tensions() {
+        // (AC-3) the drilled view shows the slug/statement/witnesses and only the
+        // tensions whose text names this telos.
+        let t = crate::substrate::TelosView {
+            slug: "kan-is-truth".into(),
+            title: "kan is truth".into(),
+            statement: "everything is a projection".into(),
+            witnesses: vec!["published-artifact".into()],
+        };
+        let tensions = vec![
+            crate::substrate::Tension {
+                between: ("disposable".into(), "kan-is-truth".into()),
+                why: "comments own the state cospan holds".into(),
+            },
+            crate::substrate::Tension {
+                between: ("poll".into(), "subscribe".into()),
+                why: "an unrelated trade-off".into(),
+            },
+        ];
+        let mut probes = std::collections::BTreeMap::new();
+        probes.insert(
+            "published-artifact".to_string(),
+            "path: .claims/*".to_string(),
+        );
+        let j = lines_text(&telos_detail(&t, &tensions, &probes, 80));
+        assert!(j.contains("telos/kan-is-truth"), "{j}");
+        assert!(j.contains("everything is a projection"), "{j}");
+        // The witness shows its probe description alongside its type name.
+        assert!(j.contains("published-artifact"), "{j}");
+        assert!(j.contains("path: .claims/*"), "{j}");
+        // The tension names the telos, shows the pair, and — the new detail —
+        // the recorded rationale; the unrelated tension is omitted entirely.
+        assert!(j.contains("kan-is-truth <-> disposable"), "pair: {j}");
+        assert!(j.contains("comments own the state"), "the why: {j}");
+        assert!(!j.contains("poll"), "omits unrelated tensions: {j}");
+        assert!(!j.contains("unrelated trade-off"), "{j}");
+    }
+
+    #[test]
+    fn telos_detail_falls_back_when_a_witness_has_no_probe() {
+        let t = crate::substrate::TelosView {
+            slug: "x".into(),
+            title: "x".into(),
+            statement: "s".into(),
+            witnesses: vec!["mystery-witness".into()],
+        };
+        let j = lines_text(&telos_detail(
+            &t,
+            &[],
+            &std::collections::BTreeMap::new(),
+            80,
+        ));
+        assert!(j.contains("witnesses (1)"), "{j}");
+        assert!(j.contains("· mystery-witness"), "{j}");
+    }
+
     #[test]
     fn comments_header_shows_the_navigation_legend() {
         // (AC-1) the file-switch and comment-move keys are visible in the header.
@@ -4729,6 +5074,7 @@ mod tests {
             }],
             teloi: vec![],
             tensions: vec![],
+            ..Default::default()
         };
         let lines = process_view_lines(&snap, ProcessPane::Atoms);
         assert!(lines.iter().any(|l| l.contains("build")));
@@ -4742,6 +5088,7 @@ mod tests {
                 witnesses: vec!["code-change".into()],
             }],
             tensions: vec![],
+            ..Default::default()
         };
         let tlines = process_view_lines(&tsnap, ProcessPane::Telos);
         assert!(tlines.iter().any(|l| l.contains("p0-spine")), "{tlines:?}");
