@@ -1,10 +1,12 @@
 # Feature: Process tab — telos drill-down
 
 ## Summary
-Turn the Process tab's Telos sub-pane from a flat scrolling list into a
-selectable list that drills into one telos's full detail — statement,
-witnesses, and the tensions naming it — mirroring the atom pane's existing
-Enter/Esc drill-down (`process_detail` / `atom_detail`).
+Turn the Process tab's Telos sub-pane into a **two-column** view: a selectable
+telos list beside the selected telos's detail — statement, witnesses (each with
+its probe description from `schema/witness`), and the tensions naming it.
+`Enter`/`Esc` move focus between the list and the detail (for scrolling);
+narrow terminals show only the focused pane. Mirrors the atom pane's
+`process_detail` drill flag.
 
 ## Requirements
 - REQ-1: `AppState` gains `telos_selected` (the highlighted telos in the list),
@@ -15,12 +17,15 @@ Enter/Esc drill-down (`process_detail` / `atom_detail`).
   selected telos's detail lines when drilled (`src/tui.rs`).
 - REQ-3: `process_drill` (`Enter`/`Esc`) toggles `process_detail` for the Telos
   pane as well as Atoms, resetting `atom_scroll`/`telos_scroll` on entry.
-- REQ-4: A pure `telos_detail(&TelosView, &[String]) -> Vec<String>` renders the
-  drilled view: `telos/<slug>`, title, statement, the witnesses list, and the
-  tensions whose text names the slug ("(none)" when empty).
-- REQ-5: `draw_telos` renders a selection-highlighted `List` of teloi (title +
-  dim slug) when not drilled, and the `telos_detail` lines (via `render_scrolled`)
-  when drilled; the header legend shows `↵ detail` / `Esc back` accordingly.
+- REQ-4: A pure `telos_detail(&TelosView, &[String], &BTreeMap<String,String>)`
+  renders the detail: `telos/<slug>`, title, statement, each witness with its
+  probe description (from `schema/witness`, or the bare name when unknown), and
+  the tensions whose text names the slug ("(none)" when empty). `ProcessSnapshot`
+  gains a `witnesses` map (witness type -> probe description) parsed from the
+  `schema/witness` day-witness block.
+- REQ-5: `draw_telos` renders two columns when wide — a selection-highlighted
+  `List` of teloi (title + dim slug) beside the `telos_detail` of the selection —
+  and only the focused pane when narrow; `pane_block` marks which pane has focus.
 - REQ-6: `render_scrolled` wraps long lines (`Wrap`), so a long telos statement
   or atom field wraps instead of clipping. The non-interactive `plain_frame`
   (`process_view_lines`) keeps the flat telos list unchanged.

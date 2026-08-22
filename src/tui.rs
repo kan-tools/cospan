@@ -940,7 +940,7 @@ impl AppState {
                 let max = p
                     .teloi
                     .get(self.telos_selected)
-                    .map(|t| telos_detail(t, &p.tensions).len())
+                    .map(|t| telos_detail(t, &p.tensions, &p.witnesses).len())
                     .unwrap_or(1)
                     .saturating_sub(1);
                 self.telos_scroll =
@@ -3098,11 +3098,16 @@ pub fn atom_detail(a: &Atom) -> Vec<String> {
     out
 }
 
-/// The drilled telos detail: its slug, title, statement, witnesses, and the
-/// tensions whose text names the slug (the same slugs `day telos tension`
-/// records). Live per-witness state still needs machine-readable day, so this is
-/// the declared structure only. Pure/testable.
-pub fn telos_detail(t: &substrate::TelosView, tensions: &[String]) -> Vec<String> {
+/// The telos detail: its slug, title, statement, witnesses (each with the probe
+/// description from `schema/witness`, when known), and the tensions whose text
+/// names the slug (the same slugs `day telos tension` records). Live per-witness
+/// state still needs machine-readable day, so this is declared structure only.
+/// Pure/testable.
+pub fn telos_detail(
+    t: &substrate::TelosView,
+    tensions: &[String],
+    probes: &std::collections::BTreeMap<String, String>,
+) -> Vec<String> {
     let mut out = vec![format!("telos/{}", t.slug)];
     if !t.title.is_empty() && t.title != t.slug {
         out.push(t.title.clone());
@@ -3116,7 +3121,10 @@ pub fn telos_detail(t: &substrate::TelosView, tensions: &[String]) -> Vec<String
         out.push("  (none declared)".to_string());
     }
     for w in &t.witnesses {
-        out.push(format!("  · {w}"));
+        match probes.get(w) {
+            Some(p) => out.push(format!("  · {w} — {p}")),
+            None => out.push(format!("  · {w}")),
+        }
     }
     out.push(String::new());
     let related: Vec<&String> = tensions.iter().filter(|x| x.contains(&t.slug)).collect();
@@ -3174,25 +3182,10 @@ fn draw_atoms(frame: &mut ratatui::Frame, state: &AppState, area: ratatui::layou
 }
 
 fn draw_telos(frame: &mut ratatui::Frame, state: &AppState, area: ratatui::layout::Rect) {
+    use ratatui::layout::{Constraint, Layout};
     use ratatui::style::{Color, Modifier, Style};
-    use ratatui::widgets::{Block, List, ListItem, ListState};
+    use ratatui::widgets::{List, ListItem, ListState, Paragraph, Wrap};
     let p = &state.fold.process;
-
-    if state.process_detail {
-        let lines = p
-            .teloi
-            .get(state.telos_selected)
-            .map(|t| telos_detail(t, &p.tensions))
-            .unwrap_or_else(|| vec!["(no telos selected)".to_string()]);
-        render_scrolled(
-            frame,
-            area,
-            " process · telos · Esc back ",
-            &lines,
-            state.telos_scroll,
-        );
-        return;
-    }
 
     if p.teloi.is_empty() {
         render_scrolled(
@@ -3204,31 +3197,72 @@ fn draw_telos(frame: &mut ratatui::Frame, state: &AppState, area: ratatui::layou
         );
         return;
     }
-    let items: Vec<ListItem> = p
-        .teloi
-        .iter()
-        .map(|t| {
-            ListItem::new(ratatui::text::Line::from(vec![
-                ratatui::text::Span::raw(t.title.clone()),
-                ratatui::text::Span::styled(
-                    format!("  ({})", t.slug),
-                    Style::new().fg(Color::DarkGray),
-                ),
-            ]))
-        })
-        .collect();
-    let mut ls = ListState::default();
-    ls.select(Some(
-        state.telos_selected.min(p.teloi.len().saturating_sub(1)),
-    ));
-    frame.render_stateful_widget(
-        List::new(items)
-            .block(Block::bordered().title(" process · telos · ←→ atoms · ↵ detail "))
-            .highlight_style(Style::new().fg(Color::Cyan).add_modifier(Modifier::BOLD))
-            .highlight_symbol("> "),
-        area,
-        &mut ls,
-    );
+    // A list of teloi (left) beside the selected telos's detail (right); `Enter`
+    // moves focus into the detail to scroll it, `Esc` back to the list. A narrow
+    // terminal shows only the focused pane.
+    let detail_focused = state.process_detail;
+    let sel = state.telos_selected.min(p.teloi.len().saturating_sub(1));
+    let detail_lines = telos_detail(&p.teloi[sel], &p.tensions, &p.witnesses);
+
+    let render_list = |frame: &mut ratatui::Frame, a: ratatui::layout::Rect| {
+        let items: Vec<ListItem> = p
+            .teloi
+            .iter()
+            .map(|t| {
+                ListItem::new(ratatui::text::Line::from(vec![
+                    ratatui::text::Span::raw(t.title.clone()),
+                    ratatui::text::Span::styled(
+                        format!("  ({})", t.slug),
+                        Style::new().fg(Color::DarkGray),
+                    ),
+                ]))
+            })
+            .collect();
+        let mut ls = ListState::default();
+        ls.select(Some(sel));
+        frame.render_stateful_widget(
+            List::new(items)
+                .block(pane_block(
+                    " telos · ←→ atoms · ↵ detail ".to_string(),
+                    !detail_focused,
+                ))
+                .highlight_style(Style::new().fg(Color::Cyan).add_modifier(Modifier::BOLD))
+                .highlight_symbol("> "),
+            a,
+            &mut ls,
+        );
+    };
+    let render_detail = |frame: &mut ratatui::Frame, a: ratatui::layout::Rect| {
+        let scroll = state.telos_scroll.min(detail_lines.len().saturating_sub(1));
+        let title = if detail_focused {
+            " detail · Esc back "
+        } else {
+            " detail "
+        };
+        frame.render_widget(
+            Paragraph::new(detail_lines[scroll..].join("\n"))
+                .wrap(Wrap { trim: false })
+                .block(pane_block(title.to_string(), detail_focused)),
+            a,
+        );
+    };
+
+    match layout_mode(area.width) {
+        Fit::Wide => {
+            let [l, r] =
+                Layout::horizontal([Constraint::Percentage(38), Constraint::Percentage(62)])
+                    .areas(area);
+            render_list(frame, l);
+            render_detail(frame, r);
+        }
+        Fit::Narrow => {
+            if detail_focused {
+                render_detail(frame, area);
+            } else {
+                render_list(frame, area);
+            }
+        }
+    }
 }
 
 /// A foreground color per top-level section, from the ANSI-16 palette so it reads
@@ -4473,10 +4507,16 @@ mod tests {
             "disposable vs kan-is-truth: comments".to_string(),
             "poll vs subscribe: unrelated".to_string(),
         ];
-        let j = telos_detail(&t, &tensions).join("\n");
+        let mut probes = std::collections::BTreeMap::new();
+        probes.insert(
+            "published-artifact".to_string(),
+            "path: .claims/*".to_string(),
+        );
+        let j = telos_detail(&t, &tensions, &probes).join("\n");
         assert!(j.contains("telos/kan-is-truth"), "{j}");
         assert!(j.contains("everything is a projection"), "{j}");
-        assert!(j.contains("published-artifact"), "{j}");
+        // The witness shows its probe description, not just its type name.
+        assert!(j.contains("published-artifact — path: .claims/*"), "{j}");
         assert!(
             j.contains("disposable vs kan-is-truth"),
             "names the tension: {j}"
@@ -4485,6 +4525,20 @@ mod tests {
             !j.contains("poll vs subscribe"),
             "omits unrelated tensions: {j}"
         );
+    }
+
+    #[test]
+    fn telos_detail_falls_back_when_a_witness_has_no_probe() {
+        let t = crate::substrate::TelosView {
+            slug: "x".into(),
+            title: "x".into(),
+            statement: "s".into(),
+            witnesses: vec!["mystery-witness".into()],
+        };
+        let j = telos_detail(&t, &[], &std::collections::BTreeMap::new()).join("\n");
+        // No probe known → the bare witness name, no dangling em dash.
+        assert!(j.contains("· mystery-witness"), "{j}");
+        assert!(!j.contains("mystery-witness —"), "{j}");
     }
 
     #[test]
@@ -4895,6 +4949,7 @@ mod tests {
             }],
             teloi: vec![],
             tensions: vec![],
+            ..Default::default()
         };
         let lines = process_view_lines(&snap, ProcessPane::Atoms);
         assert!(lines.iter().any(|l| l.contains("build")));
@@ -4908,6 +4963,7 @@ mod tests {
                 witnesses: vec!["code-change".into()],
             }],
             tensions: vec![],
+            ..Default::default()
         };
         let tlines = process_view_lines(&tsnap, ProcessPane::Telos);
         assert!(tlines.iter().any(|l| l.contains("p0-spine")), "{tlines:?}");

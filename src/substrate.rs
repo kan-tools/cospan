@@ -346,6 +346,10 @@ pub struct ProcessSnapshot {
     pub atoms: Vec<Atom>,
     pub teloi: Vec<TelosView>,
     pub tensions: Vec<String>,
+    /// Witness type -> a human description of how it is probed, from the
+    /// `schema/witness` day-witness map. Lets a telos show what each of its
+    /// witnesses actually means, not just its type name.
+    pub witnesses: std::collections::BTreeMap<String, String>,
 }
 
 /// The body of the newest claim carrying a `name` fenced block, if any.
@@ -415,6 +419,28 @@ fn flatten_witnesses(j: &Value) -> Vec<String> {
                     .collect();
                 out.push(any.join("|"));
             }
+        }
+    }
+    out
+}
+
+/// Parse the `schema/witness` day-witness map (witness name -> probe) into a
+/// name -> human probe description map. A lone-probe block (not a name map) or a
+/// missing/invalid block yields an empty map.
+fn parse_witness_probes(claims: &[Claim]) -> std::collections::BTreeMap<String, String> {
+    let mut out = std::collections::BTreeMap::new();
+    let Some(block) = newest_block(claims, "day-witness") else {
+        return out;
+    };
+    let Ok(j) = serde_json::from_str::<Value>(&block) else {
+        return out;
+    };
+    if is_probe(&j) {
+        return out; // a single probe, not a witness-name -> probe map
+    }
+    if let Some(map) = j.as_object() {
+        for (name, probe) in map {
+            out.insert(name.clone(), describe_probe(probe));
         }
     }
     out
@@ -676,6 +702,8 @@ fn populate_fold(f: &mut Fold, json: &Value) {
             if let Some(t) = parse_tension(&claims) {
                 f.process.tensions.push(t);
             }
+        } else if name == "schema/witness" {
+            f.process.witnesses = parse_witness_probes(&claims);
         }
         f.subjects.push(name.clone());
         f.claims.insert(name, claims);
