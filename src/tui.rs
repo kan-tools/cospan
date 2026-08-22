@@ -11,6 +11,7 @@ use crate::comments::{self, Comment};
 use crate::substrate::{
     self, is_day_subject, namespace, short_cid, Atom, Claim, Fold, ProcessSnapshot,
 };
+use crate::transcripts;
 use crate::{Localization, State};
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -131,16 +132,72 @@ pub struct AppState {
     /// Scroll offset into the file-content pane.
     pub comment_scroll: usize,
 
+    // --- Chat view: cross-harness session buffers from transcripts (read-only). ---
+    /// The repo's discovered sessions across all harnesses, newest-active first.
+    pub chat_sessions: Vec<transcripts::SessionHandle>,
+    /// Index into `chat_sessions`.
+    pub chat_selected: usize,
+    /// The read body of the selected session (its ordered turns).
+    pub chat_session: Option<transcripts::Session>,
+    /// Per-session mtime the reader is "caught up" to — set when a session is
+    /// read (opened, or tailed at the bottom). A session whose `last_active` is
+    /// newer than this carries a "new activity" dot in the rail, and is re-read
+    /// only when the reader is at its bottom (no yank while scrolled up).
+    chat_seen: std::collections::HashMap<String, SystemTime>,
+    /// The session id whose body is loaded into `chat_session`, so a switch
+    /// forces a re-read (distinct from the *selected* index).
+    pub chat_loaded: Option<String>,
+    /// The loaded session's `last_active` when it was read — so a re-read that
+    /// preserves the cursor (a new turn appended) is told apart from one that
+    /// resets it (a switch to a different session).
+    chat_loaded_active: Option<SystemTime>,
+    /// Last-seen aggregate change signal — the transcript re-read gate.
+    chat_signal: Option<SystemTime>,
+    /// Top visible *line* of the conversation (`j`/`k`/PgUp/PgDn scroll it);
+    /// `Shift`+`↑`/`↓` jump between messages.
+    pub chat_scroll: usize,
+    /// When true, the view stays pinned to the bottom (newest turn) — the
+    /// default on opening a session, and it re-pins as turns arrive. Scrolling up
+    /// releases it; scrolling back to the bottom re-arms it (tail-follow).
+    pub chat_follow: bool,
+    /// Event indices whose collapsed turn (thinking / tool / sidechain) the
+    /// operator has expanded with `Enter`.
+    pub chat_expanded: HashSet<usize>,
+    /// Session group keys (Codex `session_id`) whose subagents are shown in the
+    /// rail. Default (absent) = collapsed, so a director's many subagents stay
+    /// folded under it until expanded.
+    pub chat_expanded_groups: HashSet<String>,
+    /// The cached styled conversation rows, rebuilt by `chat_relayout` only when
+    /// the session, expansions, or width change — not per frame (markdown is
+    /// parsed once per change, not 4×/second).
+    chat_rows: Vec<ChatRow>,
+    /// True when `chat_rows` needs rebuilding; set by the read/expand/resize
+    /// mutators and cleared by `chat_relayout`.
+    chat_dirty: bool,
+    /// The width `chat_rows` was laid out for, to detect a resize.
+    chat_layout_w: usize,
+    /// Total rendered conversation lines, from the last layout — clamps scroll.
+    pub chat_total_lines: usize,
+    /// `(start line, event index)` for each message, from the last layout —
+    /// drives message-skip (`Shift`+arrows) and current-message detection.
+    pub chat_msg_starts: Vec<(usize, usize)>,
+
+    // --- Viewport: the body area's size, refreshed each tick for paging. ---
+    body_w: u16,
+    body_h: u16,
+
     // --- Footer: day's status line, width-matched from its cache. ---
     pub footer: Vec<String>,
     footer_mtime: Option<SystemTime>,
     footer_width: u16,
 }
 
-/// The top-level tabs, switched with `1`/`2`/`3` or `Tab`. `Ledger` is the kan
-/// claim browser; `Process` houses the atoms/telos sub-panes.
+/// The top-level tabs, switched with `1`/`2`/`3`/`4` or `Tab`. `Chat` is the
+/// cross-harness session buffers; `Ledger` is the kan claim browser; `Process`
+/// houses the atoms/telos sub-panes.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum View {
+    Chat,
     Comments,
     Ledger,
     Process,
@@ -149,17 +206,19 @@ pub enum View {
 impl View {
     pub fn next(self) -> View {
         match self {
+            View::Chat => View::Comments,
             View::Comments => View::Ledger,
             View::Ledger => View::Process,
-            View::Process => View::Comments,
+            View::Process => View::Chat,
         }
     }
 
     pub fn from_digit(c: char) -> Option<View> {
         match c {
-            '1' => Some(View::Comments),
-            '2' => Some(View::Ledger),
-            '3' => Some(View::Process),
+            '1' => Some(View::Chat),
+            '2' => Some(View::Comments),
+            '3' => Some(View::Ledger),
+            '4' => Some(View::Process),
             _ => None,
         }
     }
@@ -236,6 +295,24 @@ impl AppState {
             comment_mtime: None,
             comment_selected: 0,
             comment_scroll: 0,
+            chat_sessions: Vec::new(),
+            chat_selected: 0,
+            chat_session: None,
+            chat_loaded: None,
+            chat_loaded_active: None,
+            chat_signal: None,
+            chat_seen: std::collections::HashMap::new(),
+            chat_scroll: 0,
+            chat_follow: true,
+            chat_expanded: HashSet::new(),
+            chat_expanded_groups: HashSet::new(),
+            chat_rows: Vec::new(),
+            chat_dirty: true,
+            chat_layout_w: 0,
+            chat_total_lines: 0,
+            chat_msg_starts: Vec::new(),
+            body_w: 0,
+            body_h: 0,
             footer: Vec::new(),
             footer_mtime: None,
             footer_width: 0,
@@ -528,6 +605,299 @@ impl AppState {
         self.footer_width = width;
     }
 
+    /// Re-discover the repo's sessions across harnesses. Called on entering the
+    /// Chat view so newly-started sessions appear.
+    pub fn reload_chat_sessions(&mut self) {
+        self.chat_sessions = transcripts::discover_all(&self.repo);
+        self.chat_selected = self
+            .chat_selected
+            .min(self.chat_sessions.len().saturating_sub(1));
+        // Seed "caught up" at the current mtimes so nothing shows a stale dot on
+        // first open; genuinely new activity after this raises the dot.
+        for h in &self.chat_sessions {
+            if let Some(t) = h.last_active {
+                self.chat_seen.entry(h.id.clone()).or_insert(t);
+            }
+        }
+    }
+
+    /// Whether a session has activity newer than the reader has caught up to —
+    /// the rail's "new activity" dot.
+    pub fn chat_session_stale(&self, h: &transcripts::SessionHandle) -> bool {
+        match (h.last_active, self.chat_seen.get(&h.id)) {
+            (Some(cur), Some(&seen)) => cur > seen,
+            (Some(_), None) => true, // appeared after we seeded — unseen
+            _ => false,
+        }
+    }
+
+    /// Refresh the Chat view. Re-enumerates sessions only when the aggregate
+    /// transcript change signal advances (a new turn or session) — keeping the
+    /// cursor on the same session by id across a re-sort. The selected session's
+    /// body is then re-read per `chat_reread_plan`: a switch to a *different*
+    /// session resets the cursor and expansions; a new turn appended to the
+    /// *same* session re-reads but preserves them (appends land at the end, so
+    /// existing event indices are stable); an unrelated session changing
+    /// disturbs neither. One stat-driven gate, no push channel
+    /// (`telos/poll-dont-subscribe`); the read is pure projection, nothing is
+    /// written back (`telos/kan-is-truth`).
+    pub fn refresh_chat(&mut self) {
+        let signal = transcripts::change_signal(&self.repo);
+        if should_refold(self.chat_signal, signal) {
+            let prev_id = self
+                .chat_sessions
+                .get(self.chat_selected)
+                .map(|h| h.id.clone());
+            self.chat_sessions = transcripts::discover_all(&self.repo);
+            self.chat_signal = signal;
+            if let Some(id) = prev_id {
+                if let Some(i) = self.chat_sessions.iter().position(|h| h.id == id) {
+                    self.chat_selected = i;
+                }
+            }
+        }
+        if self.chat_sessions.is_empty() {
+            self.chat_session = None;
+            self.chat_loaded = None;
+            self.chat_loaded_active = None;
+            self.chat_dirty = true;
+            return;
+        }
+        self.chat_selected = self.chat_selected.min(self.chat_sessions.len() - 1);
+        let handle = &self.chat_sessions[self.chat_selected];
+        match chat_reread_plan(
+            self.chat_loaded.as_deref(),
+            self.chat_loaded_active,
+            &handle.id,
+            handle.last_active,
+        ) {
+            ChatReread::None => {}
+            ChatReread::Append if self.chat_follow => {
+                // At the bottom: catch up to the new turns and keep tailing.
+                self.chat_session = Some(transcripts::read(handle));
+                self.chat_loaded_active = handle.last_active;
+                self.mark_chat_seen();
+                self.chat_dirty = true;
+            }
+            ChatReread::Append => {
+                // Scrolled up: do NOT re-read or move the pane — the rail's dot
+                // shows the session has new activity; scrolling back to the bottom
+                // (which re-arms follow) catches up on the next tick.
+            }
+            ChatReread::Switch => {
+                self.chat_session = Some(transcripts::read(handle));
+                self.chat_loaded = Some(handle.id.clone());
+                self.chat_loaded_active = handle.last_active;
+                self.chat_expanded.clear();
+                self.mark_chat_seen();
+                // Open a session at its newest turn, and tail it.
+                self.chat_follow = true;
+                self.chat_dirty = true;
+            }
+        }
+    }
+
+    /// Mark the loaded session caught up to its current mtime (clears its dot).
+    fn mark_chat_seen(&mut self) {
+        if let (Some(id), Some(t)) = (self.chat_loaded.clone(), self.chat_loaded_active) {
+            self.chat_seen.insert(id, t);
+        }
+    }
+
+    /// Switch the selected session (`←`/`→`). The body re-read happens on the
+    /// next tick via the `chat_loaded` mismatch in `refresh_chat`.
+    /// The visible rail rows (directors + standalone, plus the subagents of any
+    /// expanded group), in display order.
+    pub fn chat_rail(&self) -> Vec<RailRow> {
+        chat_rail_rows(&self.chat_sessions, &self.chat_expanded_groups)
+    }
+
+    /// Move the selection over the *visible* rail rows (`←`/`→`), so a collapsed
+    /// group's hidden subagents are skipped.
+    pub fn select_chat_session(&mut self, delta: isize) {
+        let rows = self.chat_rail();
+        if rows.is_empty() {
+            return;
+        }
+        let cur = rows
+            .iter()
+            .position(|r| r.idx == self.chat_selected)
+            .unwrap_or(0);
+        let next = (cur as isize + delta).clamp(0, rows.len() as isize - 1) as usize;
+        self.chat_selected = rows[next].idx;
+    }
+
+    /// Fold/unfold the group of the selected session (`z`) — expanding a director
+    /// reveals its subagents; collapsing one with a subagent selected moves the
+    /// selection back to the director so it never lands on a hidden row.
+    pub fn chat_toggle_fold(&mut self) {
+        let Some(sel) = self.chat_sessions.get(self.chat_selected) else {
+            return;
+        };
+        let Some(group) = sel.group.clone() else {
+            return;
+        };
+        let was_subagent = sel.is_subagent;
+        if !self.chat_expanded_groups.remove(&group) {
+            self.chat_expanded_groups.insert(group.clone());
+        } else if was_subagent {
+            // The group just collapsed while a child was selected — snap to the
+            // director of that group.
+            if let Some(i) = self
+                .chat_sessions
+                .iter()
+                .position(|s| !s.is_subagent && s.group.as_deref() == Some(group.as_str()))
+            {
+                self.chat_selected = i;
+            }
+        }
+    }
+
+    /// Rebuild and cache the styled conversation rows plus their line metadata
+    /// (total lines + per-message start lines), and clamp the scroll — but only
+    /// when something changed (`chat_dirty` or a resize), so markdown is parsed
+    /// once per change rather than every frame. `draw_chat` renders the cache.
+    pub fn chat_relayout(&mut self) {
+        let w = self.chat_convo_width();
+        if !self.chat_dirty && self.chat_layout_w == w {
+            return;
+        }
+        self.chat_rows = match &self.chat_session {
+            Some(s) => chat_layout(s, &self.chat_expanded, w),
+            None => Vec::new(),
+        };
+        self.chat_msg_starts = self
+            .chat_rows
+            .iter()
+            .enumerate()
+            .filter(|(_, r)| r.is_start)
+            .map(|(line, r)| (line, r.msg))
+            .collect();
+        self.chat_total_lines = self.chat_rows.len();
+        self.chat_layout_w = w;
+        self.chat_dirty = false;
+        // Tail-follow: stay pinned to the newest turn unless the reader scrolled
+        // up; otherwise just clamp the existing offset.
+        self.chat_scroll = if self.chat_follow {
+            self.chat_max_scroll()
+        } else {
+            self.chat_scroll.min(self.chat_max_scroll())
+        };
+    }
+
+    /// The cached conversation rows for rendering (see `chat_relayout`).
+    pub fn chat_rows(&self) -> &[ChatRow] {
+        &self.chat_rows
+    }
+
+    /// Visible conversation rows (the pane height minus its border).
+    fn chat_visible_rows(&self) -> usize {
+        (self.body_h.saturating_sub(2)).max(1) as usize
+    }
+
+    /// The largest scroll offset that still fills the pane — the "bottom".
+    fn chat_max_scroll(&self) -> usize {
+        self.chat_total_lines
+            .saturating_sub(self.chat_visible_rows())
+    }
+
+    /// Width available to the conversation text, from the last viewport (minus
+    /// the pane border), so markdown wraps and separators match the render.
+    fn chat_convo_width(&self) -> usize {
+        let w = match layout_mode(self.body_w) {
+            Fit::Wide => (self.body_w as usize) * 68 / 100,
+            Fit::Narrow => self.body_w as usize,
+        };
+        w.saturating_sub(2)
+    }
+
+    /// Scroll the conversation by `delta` lines (`j`/`k`, PgUp/PgDn), clamped to
+    /// the bottom. Re-arms tail-follow when scrolled to the bottom, releases it
+    /// otherwise.
+    pub fn chat_scroll_by(&mut self, delta: isize) {
+        let max = self.chat_max_scroll() as isize;
+        self.chat_scroll = (self.chat_scroll as isize + delta).clamp(0, max.max(0)) as usize;
+        self.chat_follow = self.chat_scroll >= self.chat_max_scroll();
+    }
+
+    /// Jump the scroll to the previous/next message's start line (`Shift`+arrows
+    /// or `{`/`}`) — the "skip to message" motion over line-by-line scrolling.
+    pub fn chat_msg_jump(&mut self, delta: isize) {
+        if self.chat_msg_starts.is_empty() {
+            return;
+        }
+        // The message we're in: the last start at or above the current top line.
+        let cur = self
+            .chat_msg_starts
+            .partition_point(|(line, _)| *line <= self.chat_scroll)
+            .saturating_sub(1);
+        let target =
+            (cur as isize + delta).clamp(0, self.chat_msg_starts.len() as isize - 1) as usize;
+        self.chat_scroll = self.chat_msg_starts[target].0.min(self.chat_max_scroll());
+        self.chat_follow = self.chat_scroll >= self.chat_max_scroll();
+    }
+
+    /// The event index of the message at the top of the viewport — what `Enter`
+    /// expand/collapse acts on.
+    fn chat_current_event(&self) -> Option<usize> {
+        self.chat_msg_starts
+            .iter()
+            .rev()
+            .find(|(line, _)| *line <= self.chat_scroll)
+            .map(|(_, ev)| *ev)
+    }
+
+    /// Expand/collapse the message at the top of the viewport, if it is a
+    /// collapsible turn (thinking, tool traffic, or a sidechain). `Enter`.
+    pub fn chat_toggle_expand(&mut self) {
+        let Some(ev) = self.chat_current_event() else {
+            return;
+        };
+        let collapses = self
+            .chat_session
+            .as_ref()
+            .and_then(|s| s.events.get(ev))
+            .map(|e| e.kind.collapses() || e.is_sidechain)
+            .unwrap_or(false);
+        if collapses {
+            if !self.chat_expanded.remove(&ev) {
+                self.chat_expanded.insert(ev);
+            }
+            self.chat_dirty = true;
+            self.chat_relayout(); // the line count changed
+        }
+    }
+
+    /// Set the body viewport size (refreshed each tick), for page-sized motion.
+    pub fn set_viewport(&mut self, w: u16, h: u16) {
+        self.body_w = w;
+        self.body_h = h;
+    }
+
+    /// One page of rows for PgUp/PgDn — a screen minus a line of overlap.
+    pub fn page_rows(&self) -> isize {
+        (self.body_h.saturating_sub(1)).max(1) as isize
+    }
+
+    /// Move down (`delta > 0`) or up by `delta` steps in the active view — the
+    /// shared body of `j`/`k` (delta ±1) and PgUp/PgDn (delta ±a page).
+    pub fn nav_step(&mut self, delta: isize) {
+        match self.view {
+            View::Chat => self.chat_scroll_by(delta),
+            View::Process => self.process_move(delta),
+            View::Comments => self.select_comment(delta),
+            View::Ledger => {
+                for _ in 0..delta.unsigned_abs() {
+                    if delta > 0 {
+                        self.move_down();
+                    } else {
+                        self.move_up();
+                    }
+                }
+            }
+        }
+    }
+
     /// Move the comment cursor and scroll the content pane to its anchored line.
     pub fn select_comment(&mut self, delta: isize) {
         let n = self.comment_localized.len();
@@ -763,6 +1133,113 @@ pub fn should_refold(last: Option<SystemTime>, current: Option<SystemTime>) -> b
     last != current
 }
 
+/// What a Chat refresh should do with the selected session's body.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum ChatReread {
+    /// Nothing changed — keep the loaded body, cursor, and expansions.
+    None,
+    /// Same session, a turn was appended — re-read, but preserve cursor/expand.
+    Append,
+    /// A different session — re-read and reset cursor/expand.
+    Switch,
+}
+
+/// Decide how to (re)load the selected session, so scroll and expansion survive
+/// an append to the session being read but reset on an actual switch — and an
+/// unrelated session changing does neither. Pure, so the rule is testable.
+pub fn chat_reread_plan(
+    loaded_id: Option<&str>,
+    loaded_active: Option<SystemTime>,
+    selected_id: &str,
+    selected_active: Option<SystemTime>,
+) -> ChatReread {
+    if loaded_id != Some(selected_id) {
+        ChatReread::Switch
+    } else if loaded_active != selected_active {
+        ChatReread::Append
+    } else {
+        ChatReread::None
+    }
+}
+
+/// One visible row of the Chat session rail: which session it is, its tree
+/// depth (0 top-level, 1 a nested subagent), and — for a director with
+/// subagents — whether it heads a group and whether that group is expanded.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct RailRow {
+    pub idx: usize,
+    pub depth: usize,
+    pub is_parent: bool,
+    pub expanded: bool,
+    pub child_count: usize,
+}
+
+/// Flatten the session list into the visible rail rows: standalone sessions and
+/// directors at depth 0, each director's subagents nested at depth 1 and shown
+/// only when its group is expanded. A subagent whose director is absent is shown
+/// at top level rather than dropped (`telos/honest-ambiguity`). Pure/testable.
+pub fn chat_rail_rows(
+    sessions: &[transcripts::SessionHandle],
+    expanded_groups: &HashSet<String>,
+) -> Vec<RailRow> {
+    use std::collections::HashMap;
+    let mut director: HashMap<&str, usize> = HashMap::new();
+    let mut children: HashMap<&str, Vec<usize>> = HashMap::new();
+    for (i, s) in sessions.iter().enumerate() {
+        if let Some(g) = s.group.as_deref() {
+            if s.is_subagent {
+                children.entry(g).or_default().push(i);
+            } else {
+                director.entry(g).or_insert(i);
+            }
+        }
+    }
+    let mut rows = Vec::new();
+    for (i, s) in sessions.iter().enumerate() {
+        // Skip subagents that will be emitted under a present director.
+        if s.is_subagent {
+            if let Some(g) = s.group.as_deref() {
+                if director.contains_key(g) {
+                    continue;
+                }
+            }
+        }
+        let kids = if s.is_subagent {
+            &[][..]
+        } else {
+            s.group
+                .as_deref()
+                .and_then(|g| children.get(g))
+                .map(Vec::as_slice)
+                .unwrap_or(&[])
+        };
+        let expanded = s
+            .group
+            .as_deref()
+            .map(|g| expanded_groups.contains(g))
+            .unwrap_or(false);
+        rows.push(RailRow {
+            idx: i,
+            depth: 0,
+            is_parent: !kids.is_empty(),
+            expanded,
+            child_count: kids.len(),
+        });
+        if !kids.is_empty() && expanded {
+            for &c in kids {
+                rows.push(RailRow {
+                    idx: c,
+                    depth: 1,
+                    is_parent: false,
+                    expanded: false,
+                    child_count: 0,
+                });
+            }
+        }
+    }
+    rows
+}
+
 /// The detail pane's lines for a subject, from its cached fold outcome. Each
 /// state is explicit — loading, error, empty, or the newest-first claim lines —
 /// so the pane is never blank or fabricated (`telos/honest-ambiguity`).
@@ -773,6 +1250,652 @@ pub fn detail_lines(subject: &str, claims: &[Claim]) -> Vec<String> {
         )]
     } else {
         claims.iter().map(Claim::display_line).collect()
+    }
+}
+
+/// One rendered conversation row: which message (event index) it belongs to,
+/// whether it is that message's first row (for message-skip and current-message
+/// detection), and the styled line to draw.
+#[derive(Clone)]
+pub struct ChatRow {
+    pub msg: usize,
+    pub is_start: bool,
+    pub line: ratatui::text::Line<'static>,
+}
+
+/// Prompt tags cospan formats, per harness. Deliberately fixed registries, not
+/// "any paired tag": a message *discussing* tags (or an assistant emitting
+/// `<Foo>` generics) must not be reformatted as if the tags were real — and each
+/// harness injects a different, distinctive set. Generic structural sub-tags
+/// (`<path>`, `<entry>`, `<cwd>`) are excluded to avoid colliding with code.
+const CLAUDE_PROMPT_TAGS: &[&str] = &[
+    "system-reminder",
+    "command-message",
+    "command-name",
+    "command-args",
+    "command-stdout",
+    "local-command-stdout",
+    "task-notification",
+    "task-reminder",
+    "user-prompt-submit-hook",
+];
+
+/// Codex's injected-context wrappers (see `~/.codex/sessions` rollouts),
+/// including the `<heartbeat>` block and its nested sub-tags so an automation
+/// heartbeat renders as a structured, indented block.
+const CODEX_PROMPT_TAGS: &[&str] = &[
+    "app-context",
+    "environment_context",
+    "INSTRUCTIONS",
+    "user_instructions",
+    "skills_instructions",
+    "apps_instructions",
+    "plugins_instructions",
+    "recommended_plugins",
+    "multi_agent_mode",
+    "permission_profile",
+    "heartbeat",
+    "automation_id",
+    "current_time_iso",
+    "instructions",
+];
+
+/// The prompt-tag registry for a harness (opencode's is not yet catalogued).
+fn prompt_tags_for(harness: transcripts::Harness) -> &'static [&'static str] {
+    match harness {
+        transcripts::Harness::ClaudeCode => CLAUDE_PROMPT_TAGS,
+        transcripts::Harness::Codex => CODEX_PROMPT_TAGS,
+        transcripts::Harness::Opencode => &[],
+    }
+}
+
+/// Byte ranges of the text that Markdown treats as code — inline code spans and
+/// fenced/indented code blocks — computed by the real parser (`pulldown-cmark`),
+/// so a tag written inside `` `…` `` or a ``` fence is never mistaken for a live
+/// prompt tag. Robust to the code-fence edge cases a hand-rolled scan would miss.
+fn code_ranges(text: &str) -> Vec<(usize, usize)> {
+    use pulldown_cmark::{Event, Parser, Tag, TagEnd};
+    let mut out: Vec<(usize, usize)> = Vec::new();
+    let mut block_start: Option<usize> = None;
+    for (ev, range) in Parser::new(text).into_offset_iter() {
+        match ev {
+            Event::Code(_) => out.push((range.start, range.end)),
+            Event::Start(Tag::CodeBlock(_)) => block_start = Some(range.start),
+            Event::End(TagEnd::CodeBlock) => {
+                let s = block_start.take().unwrap_or(range.start);
+                out.push((s, range.end));
+            }
+            _ => {}
+        }
+    }
+    out
+}
+
+/// Whether a prompt tag opens, closes, or is self-closing.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum TagKind {
+    Open,
+    Close,
+    SelfClose,
+}
+
+/// One piece of a message body: plain text, or a recognized prompt tag.
+enum Seg<'a> {
+    Text(&'a str),
+    Tag(&'a str, TagKind),
+}
+
+/// Parse a tag starting at the `<` of `s`, returning `(byte_len, name, kind)` if
+/// `s` opens with a well-formed `<name …>` / `</name>` / `<name/>`. Rejects
+/// `<` that is not a tag (e.g. `a < b`), and stops if a nested `<` appears first.
+fn parse_tag(s: &str) -> Option<(usize, &str, TagKind)> {
+    let b = s.as_bytes();
+    if b.first() != Some(&b'<') {
+        return None;
+    }
+    let mut i = 1;
+    let mut kind = TagKind::Open;
+    if b.get(i) == Some(&b'/') {
+        kind = TagKind::Close;
+        i += 1;
+    }
+    let name_start = i;
+    if !b.get(i).is_some_and(|c| c.is_ascii_alphabetic()) {
+        return None;
+    }
+    while b
+        .get(i)
+        .is_some_and(|c| c.is_ascii_alphanumeric() || *c == b'-' || *c == b'_')
+    {
+        i += 1;
+    }
+    let name = &s[name_start..i];
+    // Attributes (or nothing) up to `>`, bailing on a stray `<`.
+    while let Some(&c) = b.get(i) {
+        match c {
+            b'>' => {
+                let self_close = i > 0 && b[i - 1] == b'/';
+                if self_close && kind == TagKind::Open {
+                    kind = TagKind::SelfClose;
+                }
+                return Some((i + 1, name, kind));
+            }
+            b'<' => return None,
+            _ => i += 1,
+        }
+    }
+    None
+}
+
+/// Split a message body into text and *paired* prompt-tag segments. A `<name>`
+/// counts as a prompt tag only if the text also contains a matching `</name>`
+/// (or it is self-closing) — so real prompt tags like `<system-reminder>…` are
+/// formatted, while generics like `Vec<Line>` (no `</Line>`) stay plain text.
+fn scan_prompt_tags<'a>(text: &'a str, tags_registry: &[&str]) -> Vec<Seg<'a>> {
+    // Pass 1: collect every well-formed tag and which names are opened + closed.
+    let mut tags: Vec<(usize, usize, TagKind)> = Vec::new();
+    let mut opened: HashSet<&str> = HashSet::new();
+    let mut closed: HashSet<&str> = HashSet::new();
+    let mut i = 0;
+    while let Some(off) = text[i..].find('<') {
+        let start = i + off;
+        if let Some((len, name, kind)) = parse_tag(&text[start..]) {
+            match kind {
+                TagKind::Open => {
+                    opened.insert(name);
+                }
+                TagKind::Close => {
+                    closed.insert(name);
+                }
+                TagKind::SelfClose => {}
+            }
+            tags.push((start, start + len, kind));
+            i = start + len;
+        } else {
+            i = start + 1;
+        }
+    }
+
+    // Pass 2: accept a tag only when it is a KNOWN prompt tag, is paired (or
+    // self-closing), and lies OUTSIDE any Markdown code span/block.
+    let code = code_ranges(text);
+    let in_code = |a: usize, b: usize| code.iter().any(|&(cs, ce)| a < ce && cs < b);
+    let mut segs: Vec<Seg> = Vec::new();
+    let mut cursor = 0;
+    for (start, end, kind) in tags {
+        let name = {
+            let inner = &text[start..end];
+            // name = the run of tag-name chars after `<`/`</`.
+            let after = inner.trim_start_matches('<').trim_start_matches('/');
+            let n: usize = after
+                .char_indices()
+                .find(|(_, c)| !(c.is_ascii_alphanumeric() || *c == '-' || *c == '_'))
+                .map(|(k, _)| k)
+                .unwrap_or(after.len());
+            &after[..n]
+        };
+        let paired = kind == TagKind::SelfClose || (opened.contains(name) && closed.contains(name));
+        let accept = tags_registry.contains(&name) && paired && !in_code(start, end);
+        if !accept {
+            continue;
+        }
+        if cursor < start {
+            segs.push(Seg::Text(&text[cursor..start]));
+        }
+        segs.push(Seg::Tag(&text[start..end], kind));
+        cursor = end;
+    }
+    if cursor < text.len() {
+        segs.push(Seg::Text(&text[cursor..]));
+    }
+    if segs.is_empty() {
+        segs.push(Seg::Text(text));
+    }
+    segs
+}
+
+/// Render a User/Assistant message body: markdown for prose, and recognized
+/// prompt tags broken onto their own colored lines with their contents indented
+/// by nesting depth — the common "structured prompt" formatting.
+fn render_message_body(text: &str, tags_registry: &[&str]) -> Vec<ratatui::text::Line<'static>> {
+    use ratatui::style::{Color, Modifier, Style};
+    use ratatui::text::{Line, Span};
+
+    let segs = scan_prompt_tags(text, tags_registry);
+    // No recognized tags → plain markdown, exactly as before.
+    if segs.iter().all(|s| matches!(s, Seg::Text(_))) {
+        return crate::markdown::render(text);
+    }
+
+    let tag_style = Style::new().fg(Color::Blue).add_modifier(Modifier::BOLD);
+    let mut out: Vec<Line<'static>> = Vec::new();
+    let mut depth = 0usize;
+    let indent = |d: usize| "  ".repeat(d);
+    for seg in segs {
+        match seg {
+            Seg::Text(t) => {
+                if t.trim().is_empty() {
+                    continue;
+                }
+                for mut l in crate::markdown::render(t) {
+                    if depth > 0 {
+                        l.spans.insert(0, Span::raw(indent(depth)));
+                    }
+                    out.push(l);
+                }
+            }
+            Seg::Tag(t, TagKind::Open) => {
+                out.push(Line::from(vec![
+                    Span::raw(indent(depth)),
+                    Span::styled(t.to_string(), tag_style),
+                ]));
+                depth += 1;
+            }
+            Seg::Tag(t, TagKind::Close) => {
+                depth = depth.saturating_sub(1);
+                out.push(Line::from(vec![
+                    Span::raw(indent(depth)),
+                    Span::styled(t.to_string(), tag_style),
+                ]));
+            }
+            Seg::Tag(t, TagKind::SelfClose) => {
+                out.push(Line::from(vec![
+                    Span::raw(indent(depth)),
+                    Span::styled(t.to_string(), tag_style),
+                ]));
+            }
+        }
+    }
+    out
+}
+
+/// Render one non-grouped event — a message (header + markdown/prompt-tag body)
+/// or a single collapsible turn (thinking / tool / sidechain) as a one-line
+/// summary — into `out`, marking its first row with `is_start`.
+fn push_single_event(
+    out: &mut Vec<ChatRow>,
+    e: &transcripts::Event,
+    msg: usize,
+    is_start: bool,
+    expanded: &HashSet<usize>,
+    rule_w: usize,
+    tags_registry: &[&str],
+) {
+    use ratatui::style::{Color, Modifier, Style};
+    use ratatui::text::{Line, Span};
+    use transcripts::{EventKind, Role};
+
+    let (name, accent) = match e.role {
+        Role::User => ("you", Color::Cyan),
+        Role::Assistant => ("assistant", Color::Green),
+        Role::Tool => ("tool", Color::Yellow),
+        Role::System => ("system", Color::Magenta),
+    };
+    // A colored left bar runs down the whole message; content sits two columns
+    // out (after "▌ "), flush with the header label.
+    let bar = || Span::styled("▌ ".to_string(), Style::new().fg(accent));
+
+    // User messages get a faint background band to set them apart. `banded`
+    // paints every span's background and pads the line to full width so the band
+    // is a solid strip, not just behind the text.
+    let user_bg = (e.role == Role::User).then_some(Color::Indexed(236));
+    let banded = |spans: Vec<Span<'static>>| -> Line<'static> {
+        let Some(bg) = user_bg else {
+            return Line::from(spans);
+        };
+        let mut spans: Vec<Span<'static>> = spans
+            .into_iter()
+            .map(|s| Span::styled(s.content, s.style.bg(bg)))
+            .collect();
+        let used: usize = spans.iter().map(|s| s.content.chars().count()).sum();
+        if used < rule_w {
+            spans.push(Span::styled(" ".repeat(rule_w - used), Style::new().bg(bg)));
+        }
+        Line::from(spans)
+    };
+
+    if (e.kind.collapses() || e.is_sidechain) && !expanded.contains(&msg) {
+        let tag = if e.is_sidechain {
+            "sidechain"
+        } else {
+            match e.kind {
+                EventKind::Thinking => "thinking",
+                EventKind::ToolCall => "tool",
+                EventKind::ToolResult => "result",
+                _ => "detail",
+            }
+        };
+        let first = e.text.lines().next().unwrap_or("");
+        out.push(ChatRow {
+            msg,
+            is_start,
+            line: Line::from(vec![
+                bar(),
+                Span::styled(format!("⤷ {tag} "), Style::new().fg(Color::DarkGray)),
+                Span::styled(
+                    truncate(first, rule_w.saturating_sub(18)),
+                    Style::new().fg(Color::DarkGray).add_modifier(Modifier::DIM),
+                ),
+                Span::styled("  [↵ expand]", Style::new().fg(Color::DarkGray)),
+            ]),
+        });
+        return;
+    }
+
+    // Header: the role label, after the bar.
+    out.push(ChatRow {
+        msg,
+        is_start,
+        line: banded(vec![
+            bar(),
+            Span::styled(
+                name.to_string(),
+                Style::new().fg(accent).add_modifier(Modifier::BOLD),
+            ),
+        ]),
+    });
+
+    // Body: markdown (with prompt-tag formatting) for message turns — including
+    // System, since Codex's injected-context wrappers arrive as `developer`
+    // (System) messages full of prompt tags; dim raw text for tool turns.
+    let body: Vec<Line<'static>> = match (e.role, e.kind) {
+        (Role::User | Role::Assistant | Role::System, EventKind::Message) if !e.text.is_empty() => {
+            render_message_body(&e.text, tags_registry)
+        }
+        _ if e.text.is_empty() => vec![Line::from(Span::styled(
+            "(empty)",
+            Style::new().add_modifier(Modifier::DIM),
+        ))],
+        _ => e
+            .text
+            .lines()
+            .map(|l| {
+                Line::from(Span::styled(
+                    l.to_string(),
+                    Style::new().fg(Color::Gray).add_modifier(Modifier::DIM),
+                ))
+            })
+            .collect(),
+    };
+    for l in body {
+        for wl in wrap_line(&l, rule_w.saturating_sub(2)) {
+            let mut spans = vec![bar()];
+            spans.extend(wl.spans);
+            out.push(ChatRow {
+                msg,
+                is_start: false,
+                line: banded(spans),
+            });
+        }
+    }
+}
+
+/// The kinds of back-to-back turns that fold into one collapsible group.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum FoldKind {
+    Tool,
+    Thinking,
+}
+
+/// The fold category of an event, or `None` if it never folds (messages, and —
+/// deliberately — sidechain turns, which belong to a subagent's own context).
+fn fold_kind(e: &transcripts::Event) -> Option<FoldKind> {
+    use transcripts::EventKind;
+    if e.is_sidechain {
+        return None;
+    }
+    match e.kind {
+        EventKind::ToolCall | EventKind::ToolResult => Some(FoldKind::Tool),
+        EventKind::Thinking => Some(FoldKind::Thinking),
+        _ => None,
+    }
+}
+
+/// Render a run of ≥2 back-to-back turns of one fold category as a single
+/// collapsible group — "N tool calls" / "N thinking blocks" — that `Enter`
+/// expands: a per-call summary list for tools, the full reasoning for thinking.
+/// Keyed for expand/collapse by the run's first event index (`msg`), so it is
+/// one jump unit and `Enter` on it toggles the whole run.
+fn push_group(
+    out: &mut Vec<ChatRow>,
+    run: &[transcripts::Event],
+    kind: FoldKind,
+    msg: usize,
+    is_start: bool,
+    expanded: &HashSet<usize>,
+    rule_w: usize,
+) {
+    use ratatui::style::{Color, Modifier, Style};
+    use ratatui::text::{Line, Span};
+    use transcripts::EventKind;
+
+    let (accent, noun) = match kind {
+        FoldKind::Tool => (Color::Yellow, "tool calls"),
+        FoldKind::Thinking => (Color::Gray, "thinking blocks"),
+    };
+    let bar = || Span::styled("▌ ".to_string(), Style::new().fg(accent));
+    let open = expanded.contains(&msg);
+    let (glyph, hint) = if open {
+        ("▾", "[↵ collapse]")
+    } else {
+        ("▸", "[↵ expand]")
+    };
+    out.push(ChatRow {
+        msg,
+        is_start,
+        line: Line::from(vec![
+            bar(),
+            Span::styled(
+                format!("{glyph} {} {noun} ", run.len()),
+                Style::new().fg(accent).add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(hint.to_string(), Style::new().fg(Color::DarkGray)),
+        ]),
+    });
+    if !open {
+        return;
+    }
+    // A little helper to push a body line under the bar.
+    let push_body = |out: &mut Vec<ChatRow>, line: Line<'static>| {
+        for wl in wrap_line(&line, rule_w.saturating_sub(2)) {
+            let mut spans = vec![bar()];
+            spans.extend(wl.spans);
+            out.push(ChatRow {
+                msg,
+                is_start: false,
+                line: Line::from(spans),
+            });
+        }
+    };
+    match kind {
+        // Tools: one compact "tool/result  brief" line per call.
+        FoldKind::Tool => {
+            for e in run {
+                let label = if matches!(e.kind, EventKind::ToolResult) {
+                    "result"
+                } else {
+                    "tool"
+                };
+                let first = e.text.lines().next().unwrap_or("");
+                push_body(
+                    out,
+                    Line::from(vec![
+                        Span::styled(format!("{label}  "), Style::new().fg(accent)),
+                        Span::styled(
+                            truncate(first, rule_w.saturating_sub(12)),
+                            Style::new().add_modifier(Modifier::DIM),
+                        ),
+                    ]),
+                );
+            }
+        }
+        // Thinking: the full reasoning of each block, dim, with a divider between.
+        FoldKind::Thinking => {
+            for (k, e) in run.iter().enumerate() {
+                if k > 0 {
+                    push_body(
+                        out,
+                        Line::from(Span::styled("· · ·", Style::new().fg(Color::DarkGray))),
+                    );
+                }
+                let body = if e.text.trim().is_empty() {
+                    vec![Line::from("(empty)")]
+                } else {
+                    e.text
+                        .lines()
+                        .map(|l| {
+                            Line::from(Span::styled(
+                                l.to_string(),
+                                Style::new().add_modifier(Modifier::DIM | Modifier::ITALIC),
+                            ))
+                        })
+                        .collect::<Vec<_>>()
+                };
+                for l in body {
+                    push_body(out, l);
+                }
+            }
+        }
+    }
+}
+
+/// Lay a session's turns out as styled rows: color-coded role headers, a
+/// separator between turns, markdown bodies with harness-specific prompt-tag
+/// formatting, and runs of ≥2 back-to-back tool/thinking turns folded into one
+/// collapsible group. `width` sizes the wrap and separators. Pure and testable.
+pub fn chat_layout(
+    session: &transcripts::Session,
+    expanded: &HashSet<usize>,
+    width: usize,
+) -> Vec<ChatRow> {
+    use ratatui::style::{Color, Style};
+    use ratatui::text::{Line, Span};
+
+    let mut out: Vec<ChatRow> = Vec::new();
+    let rule_w = width.clamp(8, 200);
+    let events = &session.events;
+    let n = events.len();
+    let tags_registry = prompt_tags_for(session.harness);
+
+    let mut i = 0usize;
+    let mut first_unit = true;
+    while i < n {
+        // A run of consecutive turns of one fold category; folded only when ≥2.
+        let kind = fold_kind(&events[i]);
+        let mut j = i;
+        while j < n && kind.is_some() && fold_kind(&events[j]) == kind {
+            j += 1;
+        }
+        let group = kind.filter(|_| j - i >= 2);
+
+        let is_first = first_unit;
+        first_unit = false;
+        // A dim separator rule opens every unit but the first (its start row);
+        // when there is no separator the content's first row is the start.
+        if !is_first {
+            out.push(ChatRow {
+                msg: i,
+                is_start: true,
+                line: Line::from(Span::styled(
+                    "─".repeat(rule_w),
+                    Style::new().fg(Color::DarkGray),
+                )),
+            });
+        }
+        if let Some(k) = group {
+            push_group(&mut out, &events[i..j], k, i, is_first, expanded, rule_w);
+            i = j;
+        } else {
+            push_single_event(
+                &mut out,
+                &events[i],
+                i,
+                is_first,
+                expanded,
+                rule_w,
+                tags_registry,
+            );
+            i += 1;
+        }
+    }
+
+    if out.is_empty() {
+        out.push(ChatRow {
+            msg: 0,
+            is_start: true,
+            line: Line::from("(no turns)"),
+        });
+    }
+    out
+}
+
+/// Truncate `s` to `n` chars, appending an ellipsis when it was cut.
+/// Word-wrap a styled `Line` to `width`, preserving each character's style, so
+/// the conversation's on-screen line count equals its logical line count and the
+/// scroll/message-jump offsets stay exact. Breaks at the last space that fits,
+/// hard-breaking a word longer than `width`.
+pub fn wrap_line(
+    line: &ratatui::text::Line<'static>,
+    width: usize,
+) -> Vec<ratatui::text::Line<'static>> {
+    use ratatui::text::Line;
+    if width == 0 {
+        return vec![line.clone()];
+    }
+    let chars: Vec<(char, ratatui::style::Style)> = line
+        .spans
+        .iter()
+        .flat_map(|s| s.content.chars().map(move |c| (c, s.style)))
+        .collect();
+    if chars.is_empty() {
+        return vec![Line::from("")];
+    }
+    let mut out: Vec<Line<'static>> = Vec::new();
+    let mut start = 0usize;
+    while start < chars.len() {
+        let hard = (start + width).min(chars.len());
+        let mut end = hard;
+        let mut skip_space = false;
+        if hard < chars.len() {
+            // Prefer a break at the last space within the window (but not at the
+            // very start, which would be leading indentation and loop forever).
+            if let Some(sp) = (start + 1..hard).rev().find(|&k| chars[k].0 == ' ') {
+                end = sp;
+                skip_space = true;
+            }
+        }
+        out.push(coalesce_runs(&chars[start..end]));
+        start = if skip_space { end + 1 } else { end };
+    }
+    out
+}
+
+/// Merge consecutive same-style chars into `Span`s to rebuild a `Line`.
+fn coalesce_runs(seg: &[(char, ratatui::style::Style)]) -> ratatui::text::Line<'static> {
+    use ratatui::text::{Line, Span};
+    let mut spans: Vec<Span<'static>> = Vec::new();
+    let mut buf = String::new();
+    let mut cur: Option<ratatui::style::Style> = None;
+    for &(c, st) in seg {
+        if cur != Some(st) {
+            if let Some(s) = cur {
+                spans.push(Span::styled(std::mem::take(&mut buf), s));
+            }
+            cur = Some(st);
+        }
+        buf.push(c);
+    }
+    if let Some(s) = cur {
+        spans.push(Span::styled(buf, s));
+    }
+    Line::from(spans)
+}
+
+fn truncate(s: &str, n: usize) -> String {
+    if s.chars().count() > n {
+        format!("{}…", s.chars().take(n).collect::<String>())
+    } else {
+        s.to_string()
     }
 }
 
@@ -999,7 +2122,7 @@ pub fn plain_frame(state: &AppState) -> String {
 /// (with ratatui's panic hook restoring the terminal on a crash) and restores it
 /// on exit — `telos/disposable`: a crash never leaves the terminal broken.
 pub fn run(repo: PathBuf) -> std::io::Result<()> {
-    use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
+    use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers, MouseEventKind};
 
     if !repo.join(".kan").is_dir() {
         eprintln!(
@@ -1009,6 +2132,8 @@ pub fn run(repo: PathBuf) -> std::io::Result<()> {
     }
 
     let mut terminal = ratatui::init();
+    // Enable mouse reporting for scroll-wheel support (hold Shift to select text).
+    let _ = crossterm::execute!(std::io::stdout(), crossterm::event::EnableMouseCapture);
     let mtime = head_mtime(&repo);
     let fold = substrate::fold(&repo);
     let mut state = AppState::new(repo, fold, mtime);
@@ -1026,8 +2151,26 @@ pub fn run(repo: PathBuf) -> std::io::Result<()> {
             state.refresh_comments();
         }
         // Footer gate: refresh day's status line on a cache/width change.
-        let footer_w = terminal.size().map(|s| s.width).unwrap_or(0);
-        state.refresh_footer(footer_w, true);
+        let size = terminal.size().unwrap_or_default();
+        state.refresh_footer(size.width, true);
+        // Publish the body viewport so paging and wrapping have real dimensions
+        // (header line + a footer of 1..=6 lines bracket the body).
+        let footer_h = {
+            let mut n = state.fold.errors.len();
+            n += if state.footer.is_empty() {
+                1
+            } else {
+                state.footer.len()
+            };
+            n.clamp(1, 6)
+        } as u16;
+        state.set_viewport(size.width, size.height.saturating_sub(1 + footer_h));
+        // Chat gate: re-read transcripts when the aggregate signal advances, then
+        // relayout the conversation so scroll/jump metadata match the render.
+        if state.view == View::Chat {
+            state.refresh_chat();
+            state.chat_relayout();
+        }
 
         if let Err(e) = terminal.draw(|frame| draw(frame, &state)) {
             break Err(e);
@@ -1040,11 +2183,13 @@ pub fn run(repo: PathBuf) -> std::io::Result<()> {
                     KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                         break Ok(())
                     }
-                    KeyCode::Char(d @ '1'..='3') => {
+                    KeyCode::Char(d @ '1'..='4') => {
                         if let Some(v) = View::from_digit(d) {
                             state.view = v;
                             if v == View::Comments {
                                 state.reload_comment_files();
+                            } else if v == View::Chat {
+                                state.reload_chat_sessions();
                             }
                         }
                     }
@@ -1052,15 +2197,23 @@ pub fn run(repo: PathBuf) -> std::io::Result<()> {
                         state.view = state.view.next();
                         if state.view == View::Comments {
                             state.reload_comment_files();
+                        } else if state.view == View::Chat {
+                            state.reload_chat_sessions();
                         }
                     }
-                    // ←/→ (or [ / ]): switch commented file (Comments) or toggle the
-                    // atoms/telos sub-pane (Process).
+                    // ←/→ (or [ / ]): switch commented file (Comments), switch
+                    // session (Chat), or toggle the atoms/telos sub-pane (Process).
                     KeyCode::Char('[') | KeyCode::Left if state.view == View::Comments => {
                         state.select_comment_file(-1)
                     }
                     KeyCode::Char(']') | KeyCode::Right if state.view == View::Comments => {
                         state.select_comment_file(1)
+                    }
+                    KeyCode::Char('[') | KeyCode::Left if state.view == View::Chat => {
+                        state.select_chat_session(-1)
+                    }
+                    KeyCode::Char(']') | KeyCode::Right if state.view == View::Chat => {
+                        state.select_chat_session(1)
                     }
                     KeyCode::Char('[' | ']') | KeyCode::Left | KeyCode::Right
                         if state.view == View::Process =>
@@ -1068,16 +2221,24 @@ pub fn run(repo: PathBuf) -> std::io::Result<()> {
                         state.process_pane = state.process_pane.toggled();
                         state.process_detail = false; // leave any drill-down on a pane switch
                     }
-                    KeyCode::Char('j') | KeyCode::Down => match state.view {
-                        View::Ledger => state.move_down(),
-                        View::Process => state.process_move(1),
-                        View::Comments => state.select_comment(1),
-                    },
-                    KeyCode::Char('k') | KeyCode::Up => match state.view {
-                        View::Ledger => state.move_up(),
-                        View::Process => state.process_move(-1),
-                        View::Comments => state.select_comment(-1),
-                    },
+                    // Fold/unfold the selected session's subagent group (Chat).
+                    KeyCode::Char('z') if state.view == View::Chat => state.chat_toggle_fold(),
+                    // Skip to the previous/next message (Chat): Shift+↑/↓ or { / }.
+                    KeyCode::Char('{') if state.view == View::Chat => state.chat_msg_jump(-1),
+                    KeyCode::Char('}') if state.view == View::Chat => state.chat_msg_jump(1),
+                    KeyCode::Up | KeyCode::Down
+                        if state.view == View::Chat
+                            && key.modifiers.contains(KeyModifiers::SHIFT) =>
+                    {
+                        state.chat_msg_jump(if key.code == KeyCode::Down { 1 } else { -1 })
+                    }
+                    // Page up/down: a screen of motion in the active view.
+                    KeyCode::PageDown => state.nav_step(state.page_rows()),
+                    KeyCode::PageUp => state.nav_step(-state.page_rows()),
+                    // Line/step motion in the active view.
+                    KeyCode::Char('j') | KeyCode::Down => state.nav_step(1),
+                    KeyCode::Char('k') | KeyCode::Up => state.nav_step(-1),
+                    KeyCode::Enter if state.view == View::Chat => state.chat_toggle_expand(),
                     KeyCode::Enter if state.view == View::Ledger => {
                         if state.focus == Focus::Subjects {
                             state.activate(); // toggle a node, or descend a subject
@@ -1093,6 +2254,12 @@ pub fn run(repo: PathBuf) -> std::io::Result<()> {
                     KeyCode::Esc if state.view == View::Ledger => state.ascend(),
                     _ => {}
                 },
+                // Mouse wheel scrolls the active view a few lines at a time.
+                Ok(Event::Mouse(m)) => match m.kind {
+                    MouseEventKind::ScrollDown => state.nav_step(3),
+                    MouseEventKind::ScrollUp => state.nav_step(-3),
+                    _ => {}
+                },
                 Ok(_) => {}
                 Err(e) => break Err(e),
             },
@@ -1101,6 +2268,7 @@ pub fn run(repo: PathBuf) -> std::io::Result<()> {
         }
     };
 
+    let _ = crossterm::execute!(std::io::stdout(), crossterm::event::DisableMouseCapture);
     ratatui::restore();
     result
 }
@@ -1135,6 +2303,7 @@ fn draw(frame: &mut ratatui::Frame, state: &AppState) {
     frame.render_widget(Line::from(view_header(state.view)).bold(), header);
 
     match state.view {
+        View::Chat => draw_chat(frame, state, area.width, body),
         View::Comments => draw_comments(frame, state, area.width, body),
         View::Ledger => draw_browser(frame, state, area.width, body),
         View::Process => draw_process(frame, state, body),
@@ -1154,15 +2323,17 @@ fn view_header(view: View) -> String {
     };
     // A per-view key legend so navigation is discoverable without reading source.
     let keys = match view {
+        View::Chat => "· ←→ session · z fold · j/k scroll · ⇧↑↓ msg · ↵ expand ",
         View::Comments => "· ←→ file · j/k comment ",
         View::Process => "· ←→ atoms/telos · j/k scroll ",
         View::Ledger => "",
     };
     format!(
-        "cospan  {}{}{}  {keys}· Tab switch · q quit",
-        tab(View::Comments, "1 comments"),
-        tab(View::Ledger, "2 ledger"),
-        tab(View::Process, "3 process"),
+        "cospan  {}{}{}{}  {keys}· PgUp/PgDn · Tab switch · q quit",
+        tab(View::Chat, "1 chat"),
+        tab(View::Comments, "2 comments"),
+        tab(View::Ledger, "3 ledger"),
+        tab(View::Process, "4 process"),
     )
 }
 
@@ -1302,6 +2473,158 @@ pub fn reflow_rows(
         ni += 1;
     }
     (rows, note_rows)
+}
+
+/// The Chat tab: a cross-harness session rail beside the selected session's
+/// conversation. Read-only projection of the harnesses' own transcripts.
+fn draw_chat(
+    frame: &mut ratatui::Frame,
+    state: &AppState,
+    width: u16,
+    body: ratatui::layout::Rect,
+) {
+    use ratatui::layout::{Constraint, Layout};
+    use ratatui::style::{Color, Modifier, Style};
+    use ratatui::widgets::{List, ListItem, ListState, Paragraph};
+
+    if state.chat_sessions.is_empty() {
+        frame.render_widget(
+            Paragraph::new(
+                "no agent sessions for this repo yet — start one in claude, codex, or opencode",
+            )
+            .block(pane_block(" chat ".to_string(), true)),
+            body,
+        );
+        return;
+    }
+
+    // Wide: a session rail beside the conversation; narrow: conversation only.
+    let (rail_area, main_area) = match layout_mode(width) {
+        Fit::Wide => {
+            let [l, r] =
+                Layout::horizontal([Constraint::Percentage(32), Constraint::Percentage(68)])
+                    .areas(body);
+            (Some(l), r)
+        }
+        Fit::Narrow => (None, body),
+    };
+
+    if let Some(area) = rail_area {
+        use ratatui::text::{Line, Span};
+        let rail = state.chat_rail();
+        let items: Vec<ListItem> = rail
+            .iter()
+            .map(|row| {
+                let h = &state.chat_sessions[row.idx];
+                let branch = h
+                    .git_branch
+                    .as_deref()
+                    .map(|b| format!(" · {b}"))
+                    .unwrap_or_default();
+                let flag = if h.body_available {
+                    ""
+                } else {
+                    " ·(list-only)"
+                };
+                // A "new activity" dot for a session with unread turns.
+                let dot = if state.chat_session_stale(h) {
+                    Span::styled("●", Style::new().fg(Color::Yellow))
+                } else {
+                    Span::raw(" ")
+                };
+                // A fold caret for a director with subagents; a nesting mark for a
+                // child; the harness tag only at top level.
+                let (lead, label) = if row.depth > 0 {
+                    (
+                        Span::styled("  ↳ ", Style::new().fg(Color::DarkGray)),
+                        format!("{}{branch}{flag}", h.title),
+                    )
+                } else {
+                    let caret = if row.is_parent {
+                        if row.expanded {
+                            "▾ "
+                        } else {
+                            "▸ "
+                        }
+                    } else {
+                        "  "
+                    };
+                    let count = if row.is_parent {
+                        format!("  ({})", row.child_count)
+                    } else {
+                        String::new()
+                    };
+                    (
+                        Span::styled(caret.to_string(), Style::new().fg(Color::DarkGray)),
+                        format!("[{}] {}{branch}{flag}{count}", h.harness.label(), h.title),
+                    )
+                };
+                ListItem::new(Line::from(vec![dot, lead, Span::raw(label)]))
+            })
+            .collect();
+        let mut ls = ListState::default();
+        ls.select(rail.iter().position(|r| r.idx == state.chat_selected));
+        // The rail is a picker, not the scroll target — dim (unfocused) border.
+        frame.render_stateful_widget(
+            List::new(items)
+                .block(pane_block(
+                    format!(" sessions · {} · z fold ", state.chat_sessions.len()),
+                    false,
+                ))
+                .highlight_style(Style::new().fg(Color::Cyan).add_modifier(Modifier::BOLD))
+                .highlight_symbol("▌"),
+            area,
+            &mut ls,
+        );
+    }
+
+    // The conversation: pre-wrapped styled rows, scrolled by line. The active
+    // scroll target — focused (bold) border.
+    let title = state
+        .chat_sessions
+        .get(state.chat_selected)
+        .map(|h| {
+            let branch = h
+                .git_branch
+                .as_deref()
+                .map(|b| format!(" · {b}"))
+                .unwrap_or_default();
+            format!(" {} · {}{branch} ", h.harness.label(), h.title)
+        })
+        .unwrap_or_else(|| " chat ".to_string());
+    // Render the visible window of the cached rows (built by `chat_relayout`),
+    // so a frame clones only what fits, never re-parses markdown.
+    let rows = state.chat_rows();
+    let inner_h = main_area.height.saturating_sub(2) as usize;
+    let top = state.chat_scroll.min(rows.len().saturating_sub(1));
+    let end = (top + inner_h).min(rows.len());
+    let lines: Vec<ratatui::text::Line> = if rows.is_empty() {
+        vec![ratatui::text::Line::from("(loading…)")]
+    } else {
+        rows[top..end].iter().map(|r| r.line.clone()).collect()
+    };
+    frame.render_widget(
+        Paragraph::new(lines).block(pane_block(title, true)),
+        main_area,
+    );
+}
+
+/// A pane border that signals focus: the active (scroll/selection) pane gets a
+/// bold accent border, inactive panes a dim one — the "where does my navigation
+/// act" hint the multi-pane views share.
+fn pane_block(
+    title: impl Into<ratatui::text::Line<'static>>,
+    focused: bool,
+) -> ratatui::widgets::Block<'static> {
+    use ratatui::style::{Color, Modifier, Style};
+    use ratatui::widgets::{Block, BorderType};
+    let b = Block::bordered().title(title);
+    if focused {
+        b.border_type(BorderType::Thick)
+            .border_style(Style::new().fg(Color::Cyan).add_modifier(Modifier::BOLD))
+    } else {
+        b.border_style(Style::new().fg(Color::DarkGray))
+    }
 }
 
 fn draw_comments(
@@ -1873,7 +3196,7 @@ fn row_line(row: &Row, collapsed: &HashSet<String>) -> ratatui::text::Line<'stat
 
 fn draw_list(frame: &mut ratatui::Frame, state: &AppState, area: ratatui::layout::Rect) {
     use ratatui::style::{Modifier, Style};
-    use ratatui::widgets::{Block, List, ListItem, ListState};
+    use ratatui::widgets::{List, ListItem, ListState};
 
     let items: Vec<ListItem> = state
         .rows
@@ -1886,7 +3209,10 @@ fn draw_list(frame: &mut ratatui::Frame, state: &AppState, area: ratatui::layout
     }
     frame.render_stateful_widget(
         List::new(items)
-            .block(Block::bordered().title(format!(" subjects · {} ", state.fold.subjects.len())))
+            .block(pane_block(
+                format!(" subjects · {} ", state.fold.subjects.len()),
+                state.focus == Focus::Subjects,
+            ))
             .highlight_style(Style::new().add_modifier(Modifier::REVERSED))
             .highlight_symbol("> "),
         area,
@@ -1914,7 +3240,7 @@ pub fn kind_style(kind: &str) -> ratatui::style::Style {
 
 fn draw_claims(frame: &mut ratatui::Frame, state: &AppState, area: ratatui::layout::Rect) {
     use ratatui::style::{Modifier, Style};
-    use ratatui::widgets::{Block, List, ListItem, ListState};
+    use ratatui::widgets::{List, ListItem, ListState};
 
     let subject = state.selected_subject().unwrap_or("(no subject)");
     let claims = state.selected_claims();
@@ -1943,7 +3269,10 @@ fn draw_claims(frame: &mut ratatui::Frame, state: &AppState, area: ratatui::layo
     }
     frame.render_stateful_widget(
         List::new(items)
-            .block(Block::bordered().title(format!(" {subject} · claims ")))
+            .block(pane_block(
+                format!(" {subject} · claims "),
+                state.focus == Focus::Claims,
+            ))
             .highlight_style(Style::new().add_modifier(Modifier::REVERSED))
             .highlight_symbol("> "),
         area,
@@ -1954,7 +3283,7 @@ fn draw_claims(frame: &mut ratatui::Frame, state: &AppState, area: ratatui::layo
 fn draw_claim_detail(frame: &mut ratatui::Frame, state: &AppState, area: ratatui::layout::Rect) {
     use ratatui::style::Style;
     use ratatui::text::{Line, Span};
-    use ratatui::widgets::{Block, Paragraph, Wrap};
+    use ratatui::widgets::{Paragraph, Wrap};
 
     let (title, style, lines) = match state.selected_claim() {
         Some(c) => (
@@ -1973,7 +3302,10 @@ fn draw_claim_detail(frame: &mut ratatui::Frame, state: &AppState, area: ratatui
     frame.render_widget(
         Paragraph::new(lines[scroll..].to_vec())
             .wrap(Wrap { trim: false })
-            .block(Block::bordered().title(Span::styled(format!(" {title} "), style))),
+            .block(pane_block(
+                Span::styled(format!(" {title} "), style),
+                state.focus == Focus::Detail,
+            )),
         area,
     );
 }
@@ -2361,26 +3693,620 @@ mod tests {
 
     #[test]
     fn view_selector_cycles_and_maps_digits() {
-        // (AC-1) Comments · Ledger · Process.
+        // (AC-1) Chat · Comments · Ledger · Process, Chat first.
+        assert_eq!(View::Chat.next(), View::Comments);
         assert_eq!(View::Comments.next(), View::Ledger);
         assert_eq!(View::Ledger.next(), View::Process);
-        assert_eq!(View::Process.next(), View::Comments);
-        assert_eq!(View::from_digit('1'), Some(View::Comments));
-        assert_eq!(View::from_digit('2'), Some(View::Ledger));
-        assert_eq!(View::from_digit('3'), Some(View::Process));
-        assert_eq!(View::from_digit('4'), None);
+        assert_eq!(View::Process.next(), View::Chat);
+        assert_eq!(View::from_digit('1'), Some(View::Chat));
+        assert_eq!(View::from_digit('2'), Some(View::Comments));
+        assert_eq!(View::from_digit('3'), Some(View::Ledger));
+        assert_eq!(View::from_digit('4'), Some(View::Process));
+        assert_eq!(View::from_digit('5'), None);
         assert_eq!(View::from_digit('9'), None);
     }
 
     #[test]
     fn tab_bar_names_the_new_tabs_with_legends() {
-        // (AC-2) Ledger + Process tabs; Process names its sub-pane keys; no browser.
-        assert!(view_header(View::Ledger).contains("2 ledger"));
+        // (AC-1) Chat first; Ledger/Process tabs; Process names its sub-pane keys.
+        assert!(view_header(View::Chat).contains("1 chat"));
+        assert!(view_header(View::Comments).contains("2 comments"));
+        assert!(view_header(View::Ledger).contains("3 ledger"));
         let p = view_header(View::Process);
-        assert!(p.contains("3 process"), "{p}");
+        assert!(p.contains("4 process"), "{p}");
         assert!(p.contains("←→ atoms/telos"), "no sub-pane keys: {p}");
         assert!(p.contains("j/k scroll"), "{p}");
         assert!(!view_header(View::Comments).contains("browser"));
+    }
+
+    #[test]
+    fn chat_header_shows_the_navigation_legend() {
+        // (AC-1) the session-switch, scroll, message-skip, expand, and page keys.
+        let h = view_header(View::Chat);
+        assert!(h.contains("←→ session"), "no session-switch hint: {h}");
+        assert!(h.contains("j/k scroll"), "no scroll hint: {h}");
+        assert!(h.contains("⇧↑↓ msg"), "no message-skip hint: {h}");
+        assert!(h.contains("↵ expand"), "no expand hint: {h}");
+        assert!(h.contains("PgUp/PgDn"), "no paging hint: {h}");
+    }
+
+    /// The plain text of a rendered chat row (its spans concatenated).
+    fn row_text(r: &ChatRow) -> String {
+        r.line.spans.iter().map(|s| s.content.as_ref()).collect()
+    }
+
+    #[test]
+    fn chat_reread_plan_switches_appends_or_holds() {
+        // (AC-7 / review #3) The gate re-reads only on change, and resets the
+        // reading position on a *switch* while preserving it on an *append*.
+        use std::time::Duration;
+        let t1 = Some(SystemTime::UNIX_EPOCH + Duration::from_secs(1));
+        let t2 = Some(SystemTime::UNIX_EPOCH + Duration::from_secs(2));
+        // First load (nothing loaded yet) reads and resets.
+        assert_eq!(chat_reread_plan(None, None, "a", t1), ChatReread::Switch);
+        // A different session id resets cursor/expansions.
+        assert_eq!(chat_reread_plan(Some("a"), t1, "b", t2), ChatReread::Switch);
+        // Same session, newer mtime (a turn appended) re-reads but preserves.
+        assert_eq!(chat_reread_plan(Some("a"), t1, "a", t2), ChatReread::Append);
+        // Same session, unchanged mtime does nothing.
+        assert_eq!(chat_reread_plan(Some("a"), t1, "a", t1), ChatReread::None);
+    }
+
+    #[test]
+    fn chat_render_collapses_thinking_tool_and_sidechain_by_default() {
+        // (AC-6) collapsible turns show a one-line summary; expanding reveals the
+        // body; a plain message renders in full; a tool call is one summary line.
+        use crate::transcripts::{Event, EventKind, Harness, Role, Session};
+        let mk = |role, kind, is_sidechain, text: &str| Event {
+            role,
+            kind,
+            ts: None,
+            id: None,
+            parent: None,
+            is_sidechain,
+            text: text.to_string(),
+        };
+        let session = Session {
+            harness: Harness::ClaudeCode,
+            id: "s".into(),
+            title: "t".into(),
+            git_branch: None,
+            events: vec![
+                mk(Role::User, EventKind::Message, false, "please fix"),
+                mk(
+                    Role::Assistant,
+                    EventKind::Thinking,
+                    false,
+                    "reasoning teaser\nSECRET_DETAIL_LINE",
+                ),
+                mk(Role::Tool, EventKind::ToolCall, false, "Edit(x.rs)"),
+                mk(
+                    Role::Assistant,
+                    EventKind::Message,
+                    true,
+                    "chatter head\nHIDDEN_SIDECHAIN_BODY",
+                ),
+            ],
+        };
+        let none = HashSet::new();
+        let joined = chat_layout(&session, &none, 80)
+            .iter()
+            .map(row_text)
+            .collect::<Vec<_>>()
+            .join("\n");
+        // The plain user message renders in full, under its role bar.
+        assert!(joined.contains("▌ you"), "{joined}");
+        assert!(joined.contains("please fix"), "{joined}");
+        // Thinking is collapsed to a one-line teaser; the rest of its body hides.
+        assert!(joined.contains("⤷ thinking"), "{joined}");
+        assert!(!joined.contains("SECRET_DETAIL_LINE"), "{joined}");
+        // The tool call is a single summary line; the sidechain body collapses.
+        assert!(joined.contains("⤷ tool"), "{joined}");
+        assert!(joined.contains("⤷ sidechain"), "{joined}");
+        assert!(!joined.contains("HIDDEN_SIDECHAIN_BODY"), "{joined}");
+
+        // Expanding the thinking turn (index 1) reveals its hidden body.
+        let mut exp = HashSet::new();
+        exp.insert(1usize);
+        let joined2 = chat_layout(&session, &exp, 80)
+            .iter()
+            .map(row_text)
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(joined2.contains("SECRET_DETAIL_LINE"), "{joined2}");
+    }
+
+    #[test]
+    fn render_message_body_formats_paired_prompt_tags() {
+        let lines = render_message_body(
+            "<command-message>day:wakeup</command-message>",
+            CLAUDE_PROMPT_TAGS,
+        );
+        let texts: Vec<String> = lines
+            .iter()
+            .map(|l| {
+                l.spans
+                    .iter()
+                    .map(|s| s.content.as_ref())
+                    .collect::<String>()
+            })
+            .collect();
+        // Each tag on its own line, content between them, indented.
+        assert!(
+            texts.iter().any(|l| l.trim() == "<command-message>"),
+            "{texts:?}"
+        );
+        assert!(texts.iter().any(|l| l.contains("day:wakeup")), "{texts:?}");
+        assert!(
+            texts.iter().any(|l| l.trim() == "</command-message>"),
+            "{texts:?}"
+        );
+        // The tag line is colored (a foreground was set on the tag span).
+        let tagline = lines
+            .iter()
+            .find(|l| {
+                l.spans
+                    .iter()
+                    .any(|s| s.content.contains("command-message"))
+            })
+            .unwrap();
+        assert!(
+            tagline.spans.iter().any(|s| s.style.fg.is_some()),
+            "prompt tag should be colored"
+        );
+    }
+
+    #[test]
+    fn render_message_body_ignores_unknown_and_in_code_tags() {
+        // An unknown (non-registry) paired tag stays plain text…
+        let unknown = render_message_body("<inner>deep</inner> and more", CLAUDE_PROMPT_TAGS);
+        assert!(
+            !unknown.iter().any(|l| {
+                let t: String = l.spans.iter().map(|s| s.content.as_ref()).collect();
+                t.trim() == "<inner>"
+            }),
+            "an unknown tag must not be broken out"
+        );
+
+        // …and a *known* tag written inside a code fence stays literal code —
+        // this is the failure mode where discussing tags rendered as if real.
+        let text = "example:\n\n```\n<system-reminder>fake</system-reminder>\n```\n";
+        let lines = render_message_body(text, CLAUDE_PROMPT_TAGS);
+        let broken_out = lines.iter().any(|l| {
+            let t: String = l.spans.iter().map(|s| s.content.as_ref()).collect();
+            t.trim() == "<system-reminder>" && l.spans.iter().any(|s| s.style.fg.is_some())
+        });
+        assert!(
+            !broken_out,
+            "a tag inside a code fence must not be formatted"
+        );
+        let joined = lines
+            .iter()
+            .flat_map(|l| l.spans.iter().map(|s| s.content.as_ref().to_string()))
+            .collect::<Vec<_>>()
+            .join("");
+        assert!(
+            joined.contains("system-reminder"),
+            "the literal text survives"
+        );
+    }
+
+    #[test]
+    fn prompt_tags_are_per_harness() {
+        use crate::transcripts::Harness;
+        // Codex's <environment_context> formats under the Codex registry…
+        let codex = render_message_body(
+            "<environment_context>\ncwd: /x\n</environment_context>",
+            CODEX_PROMPT_TAGS,
+        );
+        assert!(
+            codex.iter().any(|l| {
+                let t: String = l.spans.iter().map(|s| s.content.as_ref()).collect();
+                t.trim() == "<environment_context>"
+            }),
+            "Codex tag should format under the Codex registry"
+        );
+        // …but not under Claude's, and a Claude tag is absent from Codex's.
+        assert_eq!(prompt_tags_for(Harness::ClaudeCode), CLAUDE_PROMPT_TAGS);
+        assert_eq!(prompt_tags_for(Harness::Codex), CODEX_PROMPT_TAGS);
+        assert!(!CLAUDE_PROMPT_TAGS.contains(&"environment_context"));
+        assert!(!CODEX_PROMPT_TAGS.contains(&"system-reminder"));
+        assert!(prompt_tags_for(Harness::Opencode).is_empty());
+    }
+
+    #[test]
+    fn render_message_body_leaves_generics_alone() {
+        // `Vec<Line>` has no matching `</Line>`, so it is not a prompt tag: the
+        // body renders as plain markdown, nothing broken onto its own line.
+        let lines = render_message_body("it returns `Vec<Line>` from render", CLAUDE_PROMPT_TAGS);
+        let joined = lines
+            .iter()
+            .flat_map(|l| l.spans.iter().map(|s| s.content.as_ref().to_string()))
+            .collect::<Vec<_>>()
+            .join("");
+        assert!(joined.contains("Vec<Line>"), "{joined}");
+        assert!(
+            !lines.iter().any(|l| {
+                let t: String = l.spans.iter().map(|s| s.content.as_ref()).collect();
+                t.trim() == "<Line>"
+            }),
+            "a generic must not be broken out as a tag"
+        );
+    }
+
+    fn rail_handle(
+        id: &str,
+        title: &str,
+        group: Option<&str>,
+        is_subagent: bool,
+    ) -> transcripts::SessionHandle {
+        transcripts::SessionHandle {
+            harness: transcripts::Harness::Codex,
+            id: id.into(),
+            title: title.into(),
+            git_branch: None,
+            last_active: None,
+            locator: transcripts::Locator::File(std::path::PathBuf::from("/x")),
+            body_available: true,
+            group: group.map(str::to_string),
+            is_subagent,
+        }
+    }
+
+    #[test]
+    fn chat_rail_nests_subagents_under_their_director() {
+        let sessions = vec![
+            rail_handle("dir", "01a0", Some("G"), false),
+            rail_handle("s1", "Lorentz", Some("G"), true),
+            rail_handle("s2", "Kant", Some("G"), true),
+            rail_handle("solo", "claude", None, false),
+        ];
+        // Collapsed: the director (a parent with 2 kids) and the standalone; the
+        // subagents are hidden.
+        let collapsed = chat_rail_rows(&sessions, &HashSet::new());
+        assert_eq!(collapsed.len(), 2);
+        assert!(collapsed[0].is_parent && collapsed[0].child_count == 2 && !collapsed[0].expanded);
+        assert_eq!(collapsed[0].idx, 0);
+        assert_eq!(collapsed[1].idx, 3);
+        // Expanded: the two subagents appear nested at depth 1.
+        let mut g = HashSet::new();
+        g.insert("G".to_string());
+        let exp = chat_rail_rows(&sessions, &g);
+        assert_eq!(exp.len(), 4);
+        assert_eq!((exp[1].idx, exp[1].depth), (1, 1));
+        assert_eq!((exp[2].idx, exp[2].depth), (2, 1));
+        assert_eq!(exp[3].idx, 3);
+    }
+
+    #[test]
+    fn chat_fold_toggles_group_and_snaps_selection() {
+        let mut a = app(&["x"]);
+        a.view = View::Chat;
+        a.chat_sessions = vec![
+            rail_handle("dir", "01a0", Some("G"), false),
+            rail_handle("s1", "Lorentz", Some("G"), true),
+        ];
+        a.chat_selected = 0; // director
+        a.chat_toggle_fold();
+        assert!(a.chat_expanded_groups.contains("G"), "expands the group");
+        // Select the subagent, then collapse — selection snaps to the director.
+        a.chat_selected = 1;
+        a.chat_toggle_fold();
+        assert!(!a.chat_expanded_groups.contains("G"), "collapses the group");
+        assert_eq!(
+            a.chat_selected, 0,
+            "selection snaps off the now-hidden child"
+        );
+    }
+
+    #[test]
+    fn chat_session_stale_flags_new_activity() {
+        use crate::transcripts::{Harness, Locator, SessionHandle};
+        use std::time::Duration;
+        let t1 = SystemTime::UNIX_EPOCH + Duration::from_secs(10);
+        let t2 = SystemTime::UNIX_EPOCH + Duration::from_secs(20);
+        let handle = |active| SessionHandle {
+            harness: Harness::ClaudeCode,
+            id: "s1".into(),
+            title: "t".into(),
+            git_branch: None,
+            last_active: Some(active),
+            locator: Locator::File(std::path::PathBuf::from("/x")),
+            body_available: true,
+            group: None,
+            is_subagent: false,
+        };
+        let mut a = app(&["x"]);
+        // Never seen → the dot shows (unseen activity).
+        assert!(a.chat_session_stale(&handle(t1)));
+        // Caught up at t1 → no dot.
+        a.chat_seen.insert("s1".into(), t1);
+        assert!(!a.chat_session_stale(&handle(t1)));
+        // Newer activity than caught-up → the dot returns.
+        assert!(a.chat_session_stale(&handle(t2)));
+    }
+
+    #[test]
+    fn chat_tail_follow_arms_at_bottom_releases_above() {
+        let mut a = app(&["x"]);
+        a.view = View::Chat;
+        a.chat_total_lines = 50;
+        a.set_viewport(80, 12); // visible = 10 → bottom scroll = 40
+        a.chat_scroll = 40;
+        a.chat_follow = true;
+        a.chat_scroll_by(-5);
+        assert_eq!(a.chat_scroll, 35);
+        assert!(!a.chat_follow, "scrolling up releases tail-follow");
+        a.chat_scroll_by(100);
+        assert_eq!(a.chat_scroll, 40, "clamps to the bottom");
+        assert!(a.chat_follow, "returning to the bottom re-arms tail-follow");
+    }
+
+    #[test]
+    fn chat_relayout_pins_to_bottom_when_following() {
+        use crate::transcripts::{Event, EventKind, Harness, Role, Session};
+        let ev = |t: &str| Event {
+            role: Role::User,
+            kind: EventKind::Message,
+            ts: None,
+            id: None,
+            parent: None,
+            is_sidechain: false,
+            text: t.to_string(),
+        };
+        let session = Session {
+            harness: Harness::ClaudeCode,
+            id: "s".into(),
+            title: "t".into(),
+            git_branch: None,
+            events: (0..30).map(|i| ev(&format!("line {i}"))).collect(),
+        };
+        let mut a = app(&["x"]);
+        a.view = View::Chat;
+        a.chat_session = Some(session);
+        a.set_viewport(80, 12); // visible = 10
+        a.chat_dirty = true;
+        a.chat_follow = true;
+        a.chat_relayout();
+        assert!(
+            a.chat_total_lines > 10,
+            "the fixture fills more than a screen"
+        );
+        assert_eq!(
+            a.chat_scroll,
+            a.chat_total_lines - 10,
+            "follow pins the view to the bottom"
+        );
+        // With follow released, relayout keeps the reader's position.
+        a.chat_follow = false;
+        a.chat_scroll = 0;
+        a.chat_dirty = true;
+        a.chat_relayout();
+        assert_eq!(a.chat_scroll, 0, "released follow does not jump to bottom");
+    }
+
+    #[test]
+    fn chat_layout_groups_back_to_back_tool_calls() {
+        use crate::transcripts::{Event, EventKind, Harness, Role, Session};
+        let tool = |kind, text: &str| Event {
+            role: Role::Tool,
+            kind,
+            ts: None,
+            id: None,
+            parent: None,
+            is_sidechain: false,
+            text: text.to_string(),
+        };
+        let msg = |text: &str| Event {
+            role: Role::Assistant,
+            kind: EventKind::Message,
+            ts: None,
+            id: None,
+            parent: None,
+            is_sidechain: false,
+            text: text.to_string(),
+        };
+        let session = Session {
+            harness: Harness::ClaudeCode,
+            id: "s".into(),
+            title: "t".into(),
+            git_branch: None,
+            events: vec![
+                msg("doing things"),
+                tool(EventKind::ToolCall, "Bash(ls)"),
+                tool(EventKind::ToolResult, "file1\nfile2"),
+                tool(EventKind::ToolCall, "Edit(x.rs)"),
+                msg("done"),
+            ],
+        };
+        let joined = |rows: &[ChatRow]| rows.iter().map(row_text).collect::<Vec<_>>().join("\n");
+
+        // Collapsed: one "3 tool calls" fold; no individual calls shown.
+        let collapsed = chat_layout(&session, &HashSet::new(), 80);
+        let j = joined(&collapsed);
+        assert!(j.contains("3 tool calls"), "{j}");
+        assert!(
+            !j.contains("Bash(ls)"),
+            "calls hidden when the group is collapsed: {j}"
+        );
+        // The whole run is a single message-jump unit (start at its first index).
+        let starts: Vec<usize> = collapsed
+            .iter()
+            .filter(|r| r.is_start)
+            .map(|r| r.msg)
+            .collect();
+        assert_eq!(starts, vec![0, 1, 4], "group is one jump unit: {starts:?}");
+
+        // Expanded (keyed by the run's first event index = 1): the calls appear.
+        let mut exp = HashSet::new();
+        exp.insert(1usize);
+        let j2 = joined(&chat_layout(&session, &exp, 80));
+        assert!(j2.contains("Bash(ls)") && j2.contains("Edit(x.rs)"), "{j2}");
+    }
+
+    #[test]
+    fn chat_layout_groups_back_to_back_thinking() {
+        use crate::transcripts::{Event, EventKind, Harness, Role, Session};
+        let think = |text: &str| Event {
+            role: Role::Assistant,
+            kind: EventKind::Thinking,
+            ts: None,
+            id: None,
+            parent: None,
+            is_sidechain: false,
+            text: text.to_string(),
+        };
+        let msg = |text: &str| Event {
+            role: Role::Assistant,
+            kind: EventKind::Message,
+            ts: None,
+            id: None,
+            parent: None,
+            is_sidechain: false,
+            text: text.to_string(),
+        };
+        let session = Session {
+            harness: Harness::ClaudeCode,
+            id: "s".into(),
+            title: "t".into(),
+            git_branch: None,
+            events: vec![
+                msg("start"),
+                think("first thought\nmore"),
+                think("second thought"),
+                think("third thought"),
+                msg("end"),
+            ],
+        };
+        let joined = |rows: &[ChatRow]| rows.iter().map(row_text).collect::<Vec<_>>().join("\n");
+
+        let collapsed = chat_layout(&session, &HashSet::new(), 80);
+        let j = joined(&collapsed);
+        assert!(j.contains("3 thinking blocks"), "{j}");
+        assert!(
+            !j.contains("first thought"),
+            "reasoning hidden when collapsed: {j}"
+        );
+
+        let mut exp = HashSet::new();
+        exp.insert(1usize); // the run's first event index
+        let j2 = joined(&chat_layout(&session, &exp, 80));
+        assert!(
+            j2.contains("first thought")
+                && j2.contains("second thought")
+                && j2.contains("third thought"),
+            "{j2}"
+        );
+        assert!(
+            j2.contains("· · ·"),
+            "blocks are divided when expanded: {j2}"
+        );
+    }
+
+    #[test]
+    fn chat_layout_leaves_a_lone_tool_call_ungrouped() {
+        use crate::transcripts::{Event, EventKind, Harness, Role, Session};
+        let one = |kind, text: &str| Event {
+            role: Role::Tool,
+            kind,
+            ts: None,
+            id: None,
+            parent: None,
+            is_sidechain: false,
+            text: text.to_string(),
+        };
+        let session = Session {
+            harness: Harness::ClaudeCode,
+            id: "s".into(),
+            title: "t".into(),
+            git_branch: None,
+            // A single tool call between two thinking turns — no run to fold.
+            events: vec![
+                one(EventKind::Thinking, "pondering"),
+                one(EventKind::ToolCall, "Bash(ls)"),
+                one(EventKind::Thinking, "more"),
+            ],
+        };
+        let j = chat_layout(&session, &HashSet::new(), 80)
+            .iter()
+            .map(row_text)
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(
+            !j.contains("tool calls"),
+            "a lone tool call is not grouped: {j}"
+        );
+        assert!(j.contains("⤷ tool"), "it keeps its single summary: {j}");
+    }
+
+    #[test]
+    fn chat_layout_marks_message_starts_for_skip_and_current() {
+        use crate::transcripts::{Event, EventKind, Harness, Role, Session};
+        let mk = |role, text: &str| Event {
+            role,
+            kind: EventKind::Message,
+            ts: None,
+            id: None,
+            parent: None,
+            is_sidechain: false,
+            text: text.to_string(),
+        };
+        let session = Session {
+            harness: Harness::ClaudeCode,
+            id: "s".into(),
+            title: "t".into(),
+            git_branch: None,
+            events: vec![
+                mk(Role::User, "one"),
+                mk(Role::Assistant, "two"),
+                mk(Role::User, "three"),
+            ],
+        };
+        let rows = chat_layout(&session, &HashSet::new(), 80);
+        // Exactly one start row per message, in order.
+        let starts: Vec<usize> = rows
+            .iter()
+            .enumerate()
+            .filter(|(_, r)| r.is_start)
+            .map(|(_, r)| r.msg)
+            .collect();
+        assert_eq!(starts, vec![0, 1, 2], "one start per message: {starts:?}");
+    }
+
+    #[test]
+    fn chat_scroll_and_msg_jump_move_and_clamp() {
+        // Line scroll clamps at both ends; message-jump lands on start lines.
+        let mut a = app(&["x"]);
+        a.view = View::Chat;
+        a.chat_total_lines = 10;
+        a.chat_msg_starts = vec![(0, 0), (4, 1), (8, 2)];
+        a.chat_scroll = 0;
+        a.chat_scroll_by(3);
+        assert_eq!(a.chat_scroll, 3);
+        a.chat_scroll_by(-100);
+        assert_eq!(a.chat_scroll, 0, "clamps at top");
+        a.chat_scroll_by(100);
+        assert_eq!(a.chat_scroll, 9, "clamps at last line");
+        // Jump back to a message start, then step across messages.
+        a.chat_scroll = 5; // inside message 1 (start line 4)
+        a.chat_msg_jump(1);
+        assert_eq!(a.chat_scroll, 8, "next message start");
+        a.chat_msg_jump(-1);
+        assert_eq!(a.chat_scroll, 4, "previous message start");
+        a.chat_msg_jump(-1);
+        assert_eq!(a.chat_scroll, 0, "clamps at first message");
+    }
+
+    #[test]
+    fn page_and_nav_step_scale_with_the_viewport() {
+        let mut a = app(&["x"]);
+        a.view = View::Chat;
+        a.chat_total_lines = 100;
+        a.set_viewport(80, 20);
+        assert_eq!(a.page_rows(), 19, "a page is the body height minus one");
+        a.chat_scroll = 0;
+        a.nav_step(a.page_rows());
+        assert_eq!(a.chat_scroll, 19, "PgDn scrolls one page in Chat");
     }
 
     #[test]

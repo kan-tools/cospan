@@ -415,6 +415,12 @@ fn watch_repo(args: &[String]) {
         .find(|a| !a.starts_with("--"))
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from("."));
+    // Canonicalize to an absolute path: the Chat tab matches sessions against the
+    // harness-recorded absolute cwd, so `.`, a relative path, or a trailing slash
+    // must resolve to the same absolute form the harnesses stored — otherwise
+    // discovery silently finds nothing. Falls back to the raw path if it can't be
+    // resolved (e.g. does not exist yet), preserving prior behavior for kan reads.
+    let repo = std::fs::canonicalize(&repo).unwrap_or(repo);
     let once = args.iter().any(|a| a == "--once");
 
     if once {
