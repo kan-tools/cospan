@@ -11,7 +11,7 @@
   "cites": [],
   "rev": "223mtkn6c6omz",
   "seq": 0,
-  "of": 24,
+  "of": 25,
   "text_len": 195,
   "content": "p2Rib2R5oWtPYnNlcnZhdGlvbqFkdGV4dGBlY2l0ZXOAZmF1dGhvcqJjZGlkeDlkaWQ6a2V5OnpEbmFlU2RCYnJNNk5lWTRpOE1veHVGaXlEdHd4M0FISjhmakVkOTRnckgzMXI4WFllYWdlbnT2Z3N1YmplY3ShZUxvY2FsdGNoYXQtdGFiLXRyYW5zY3JpcHRzaWFydGlmYWN0c4GhZkNvbW1pdHgoZmQ1ZmViNTc3NDE1NmM4MjVlNjhkYmM2OWI0NDkyZmEzMDQ2ZWZmN2l3b3Jrc3BhY2WhaVdvcmtzcGFjZXhAYTIxMzIzZmM2OTcyNjdjMmMzNjg3ODU3NTg2OGQ0OGUzOTMyZTQzOGQwNzcwOWIwYTZlYmNmMjRkMmFkZjhlZmtyZWNvcmRlZF9hdBsABlmEyIJR8w=="
 }
@@ -34,7 +34,7 @@ design doc .design/chat-tab-transcripts.md checked against the live design-doc s
   ],
   "rev": "223mtkn6ciebr",
   "seq": 1,
-  "of": 24,
+  "of": 25,
   "text_len": 742,
   "content": "p2Rib2R5oWRQbGFuoWR0ZXh0YGVjaXRlc4HYKlglAAFxEiCNSWzMdWlXL8V7RhtneD9/4ZDRV0sfGy+Vo+rkhcmZaGZhdXRob3KiY2RpZHg5ZGlkOmtleTp6RG5hZVNkQmJyTTZOZVk0aThNb3h1Rml5RHR3eDNBSEo4ZmpFZDk0Z3JIMzFyOFhZZWFnZW509mdzdWJqZWN0oWVMb2NhbHRjaGF0LXRhYi10cmFuc2NyaXB0c2lhcnRpZmFjdHOBoWZDb21taXR4KGZkNWZlYjU3NzQxNTZjODI1ZTY4ZGJjNjliNDQ5MmZhMzA0NmVmZjdpd29ya3NwYWNloWlXb3Jrc3BhY2V4QGEyMTMyM2ZjNjk3MjY3YzJjMzY4Nzg1NzU4NjhkNDhlMzkzMmU0MzhkMDc3MDliMGE2ZWJjZjI0ZDJhZGY4ZWZrcmVjb3JkZWRfYXQbAAZZhMiHKHk="
 }
@@ -55,7 +55,7 @@ chat-tab-transcripts design (.design/chat-tab-transcripts.md): Add the **Chat** 
   "cites": [],
   "rev": "223mtkn6clkv6",
   "seq": 2,
-  "of": 24,
+  "of": 25,
   "content": "p2Rib2R5oWdTdWJqZWN0omV0aXRsZXg/RmVhdHVyZTogQ2hhdCB0YWIg4oCUIHdhdGNoZWQgdHJhbnNjcmlwdHMgKHJlYWQpICsgYSB3cml0ZSBzZWFtbHN1YmplY3Rfa2luZGRJZGVhZWNpdGVzgGZhdXRob3KiY2RpZHg5ZGlkOmtleTp6RG5hZVNkQmJyTTZOZVk0aThNb3h1Rml5RHR3eDNBSEo4ZmpFZDk0Z3JIMzFyOFhZZWFnZW509mdzdWJqZWN0oWVMb2NhbHRjaGF0LXRhYi10cmFuc2NyaXB0c2lhcnRpZmFjdHOBoWZDb21taXR4KGZkNWZlYjU3NzQxNTZjODI1ZTY4ZGJjNjliNDQ5MmZhMzA0NmVmZjdpd29ya3NwYWNloWlXb3Jrc3BhY2V4QGEyMTMyM2ZjNjk3MjY3YzJjMzY4Nzg1NzU4NjhkNDhlMzkzMmU0MzhkMDc3MDliMGE2ZWJjZjI0ZDJhZGY4ZWZrcmVjb3JkZWRfYXQbAAZZhMiIwvQ="
 }
 ---
@@ -75,7 +75,7 @@ chat-tab-transcripts design (.design/chat-tab-transcripts.md): Add the **Chat** 
   ],
   "rev": "223mtkn6cvcem",
   "seq": 3,
-  "of": 24,
+  "of": 25,
   "text_len": 245,
   "content": "p2Rib2R5oWhEZWNpc2lvbqFkdGV4dGBlY2l0ZXOB2CpYJQABcRIgcIpUqwsdBB11Tyc/SG7bucEMgQ75oYrxgi9nZkQdWlJmYXV0aG9yomNkaWR4OWRpZDprZXk6ekRuYWVTZEJick02TmVZNGk4TW94dUZpeUR0d3gzQUhKOGZqRWQ5NGdySDMxcjhYWWVhZ2VudPZnc3ViamVjdKFlTG9jYWx0Y2hhdC10YWItdHJhbnNjcmlwdHNpYXJ0aWZhY3RzgaFmQ29tbWl0eChmZDVmZWI1Nzc0MTU2YzgyNWU2OGRiYzY5YjQ0OTJmYTMwNDZlZmY3aXdvcmtzcGFjZaFpV29ya3NwYWNleEBhMjEzMjNmYzY5NzI2N2MyYzM2ODc4NTc1ODY4ZDQ4ZTM5MzJlNDM4ZDA3NzA5YjBhNmViY2YyNGQyYWRmOGVma3JlY29yZGVkX2F0GwAGWYTIjaDr"
 }
@@ -98,7 +98,7 @@ RQ-1: This build ships read-only Chat. `WriteChannel` is a defined-but-inert sea
   ],
   "rev": "223mtkn6d73w2",
   "seq": 4,
-  "of": 24,
+  "of": 25,
   "text_len": 286,
   "content": "p2Rib2R5oWhEZWNpc2lvbqFkdGV4dGBlY2l0ZXOB2CpYJQABcRIgcIpUqwsdBB11Tyc/SG7bucEMgQ75oYrxgi9nZkQdWlJmYXV0aG9yomNkaWR4OWRpZDprZXk6ekRuYWVTZEJick02TmVZNGk4TW94dUZpeUR0d3gzQUhKOGZqRWQ5NGdySDMxcjhYWWVhZ2VudPZnc3ViamVjdKFlTG9jYWx0Y2hhdC10YWItdHJhbnNjcmlwdHNpYXJ0aWZhY3RzgaFmQ29tbWl0eChmZDVmZWI1Nzc0MTU2YzgyNWU2OGRiYzY5YjQ0OTJmYTMwNDZlZmY3aXdvcmtzcGFjZaFpV29ya3NwYWNleEBhMjEzMjNmYzY5NzI2N2MyYzM2ODc4NTc1ODY4ZDQ4ZTM5MzJlNDM4ZDA3NzA5YjBhNmViY2YyNGQyYWRmOGVma3JlY29yZGVkX2F0GwAGWYTIkocX"
 }
@@ -121,7 +121,7 @@ RQ-2: Sessions are scoped to the watched repo but cross-harness — Claude Code,
   ],
   "rev": "223mtkn6diu6g",
   "seq": 5,
-  "of": 24,
+  "of": 25,
   "text_len": 299,
   "content": "p2Rib2R5oWhEZWNpc2lvbqFkdGV4dGBlY2l0ZXOB2CpYJQABcRIgcIpUqwsdBB11Tyc/SG7bucEMgQ75oYrxgi9nZkQdWlJmYXV0aG9yomNkaWR4OWRpZDprZXk6ekRuYWVTZEJick02TmVZNGk4TW94dUZpeUR0d3gzQUhKOGZqRWQ5NGdySDMxcjhYWWVhZ2VudPZnc3ViamVjdKFlTG9jYWx0Y2hhdC10YWItdHJhbnNjcmlwdHNpYXJ0aWZhY3RzgaFmQ29tbWl0eChmZDVmZWI1Nzc0MTU2YzgyNWU2OGRiYzY5YjQ0OTJmYTMwNDZlZmY3aXdvcmtzcGFjZaFpV29ya3NwYWNleEBhMjEzMjNmYzY5NzI2N2MyYzM2ODc4NTc1ODY4ZDQ4ZTM5MzJlNDM4ZDA3NzA5YjBhNmViY2YyNGQyYWRmOGVma3JlY29yZGVkX2F0GwAGWYTIl2gi"
 }
@@ -144,7 +144,7 @@ RQ-3: The primary write target is the harness message bus (Claude Code Remote Co
   ],
   "rev": "223mtkn6dstk4",
   "seq": 6,
-  "of": 24,
+  "of": 25,
   "text_len": 231,
   "content": "p2Rib2R5oWhEZWNpc2lvbqFkdGV4dGBlY2l0ZXOB2CpYJQABcRIgcIpUqwsdBB11Tyc/SG7bucEMgQ75oYrxgi9nZkQdWlJmYXV0aG9yomNkaWR4OWRpZDprZXk6ekRuYWVTZEJick02TmVZNGk4TW94dUZpeUR0d3gzQUhKOGZqRWQ5NGdySDMxcjhYWWVhZ2VudPZnc3ViamVjdKFlTG9jYWx0Y2hhdC10YWItdHJhbnNjcmlwdHNpYXJ0aWZhY3RzgaFmQ29tbWl0eChmZDVmZWI1Nzc0MTU2YzgyNWU2OGRiYzY5YjQ0OTJmYTMwNDZlZmY3aXdvcmtzcGFjZaFpV29ya3NwYWNleEBhMjEzMjNmYzY5NzI2N2MyYzM2ODc4NTc1ODY4ZDQ4ZTM5MzJlNDM4ZDA3NzA5YjBhNmViY2YyNGQyYWRmOGVma3JlY29yZGVkX2F0GwAGWYTInGWP"
 }
@@ -167,7 +167,7 @@ RQ-4: Chat renders the readable conversation — User/Assistant text plus one-li
   ],
   "rev": "223mtkn6e4m7v",
   "seq": 7,
-  "of": 24,
+  "of": 25,
   "text_len": 222,
   "content": "p2Rib2R5oWhEZWNpc2lvbqFkdGV4dGBlY2l0ZXOB2CpYJQABcRIgcIpUqwsdBB11Tyc/SG7bucEMgQ75oYrxgi9nZkQdWlJmYXV0aG9yomNkaWR4OWRpZDprZXk6ekRuYWVTZEJick02TmVZNGk4TW94dUZpeUR0d3gzQUhKOGZqRWQ5NGdySDMxcjhYWWVhZ2VudPZnc3ViamVjdKFlTG9jYWx0Y2hhdC10YWItdHJhbnNjcmlwdHNpYXJ0aWZhY3RzgaFmQ29tbWl0eChmZDVmZWI1Nzc0MTU2YzgyNWU2OGRiYzY5YjQ0OTJmYTMwNDZlZmY3aXdvcmtzcGFjZaFpV29ya3NwYWNleEBhMjEzMjNmYzY5NzI2N2MyYzM2ODc4NTc1ODY4ZDQ4ZTM5MzJlNDM4ZDA3NzA5YjBhNmViY2YyNGQyYWRmOGVma3JlY29yZGVkX2F0GwAGWYTIoUhQ"
 }
@@ -190,7 +190,7 @@ RQ-5: Transcripts are external substrate, read in the new `transcripts` module e
   ],
   "rev": "223mtkn6egkdl",
   "seq": 8,
-  "of": 24,
+  "of": 25,
   "text_len": 222,
   "content": "p2Rib2R5oWhEZWNpc2lvbqFkdGV4dGBlY2l0ZXOB2CpYJQABcRIgcIpUqwsdBB11Tyc/SG7bucEMgQ75oYrxgi9nZkQdWlJmYXV0aG9yomNkaWR4OWRpZDprZXk6ekRuYWVTZEJick02TmVZNGk4TW94dUZpeUR0d3gzQUhKOGZqRWQ5NGdySDMxcjhYWWVhZ2VudPZnc3ViamVjdKFlTG9jYWx0Y2hhdC10YWItdHJhbnNjcmlwdHNpYXJ0aWZhY3RzgaFmQ29tbWl0eChmZDVmZWI1Nzc0MTU2YzgyNWU2OGRiYzY5YjQ0OTJmYTMwNDZlZmY3aXdvcmtzcGFjZaFpV29ya3NwYWNleEBhMjEzMjNmYzY5NzI2N2MyYzM2ODc4NTc1ODY4ZDQ4ZTM5MzJlNDM4ZDA3NzA5YjBhNmViY2YyNGQyYWRmOGVma3JlY29yZGVkX2F0GwAGWYTIpkDA"
 }
@@ -211,7 +211,7 @@ RQ-6: The opencode adapter opens its DB read-only and reads only the session/mes
   "cites": [],
   "rev": "223mtknyvs72e",
   "seq": 9,
-  "of": 24,
+  "of": 25,
   "text_len": 749,
   "content": "p2Rib2R5oWtPYnNlcnZhdGlvbqFkdGV4dGBlY2l0ZXOAZmF1dGhvcqJjZGlkeDlkaWQ6a2V5OnpEbmFlU2RCYnJNNk5lWTRpOE1veHVGaXlEdHd4M0FISjhmakVkOTRnckgzMXI4WFllYWdlbnT2Z3N1YmplY3ShZUxvY2FsdGNoYXQtdGFiLXRyYW5zY3JpcHRzaWFydGlmYWN0c4GhZkNvbW1pdHgoZmQ1ZmViNTc3NDE1NmM4MjVlNjhkYmM2OWI0NDkyZmEzMDQ2ZWZmN2l3b3Jrc3BhY2WhaVdvcmtzcGFjZXhAYTIxMzIzZmM2OTcyNjdjMmMzNjg3ODU3NTg2OGQ0OGUzOTMyZTQzOGQwNzcwOWIwYTZlYmNmMjRkMmFkZjhlZmtyZWNvcmRlZF9hdBsABlmE/bwTow=="
 }
@@ -232,7 +232,7 @@ generative-build of the Chat tab: new `src/transcripts.rs` (normalized Session/E
   "cites": [],
   "rev": "223mtkopq3irw",
   "seq": 10,
-  "of": 24,
+  "of": 25,
   "text_len": 1257,
   "content": "p2Rib2R5oWZSZXN1bHShZHRleHRgZWNpdGVzgGZhdXRob3KiY2RpZHg5ZGlkOmtleTp6RG5hZVNkQmJyTTZOZVk0aThNb3h1Rml5RHR3eDNBSEo4ZmpFZDk0Z3JIMzFyOFhZZWFnZW509mdzdWJqZWN0oWVMb2NhbHRjaGF0LXRhYi10cmFuc2NyaXB0c2lhcnRpZmFjdHOBoWZDb21taXR4KGZkNWZlYjU3NzQxNTZjODI1ZTY4ZGJjNjliNDQ5MmZhMzA0NmVmZjdpd29ya3NwYWNloWlXb3Jrc3BhY2V4QGEyMTMyM2ZjNjk3MjY3YzJjMzY4Nzg1NzU4NjhkNDhlMzkzMmU0MzhkMDc3MDliMGE2ZWJjZjI0ZDJhZGY4ZWZrcmVjb3JkZWRfYXQbAAZZhStgupA="
 }
@@ -253,7 +253,7 @@ Independent hostile Opus adversarial-review: VERDICT SHIP. Telos surface clean u
   "cites": [],
   "rev": "223mtm3w2ql4r",
   "seq": 11,
-  "of": 24,
+  "of": 25,
   "text_len": 1243,
   "content": "p2Rib2R5oWtPYnNlcnZhdGlvbqFkdGV4dGBlY2l0ZXOAZmF1dGhvcqJjZGlkeDlkaWQ6a2V5OnpEbmFlU2RCYnJNNk5lWTRpOE1veHVGaXlEdHd4M0FISjhmakVkOTRnckgzMXI4WFllYWdlbnT2Z3N1YmplY3ShZUxvY2FsdGNoYXQtdGFiLXRyYW5zY3JpcHRzaWFydGlmYWN0c4GhZkNvbW1pdHgoZGJmNDY2NjdiZDZhZjA1MzhlOTQxZTY5NmY5MmNmMWU1ZGQ1ZTY2ZWl3b3Jrc3BhY2WhaVdvcmtzcGFjZXhAYTIxMzIzZmM2OTcyNjdjMmMzNjg3ODU3NTg2OGQ0OGUzOTMyZTQzOGQwNzcwOWIwYTZlYmNmMjRkMmFkZjhlZmtyZWNvcmRlZF9hdBsABlmQeAtD6A=="
 }
@@ -274,7 +274,7 @@ Chat visual + TUI navigation refinement (same PR, from live eyeball feedback): (
   "cites": [],
   "rev": "223mtm57wf2qf",
   "seq": 12,
-  "of": 24,
+  "of": 25,
   "text_len": 963,
   "content": "p2Rib2R5oWtPYnNlcnZhdGlvbqFkdGV4dGBlY2l0ZXOAZmF1dGhvcqJjZGlkeDlkaWQ6a2V5OnpEbmFlU2RCYnJNNk5lWTRpOE1veHVGaXlEdHd4M0FISjhmakVkOTRnckgzMXI4WFllYWdlbnT2Z3N1YmplY3ShZUxvY2FsdGNoYXQtdGFiLXRyYW5zY3JpcHRzaWFydGlmYWN0c4GhZkNvbW1pdHgoZjZmNjBjNTJlYTg0YjVkNjJmMjZlYjgyNWJhZWM3NjFhNjlhZWU3YWl3b3Jrc3BhY2WhaVdvcmtzcGFjZXhAYTIxMzIzZmM2OTcyNjdjMmMzNjg3ODU3NTg2OGQ0OGUzOTMyZTQzOGQwNzcwOWIwYTZlYmNmMjRkMmFkZjhlZmtyZWNvcmRlZF9hdBsABlmQy8V7MQ=="
 }
@@ -295,7 +295,7 @@ Finesse pass (same PR #11): (1) prompt-tag formatting — paired/self-closing pr
   "cites": [],
   "rev": "223mtm5mtn7je",
   "seq": 13,
-  "of": 24,
+  "of": 25,
   "text_len": 711,
   "content": "p2Rib2R5oWtPYnNlcnZhdGlvbqFkdGV4dGBlY2l0ZXOAZmF1dGhvcqJjZGlkeDlkaWQ6a2V5OnpEbmFlU2RCYnJNNk5lWTRpOE1veHVGaXlEdHd4M0FISjhmakVkOTRnckgzMXI4WFllYWdlbnT2Z3N1YmplY3ShZUxvY2FsdGNoYXQtdGFiLXRyYW5zY3JpcHRzaWFydGlmYWN0c4GhZkNvbW1pdHgoOGM0OWRkZjE4MWJkNTU5NmRkODY3NjU5ZWNlYzA3MTIzZmQ5YWExMml3b3Jrc3BhY2WhaVdvcmtzcGFjZXhAYTIxMzIzZmM2OTcyNjdjMmMzNjg3ODU3NTg2OGQ0OGUzOTMyZTQzOGQwNzcwOWIwYTZlYmNmMjRkMmFkZjhlZmtyZWNvcmRlZF9hdBsABlmQ5ZmVeg=="
 }
@@ -316,7 +316,7 @@ Fix for the prompt-tag failure mode (a message discussing tags rendered as if th
   "cites": [],
   "rev": "223mtm7g4ayyh",
   "seq": 14,
-  "of": 24,
+  "of": 25,
   "text_len": 760,
   "content": "p2Rib2R5oWtPYnNlcnZhdGlvbqFkdGV4dGBlY2l0ZXOAZmF1dGhvcqJjZGlkeDlkaWQ6a2V5OnpEbmFlU2RCYnJNNk5lWTRpOE1veHVGaXlEdHd4M0FISjhmakVkOTRnckgzMXI4WFllYWdlbnT2Z3N1YmplY3ShZUxvY2FsdGNoYXQtdGFiLXRyYW5zY3JpcHRzaWFydGlmYWN0c4GhZkNvbW1pdHgoOTczMTA3Y2NhOTk1NTIwNmFiYWE2NGFlNTc5NmZmOTgxOTkxMmE0N2l3b3Jrc3BhY2WhaVdvcmtzcGFjZXhAYTIxMzIzZmM2OTcyNjdjMmMzNjg3ODU3NTg2OGQ0OGUzOTMyZTQzOGQwNzcwOWIwYTZlYmNmMjRkMmFkZjhlZmtyZWNvcmRlZF9hdBsABlmRWCN2Dw=="
 }
@@ -337,7 +337,7 @@ Three Chat finesse points: (1) the colored role bar now runs the full height of 
   "cites": [],
   "rev": "223mtm7zb3lhi",
   "seq": 15,
-  "of": 24,
+  "of": 25,
   "text_len": 652,
   "content": "p2Rib2R5oWtPYnNlcnZhdGlvbqFkdGV4dGBlY2l0ZXOAZmF1dGhvcqJjZGlkeDlkaWQ6a2V5OnpEbmFlU2RCYnJNNk5lWTRpOE1veHVGaXlEdHd4M0FISjhmakVkOTRnckgzMXI4WFllYWdlbnT2Z3N1YmplY3ShZUxvY2FsdGNoYXQtdGFiLXRyYW5zY3JpcHRzaWFydGlmYWN0c4GhZkNvbW1pdHgoYTc4MzUxMWI3ZTdmMWViZGZmZWI5ZmNhODI4NDkxZDgyZTE3ZGY2M2l3b3Jrc3BhY2WhaVdvcmtzcGFjZXhAYTIxMzIzZmM2OTcyNjdjMmMzNjg3ODU3NTg2OGQ0OGUzOTMyZTQzOGQwNzcwOWIwYTZlYmNmMjRkMmFkZjhlZmtyZWNvcmRlZF9hdBsABlmRfnDAGw=="
 }
@@ -358,7 +358,7 @@ Chat: fold back-to-back tool calls. A run of >=2 consecutive main-thread tool tu
   "cites": [],
   "rev": "223mtmac7vb6y",
   "seq": 16,
-  "of": 24,
+  "of": 25,
   "text_len": 612,
   "content": "p2Rib2R5oWtPYnNlcnZhdGlvbqFkdGV4dGBlY2l0ZXOAZmF1dGhvcqJjZGlkeDlkaWQ6a2V5OnpEbmFlU2RCYnJNNk5lWTRpOE1veHVGaXlEdHd4M0FISjhmakVkOTRnckgzMXI4WFllYWdlbnT2Z3N1YmplY3ShZUxvY2FsdGNoYXQtdGFiLXRyYW5zY3JpcHRzaWFydGlmYWN0c4GhZkNvbW1pdHgoYTRiOTA3MjNhMDFkZjMyZmU4OGMwOThhYzAyYzhkNWE1Mzg0YTkwM2l3b3Jrc3BhY2WhaVdvcmtzcGFjZXhAYTIxMzIzZmM2OTcyNjdjMmMzNjg3ODU3NTg2OGQ0OGUzOTMyZTQzOGQwNzcwOWIwYTZlYmNmMjRkMmFkZjhlZmtyZWNvcmRlZF9hdBsABlmRkF2ZJg=="
 }
@@ -379,7 +379,7 @@ Chat: generalized the fold to thinking too. fold_kind() classifies an event as T
   "cites": [],
   "rev": "223mtmbaxep4s",
   "seq": 17,
-  "of": 24,
+  "of": 25,
   "text_len": 1273,
   "content": "p2Rib2R5oWtPYnNlcnZhdGlvbqFkdGV4dGBlY2l0ZXOAZmF1dGhvcqJjZGlkeDlkaWQ6a2V5OnpEbmFlU2RCYnJNNk5lWTRpOE1veHVGaXlEdHd4M0FISjhmakVkOTRnckgzMXI4WFllYWdlbnT2Z3N1YmplY3ShZUxvY2FsdGNoYXQtdGFiLXRyYW5zY3JpcHRzaWFydGlmYWN0c4GhZkNvbW1pdHgoNDhlMDk1NDhlZDY1NzUzOTZlNmVjMDU1YzFlNmQ5NGYzMDlkYTc0NWl3b3Jrc3BhY2WhaVdvcmtzcGFjZXhAYTIxMzIzZmM2OTcyNjdjMmMzNjg3ODU3NTg2OGQ0OGUzOTMyZTQzOGQwNzcwOWIwYTZlYmNmMjRkMmFkZjhlZmtyZWNvcmRlZF9hdBsABlmRzdVT5A=="
 }
@@ -400,7 +400,7 @@ Codex adapter fixes from dogfooding on sheaf-games (a Codex-driven repo). Root c
   "cites": [],
   "rev": "223mtmq5amjkw",
   "seq": 18,
-  "of": 24,
+  "of": 25,
   "text_len": 960,
   "content": "p2Rib2R5oWtPYnNlcnZhdGlvbqFkdGV4dGBlY2l0ZXOAZmF1dGhvcqJjZGlkeDlkaWQ6a2V5OnpEbmFlU2RCYnJNNk5lWTRpOE1veHVGaXlEdHd4M0FISjhmakVkOTRnckgzMXI4WFllYWdlbnT2Z3N1YmplY3ShZUxvY2FsdGNoYXQtdGFiLXRyYW5zY3JpcHRzaWFydGlmYWN0c4GhZkNvbW1pdHgoMzc5OTM3ZGM3MzcxN2U5YWQ1YWI3YWJjNTg5NDg0OTRmMTgxYmZlN2l3b3Jrc3BhY2WhaVdvcmtzcGFjZXhAYTIxMzIzZmM2OTcyNjdjMmMzNjg3ODU3NTg2OGQ0OGUzOTMyZTQzOGQwNzcwOWIwYTZlYmNmMjRkMmFkZjhlZmtyZWNvcmRlZF9hdBsABlmVhmk4Dg=="
 }
@@ -421,7 +421,7 @@ Codex parent-vs-subagent fix (user reported subagents folding into the parent). 
   "cites": [],
   "rev": "223mtmqvrgm2z",
   "seq": 19,
-  "of": 24,
+  "of": 25,
   "text_len": 1073,
   "content": "p2Rib2R5oWtPYnNlcnZhdGlvbqFkdGV4dGBlY2l0ZXOAZmF1dGhvcqJjZGlkeDlkaWQ6a2V5OnpEbmFlU2RCYnJNNk5lWTRpOE1veHVGaXlEdHd4M0FISjhmakVkOTRnckgzMXI4WFllYWdlbnT2Z3N1YmplY3ShZUxvY2FsdGNoYXQtdGFiLXRyYW5zY3JpcHRzaWFydGlmYWN0c4GhZkNvbW1pdHgoZjc3YTY2MzMyOTU1NjhjYTU2ZmE5OGM5ZWFkNGYwZDQ0MDQzMjMyYWl3b3Jrc3BhY2WhaVdvcmtzcGFjZXhAYTIxMzIzZmM2OTcyNjdjMmMzNjg3ODU3NTg2OGQ0OGUzOTMyZTQzOGQwNzcwOWIwYTZlYmNmMjRkMmFkZjhlZmtyZWNvcmRlZF9hdBsABlmVt3ZCIQ=="
 }
@@ -442,7 +442,7 @@ Corrected the Codex session model (twice wrong before). Those 120 files sharing 
   "cites": [],
   "rev": "223mtmukjvyux",
   "seq": 20,
-  "of": 24,
+  "of": 25,
   "text_len": 366,
   "content": "p2Rib2R5oWtPYnNlcnZhdGlvbqFkdGV4dGBlY2l0ZXOAZmF1dGhvcqJjZGlkeDlkaWQ6a2V5OnpEbmFlU2RCYnJNNk5lWTRpOE1veHVGaXlEdHd4M0FISjhmakVkOTRnckgzMXI4WFllYWdlbnT2Z3N1YmplY3ShZUxvY2FsdGNoYXQtdGFiLXRyYW5zY3JpcHRzaWFydGlmYWN0c4GhZkNvbW1pdHgoYTdlOTM0NGI5MzIzODYwMGE3ZjI1ZGMxNDk5ZjVhNmRlYjU2YjU4Y2l3b3Jrc3BhY2WhaVdvcmtzcGFjZXhAYTIxMzIzZmM2OTcyNjdjMmMzNjg3ODU3NTg2OGQ0OGUzOTMyZTQzOGQwNzcwOWIwYTZlYmNmMjRkMmFkZjhlZmtyZWNvcmRlZF9hdBsABlmWoP33QA=="
 }
@@ -463,7 +463,7 @@ Omit Codex guardian threads: guardians (source.subagent.other=="guardian") are C
   "cites": [],
   "rev": "223mtmvrtw7nd",
   "seq": 21,
-  "of": 24,
+  "of": 25,
   "text_len": 800,
   "content": "p2Rib2R5oWtPYnNlcnZhdGlvbqFkdGV4dGBlY2l0ZXOAZmF1dGhvcqJjZGlkeDlkaWQ6a2V5OnpEbmFlU2RCYnJNNk5lWTRpOE1veHVGaXlEdHd4M0FISjhmakVkOTRnckgzMXI4WFllYWdlbnT2Z3N1YmplY3ShZUxvY2FsdGNoYXQtdGFiLXRyYW5zY3JpcHRzaWFydGlmYWN0c4GhZkNvbW1pdHgoMWQxMTQyMWM3NTI0MTY3OTMzNjE4ODIyM2RhMGRkZDQxYTJlODQ2NWl3b3Jrc3BhY2WhaVdvcmtzcGFjZXhAYTIxMzIzZmM2OTcyNjdjMmMzNjg3ODU3NTg2OGQ0OGUzOTMyZTQzOGQwNzcwOWIwYTZlYmNmMjRkMmFkZjhlZmtyZWNvcmRlZF9hdBsABlmW754SiQ=="
 }
@@ -484,7 +484,7 @@ Three Chat finesse points: (1) Codex <heartbeat> blocks + nested sub-tags (autom
   "cites": [],
   "rev": "223mtmywalnvn",
   "seq": 22,
-  "of": 24,
+  "of": 25,
   "text_len": 759,
   "content": "p2Rib2R5oWZSZXN1bHShZHRleHRgZWNpdGVzgGZhdXRob3KiY2RpZHg5ZGlkOmtleTp6RG5hZVNkQmJyTTZOZVk0aThNb3h1Rml5RHR3eDNBSEo4ZmpFZDk0Z3JIMzFyOFhZZWFnZW509mdzdWJqZWN0oWVMb2NhbHRjaGF0LXRhYi10cmFuc2NyaXB0c2lhcnRpZmFjdHOBoWZDb21taXR4KGJiNmI3MjlkZTA0NjIyZDIzY2Q0OWE4N2Y3MWFkZTQyNmZhZDU3Nzdpd29ya3NwYWNloWlXb3Jrc3BhY2V4QGEyMTMyM2ZjNjk3MjY3YzJjMzY4Nzg1NzU4NjhkNDhlMzkzMmU0MzhkMDc3MDliMGE2ZWJjZjI0ZDJhZGY4ZWZrcmVjb3JkZWRfYXQbAAZZl7hoy3c="
 }
@@ -505,7 +505,28 @@ MERGED to main (squash bb6b729, PR #11 closed, branch deleted). The Chat tab shi
   "cites": [],
   "rev": "223mtmzf43ou7",
   "seq": 23,
-  "of": 24,
+  "of": 25,
   "content": "p2Rib2R5oWtQdWJsaWNhdGlvbqFlbGF5ZXJnR2l0VHJlZWVjaXRlc4BmYXV0aG9yomNkaWR4OWRpZDprZXk6ekRuYWVTZEJick02TmVZNGk4TW94dUZpeUR0d3gzQUhKOGZqRWQ5NGdySDMxcjhYWWVhZ2VudPZnc3ViamVjdKFlTG9jYWx0Y2hhdC10YWItdHJhbnNjcmlwdHNpYXJ0aWZhY3RzgaFmQ29tbWl0eCg5MzY1YzMzNWUwNTA1YzExYWE4NWJiNDI1MjJkNWJiYWI5NjgzYTRlaXdvcmtzcGFjZaFpV29ya3NwYWNleEBhMjEzMjNmYzY5NzI2N2MyYzM2ODc4NTc1ODY4ZDQ4ZTM5MzJlNDM4ZDA3NzA5YjBhNmViY2YyNGQyYWRmOGVma3JlY29yZGVkX2F0GwAGWZfWINLg"
 }
 ---
+***8<***
+---
+{
+  "v": 3,
+  "cid": "bafyreiduhr7zl3yyije5g37thxqfik2hyifj7khssja5t4e4xm5kj5liiq",
+  "sig": "2b8ebb130baf20d28c47f1333098baa34ca669a7351bbc7300fcc34974a6833d6d9e7ba65a281ae4100dca3c9caf5ba2becfc81e57b28709f75381bbe0c08a21",
+  "author": "did:key:zDnaeSdBbrM6NeY4i8MoxuFiyDtwx3AHJ8fjEd94grH31r8XY",
+  "subject": {
+    "local": "chat-tab-transcripts"
+  },
+  "kind": "observation",
+  "cites": [],
+  "rev": "223mtnt7ub2og",
+  "seq": 24,
+  "of": 25,
+  "text_len": 371,
+  "content": "p2Rib2R5oWtPYnNlcnZhdGlvbqFkdGV4dGBlY2l0ZXOAZmF1dGhvcqJjZGlkeDlkaWQ6a2V5OnpEbmFlU2RCYnJNNk5lWTRpOE1veHVGaXlEdHd4M0FISjhmakVkOTRnckgzMXI4WFllYWdlbnT2Z3N1YmplY3ShZUxvY2FsdGNoYXQtdGFiLXRyYW5zY3JpcHRzaWFydGlmYWN0c4GhZkNvbW1pdHgoMmNhZjQzM2RkMTQyMzRkNDE0OGIzZTI4MzUyZjA1M2QxMGVkY2M1YWl3b3Jrc3BhY2WhaVdvcmtzcGFjZXhAYTIxMzIzZmM2OTcyNjdjMmMzNjg3ODU3NTg2OGQ0OGUzOTMyZTQzOGQwNzcwOWIwYTZlYmNmMjRkMmFkZjhlZmtyZWNvcmRlZF9hdBsABlmeS6N+zA=="
+}
+---
+
+Faded date/time labels in the Chat view (PR #13, off main): sessions in the rail show their last-active stamp MM-DD HH:MM via new substrate::stamp_short(SystemTime); message headers show their own timestamp via iso_short() parsing the event ISO ts, dim/dark-gray to the right of the role label. UTC, metadata-weight. cargo test 126/126, clippy clean, fmt clean, CI green.

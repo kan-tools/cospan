@@ -11,7 +11,7 @@
   "cites": [],
   "rev": "223mthj7cplyi",
   "seq": 0,
-  "of": 4,
+  "of": 5,
   "text_len": 4271,
   "content": "p2Rib2R5oWtPYnNlcnZhdGlvbqFkdGV4dGBlY2l0ZXOAZmF1dGhvcqJjZGlkeDlkaWQ6a2V5OnpEbmFlU2RCYnJNNk5lWTRpOE1veHVGaXlEdHd4M0FISjhmakVkOTRnckgzMXI4WFllYWdlbnT2Z3N1YmplY3ShZUxvY2Fsc2FnZW50cy9oYW5kb2ZmL21haW5pYXJ0aWZhY3RzgaFmQ29tbWl0eChkNWY3YTY0YWUzMWE1Y2FlOGY3YmU1MjExZjgzODNkNWZhZWI3NzFlaXdvcmtzcGFjZaFpV29ya3NwYWNleEA4MzVmODdhZGU0MGJkYzhkZjIyYzNiYmQyNzhkNTdlMDQwZmFhMDhjYzZlNDE1ZDZiZDAzODRlYjlhN2U1M2Nla3JlY29yZGVkX2F0GwAGWWvKisSn"
 }
@@ -62,7 +62,7 @@ DELIBERATELY NOT DOING (settled — do not relitigate):
   "cites": [],
   "rev": "223mthj7ocwai",
   "seq": 1,
-  "of": 4,
+  "of": 5,
   "content": "p2Rib2R5oWtQdWJsaWNhdGlvbqFlbGF5ZXJnR2l0VHJlZWVjaXRlc4BmYXV0aG9yomNkaWR4OWRpZDprZXk6ekRuYWVTZEJick02TmVZNGk4TW94dUZpeUR0d3gzQUhKOGZqRWQ5NGdySDMxcjhYWWVhZ2VudPZnc3ViamVjdKFlTG9jYWxzYWdlbnRzL2hhbmRvZmYvbWFpbmlhcnRpZmFjdHOBoWZDb21taXR4KGQ1ZjdhNjRhZTMxYTVjYWU4ZjdiZTUyMTFmODM4M2Q1ZmFlYjc3MWVpd29ya3NwYWNloWlXb3Jrc3BhY2V4QDgzNWY4N2FkZTQwYmRjOGRmMjJjM2JiZDI3OGQ1N2UwNDBmYWEwOGNjNmU0MTVkNmJkMDM4NGViOWE3ZTUzY2VrcmVjb3JkZWRfYXQbAAZZa8tEcGg="
 }
 ---
@@ -80,7 +80,7 @@ DELIBERATELY NOT DOING (settled — do not relitigate):
   "cites": [],
   "rev": "223mtklwzztxd",
   "seq": 2,
-  "of": 4,
+  "of": 5,
   "text_len": 4862,
   "content": "p2Rib2R5oWtPYnNlcnZhdGlvbqFkdGV4dGBlY2l0ZXOAZmF1dGhvcqJjZGlkeDlkaWQ6a2V5OnpEbmFlU2RCYnJNNk5lWTRpOE1veHVGaXlEdHd4M0FISjhmakVkOTRnckgzMXI4WFllYWdlbnT2Z3N1YmplY3ShZUxvY2Fsc2FnZW50cy9oYW5kb2ZmL21haW5pYXJ0aWZhY3RzgaFmQ29tbWl0eCg0MDBlMjRhNGZkMmZiOGU0NWJkMTI2Y2QzYWU2ZjRmNGE4NGE2NDU4aXdvcmtzcGFjZaFpV29ya3NwYWNleEBhMjEzMjNmYzY5NzI2N2MyYzM2ODc4NTc1ODY4ZDQ4ZTM5MzJlNDM4ZDA3NzA5YjBhNmViY2YyNGQyYWRmOGVma3JlY29yZGVkX2F0GwAGWYR5/+c6"
 }
@@ -132,7 +132,59 @@ NOTHING ASSERTED FROM MEMORY: all state above was computed from git/gh/cargo/day
   "cites": [],
   "rev": "223mtklxemxuh",
   "seq": 3,
-  "of": 4,
+  "of": 5,
   "content": "p2Rib2R5oWtQdWJsaWNhdGlvbqFlbGF5ZXJnR2l0VHJlZWVjaXRlc4BmYXV0aG9yomNkaWR4OWRpZDprZXk6ekRuYWVTZEJick02TmVZNGk4TW94dUZpeUR0d3gzQUhKOGZqRWQ5NGdySDMxcjhYWWVhZ2VudPZnc3ViamVjdKFlTG9jYWxzYWdlbnRzL2hhbmRvZmYvbWFpbmlhcnRpZmFjdHOBoWZDb21taXR4KDQwMGUyNGE0ZmQyZmI4ZTQ1YmQxMjZjZDNhZTZmNGY0YTg0YTY0NThpd29ya3NwYWNloWlXb3Jrc3BhY2V4QGEyMTMyM2ZjNjk3MjY3YzJjMzY4Nzg1NzU4NjhkNDhlMzkzMmU0MzhkMDc3MDliMGE2ZWJjZjI0ZDJhZGY4ZWZrcmVjb3JkZWRfYXQbAAZZhHqpdt4="
 }
 ---
+***8<***
+---
+{
+  "v": 3,
+  "cid": "bafyreigf64nyd2mko2q5yed3ztx5x5almi63x6nvk4szqiqidnydoiakee",
+  "sig": "a13b7ae95ffc0ec1f619fc900e2246316f7ae7ee25a5010e78a30d7a466be86946477cfcbfb5af25b9f58f5951fb4769562e76f9c0e833bc28bf5438566568ca",
+  "author": "did:key:zDnaeSdBbrM6NeY4i8MoxuFiyDtwx3AHJ8fjEd94grH31r8XY",
+  "subject": {
+    "local": "agents/handoff/main"
+  },
+  "kind": "observation",
+  "cites": [],
+  "rev": "223mtoud7duoh",
+  "seq": 4,
+  "of": 5,
+  "text_len": 5267,
+  "content": "p2Rib2R5oWtPYnNlcnZhdGlvbqFkdGV4dGBlY2l0ZXOAZmF1dGhvcqJjZGlkeDlkaWQ6a2V5OnpEbmFlU2RCYnJNNk5lWTRpOE1veHVGaXlEdHd4M0FISjhmakVkOTRnckgzMXI4WFllYWdlbnT2Z3N1YmplY3ShZUxvY2Fsc2FnZW50cy9oYW5kb2ZmL21haW5pYXJ0aWZhY3RzgaFmQ29tbWl0eCg3MGZhYWNkZDU1MzM2ZmNmNWU4NTNhOWM2OTAzMmFlMTBlZThkYTY0aXdvcmtzcGFjZaFpV29ya3NwYWNleEBhMjEzMjNmYzY5NzI2N2MyYzM2ODc4NTc1ODY4ZDQ4ZTM5MzJlNDM4ZDA3NzA5YjBhNmViY2YyNGQyYWRmOGVma3JlY29yZGVkX2F0GwAGWaaSVOZq"
+}
+---
+
+HANDOFF (main) — cospan — 2026-08-22. Supersedes the 2026-08-20 handoff; its "next" items are all DONE (telos drill-down shipped; the Chat tab shipped and then some).
+
+STATE (verified this session via git/gh/cargo/day):
+- branch main; HEAD 70faacd; tree clean; nothing unpushed; main checkout (not a worktree).
+- cargo test 130/130; clippy --all-targets -D warnings clean; fmt --check clean; day doctor composition ok (4 atoms). CI GREEN on main.
+- Tags v0.0.1-alpha.1 .. alpha.15. IMPORTANT: main is TWO features AHEAD of the alpha.15 tag (bb03791 telos drill-down #12, 70faacd chat timestamps #13) — both UNRELEASED. day status sits at atom adversarial-review, next release.
+
+SHIPPED THIS SESSION: alpha.15 = the Chat tab (#11) — a read-only cross-harness view of live agent session buffers read from the harnesses OWN on-disk transcripts (Claude Code JSONL, Codex rollout JSONL, opencode SQLite), scoped to the watched repo, never entering the kan fold. Then merged (unreleased): telos drill-down (#12, Process tab two-column list+detail with witness probe descriptions and tension rationale) and faded chat date/time labels (#13).
+
+DECISIONS A READER NEEDS (not derivable from the log):
+- Chat = split read/write. READ: watched transcripts, per-harness adapter behind a TranscriptSource trait in src/transcripts.rs; poll-driven off change_signal; NOT in substrate::Fold (kan-is-truth). WRITE: a WriteChannel trait in src/command_bus.rs, DEFINED BUT UNIMPLEMENTED — the observe-now-control-later seam; the P3 redirect first slice; primary target the harness message bus (Claude Code Remote Control). Q2 (write-turn identity: appears as human vs cospan-on-behalf) is deferred to that build.
+- Codex model was gotten WRONG TWICE before landing; do NOT revert it. A multi-agent Codex session shares ONE session_id across the director + every subagent, each its own rollout file with a distinct thread id. Sessions are keyed by THREAD id (not session_id), director vs subagent told apart by session_meta.thread_source, guardians (source.subagent.other == guardian, = auto-mode determinations) OMITTED, and subagents nested collapsibly under their director in the rail (z folds; default collapsed).
+- Prompt-tag formatting is PER-HARNESS (CLAUDE_PROMPT_TAGS vs CODEX_PROMPT_TAGS incl. heartbeat), gated on a fixed registry AND code-awareness (pulldown code_ranges) so a message DISCUSSING tags is not reformatted as real ones. opencode message/part body schema is UNDECODED (Q1) so opencode is list-only (sessions shown, bodies unavailable) — honest-ambiguity, not a stub.
+- PROCESS RHYTHM (kept): each feature = /design (recorded, .design/*.md) -> generative-build -> [Chat tab got a hostile Opus adversarial-review SHIP; the smaller #12/#13 were verified by unit tests + real-data smokes + the operator LIVE-TTY eyeball, not a fresh adversarial-review atom] -> branch -> PR -> green CI -> squash-merge. Releases cut on main: bump Cargo.toml+Cargo.lock, commit release: vX, tag ANNOTATED (git tag -a; lightweight is rejected), kan result release (auto-anchors HEAD), kan publish release + new subjects + --all, commit day: publish release claim, push main then tag.
+
+NEXT, in order:
+1. Cut v0.0.1-alpha.16 covering #12 + #13 (main is 2 features past the tag; the day cycle is at release). Follow the release rhythm above.
+2. Then the roadmap. Two candidates: (a) the Chat WRITE SURFACE — implement WriteChannel (message bus first), the P3 redirect first slice that makes Chat interactive and needs the Q2 identity call; (b) rest of P2 — multi-worktree session picker, cospan mcp READ server, harness view. Operator leaned toward finishing Chat/observation polish before control; confirm which.
+3. Chat follow-ups (smaller): decode the opencode message/part body (Q1 — needs a live opencode session in a repo to sample); a deeper multi-agent thread tree beyond director/subagent; tool-name hints in the "N tool calls" fold line.
+
+OPEN ELSEWHERE (kan subjects + day repo):
+- day-repo issues (filed earlier; verified OPEN earlier THIS session, not re-checked at handoff): #237 day-witness fence two shapes; #238 schema two fence names; #239 no block envelope; #240 day status has no --json.
+- kan subject day-summary-in-cospan: Settled(Blocked) on day#240 — a live process-position header + per-witness state need machine-readable day. The telos view shows DECLARED structure only for the same reason.
+- kan subject claim-visual-formatting: blocked on kan surfacing retracted claims.
+
+DELIBERATELY NOT DOING (settled — do not relitigate):
+- No WriteChannel implementation yet (observe-now-control-later ordering; write is the next build).
+- Codex sessions keyed by thread id with director/subagent separation and guardians omitted — do NOT collapse back to one-entry-per-session_id (that hid all subagents).
+- opencode bodies list-only until the data schema is decoded.
+- The comment-view editor evolution (FS tree/diffs) and the Chat "participation" write path remain recorded vision, not started.
+
+NOT MACHINE-CHECKABLE BY /wakeup: the interactive renders (Chat conversation/rail/folds/timestamps, the telos two-column detail with hanging indents) were human-eyeballed by the operator this session — a fact, but not verifiable from git/gh/day.
