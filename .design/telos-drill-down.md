@@ -17,12 +17,14 @@ narrow terminals show only the focused pane. Mirrors the atom pane's
   selected telos's detail lines when drilled (`src/tui.rs`).
 - REQ-3: `process_drill` (`Enter`/`Esc`) toggles `process_detail` for the Telos
   pane as well as Atoms, resetting `atom_scroll`/`telos_scroll` on entry.
-- REQ-4: A pure `telos_detail(&TelosView, &[String], &BTreeMap<String,String>)`
-  renders the detail: `telos/<slug>`, title, statement, each witness with its
-  probe description (from `schema/witness`, or the bare name when unknown), and
-  the tensions whose text names the slug ("(none)" when empty). `ProcessSnapshot`
-  gains a `witnesses` map (witness type -> probe description) parsed from the
-  `schema/witness` day-witness block.
+- REQ-4: A pure `telos_detail(&TelosView, &[Tension], &BTreeMap<String,String>)`
+  renders the detail as **styled lines** (colored headers, markdown statement,
+  green witness names, yellow tension pairs — the Chat-view treatment):
+  `telos/<slug>`, title, statement, each witness with its probe description (from
+  `schema/witness`, or the bare name when unknown), and each tension naming the
+  slug with its recorded **rationale** ("why"). `ProcessSnapshot` gains a
+  `witnesses` map (witness type -> rich probe description) and its `tensions`
+  become a `Tension { between, why }` type — the flat list dropped the why.
 - REQ-5: `draw_telos` renders two columns when wide — a selection-highlighted
   `List` of teloi (title + dim slug) beside the `telos_detail` of the selection —
   and only the focused pane when narrow; `pane_block` marks which pane has focus.

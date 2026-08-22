@@ -2867,7 +2867,7 @@ pub fn process_view_lines(p: &ProcessSnapshot, pane: ProcessPane) -> Vec<String>
             if !p.tensions.is_empty() {
                 lines.push("tensions:".to_string());
                 for tension in &p.tensions {
-                    lines.push(format!("  {tension}"));
+                    lines.push(format!("  {}", tension.pair()));
                 }
             }
             if p.teloi.is_empty() && p.tensions.is_empty() {
@@ -3098,42 +3098,89 @@ pub fn atom_detail(a: &Atom) -> Vec<String> {
     out
 }
 
-/// The telos detail: its slug, title, statement, witnesses (each with the probe
-/// description from `schema/witness`, when known), and the tensions whose text
-/// names the slug (the same slugs `day telos tension` records). Live per-witness
-/// state still needs machine-readable day, so this is declared structure only.
+/// The telos detail as styled lines: slug/title header, the statement rendered
+/// as markdown, each witness with the probe description from `schema/witness`
+/// (colored, dim probe), and each tension naming the telos — its pair plus the
+/// recorded rationale (the "why") rendered as markdown. Live per-witness state
+/// still needs machine-readable day, so this is declared structure only.
 /// Pure/testable.
 pub fn telos_detail(
     t: &substrate::TelosView,
-    tensions: &[String],
+    tensions: &[substrate::Tension],
     probes: &std::collections::BTreeMap<String, String>,
-) -> Vec<String> {
-    let mut out = vec![format!("telos/{}", t.slug)];
+) -> Vec<ratatui::text::Line<'static>> {
+    use ratatui::style::{Color, Modifier, Style};
+    use ratatui::text::{Line, Span};
+
+    let dim = Style::new().add_modifier(Modifier::DIM);
+    let header = |s: String| {
+        Line::from(Span::styled(
+            s,
+            Style::new().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+        ))
+    };
+    let indent = |mut l: Line<'static>, n: usize| {
+        l.spans.insert(0, Span::raw(" ".repeat(n)));
+        l
+    };
+
+    let mut out: Vec<Line<'static>> = vec![Line::from(Span::styled(
+        format!("telos/{}", t.slug),
+        Style::new().fg(Color::Magenta).add_modifier(Modifier::BOLD),
+    ))];
     if !t.title.is_empty() && t.title != t.slug {
-        out.push(t.title.clone());
+        out.push(Line::from(Span::styled(
+            t.title.clone(),
+            Style::new().add_modifier(Modifier::BOLD),
+        )));
     }
-    out.push(String::new());
-    out.push("statement".to_string());
-    out.push(format!("  {}", t.statement));
-    out.push(String::new());
-    out.push(format!("witnesses ({})", t.witnesses.len()));
+
+    out.push(Line::from(""));
+    out.push(header("statement".to_string()));
+    for l in crate::markdown::render(&t.statement) {
+        out.push(indent(l, 2));
+    }
+
+    out.push(Line::from(""));
+    out.push(header(format!("witnesses ({})", t.witnesses.len())));
     if t.witnesses.is_empty() {
-        out.push("  (none declared)".to_string());
+        out.push(Line::from(Span::styled("  (none declared)", dim)));
     }
     for w in &t.witnesses {
-        match probes.get(w) {
-            Some(p) => out.push(format!("  · {w} — {p}")),
-            None => out.push(format!("  · {w}")),
+        let mut spans = vec![
+            Span::styled("  · ", dim),
+            Span::styled(w.clone(), Style::new().fg(Color::Green)),
+        ];
+        if let Some(p) = probes.get(w) {
+            spans.push(Span::styled(format!("   {p}"), dim));
         }
+        out.push(Line::from(spans));
     }
-    out.push(String::new());
-    let related: Vec<&String> = tensions.iter().filter(|x| x.contains(&t.slug)).collect();
-    out.push(format!("tensions ({})", related.len()));
+
+    out.push(Line::from(""));
+    let related: Vec<&substrate::Tension> = tensions.iter().filter(|x| x.names(&t.slug)).collect();
+    out.push(header(format!("tensions ({})", related.len())));
     if related.is_empty() {
-        out.push("  (none)".to_string());
+        out.push(Line::from(Span::styled("  (none)", dim)));
     }
     for x in &related {
-        out.push(format!("  · {x}"));
+        let other = if x.between.0 == t.slug {
+            &x.between.1
+        } else {
+            &x.between.0
+        };
+        out.push(Line::from(vec![
+            Span::styled("  · ", dim),
+            Span::styled(
+                format!("{} <-> {}", t.slug, other),
+                Style::new().fg(Color::Yellow),
+            ),
+        ]));
+        if !x.why.is_empty() {
+            for l in crate::markdown::render(&x.why) {
+                out.push(indent(l, 4));
+            }
+        }
     }
     out
 }
@@ -3240,7 +3287,7 @@ fn draw_telos(frame: &mut ratatui::Frame, state: &AppState, area: ratatui::layou
             " detail "
         };
         frame.render_widget(
-            Paragraph::new(detail_lines[scroll..].join("\n"))
+            Paragraph::new(detail_lines[scroll..].to_vec())
                 .wrap(Wrap { trim: false })
                 .block(pane_block(title.to_string(), detail_focused)),
             a,
@@ -3868,6 +3915,20 @@ mod tests {
     /// The plain text of a rendered chat row (its spans concatenated).
     fn row_text(r: &ChatRow) -> String {
         r.line.spans.iter().map(|s| s.content.as_ref()).collect()
+    }
+
+    /// The plain text of styled lines, joined by newlines (for assertions).
+    fn lines_text(lines: &[ratatui::text::Line<'static>]) -> String {
+        lines
+            .iter()
+            .map(|l| {
+                l.spans
+                    .iter()
+                    .map(|s| s.content.as_ref())
+                    .collect::<String>()
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
     }
 
     #[test]
@@ -4504,27 +4565,32 @@ mod tests {
             witnesses: vec!["published-artifact".into()],
         };
         let tensions = vec![
-            "disposable vs kan-is-truth: comments".to_string(),
-            "poll vs subscribe: unrelated".to_string(),
+            crate::substrate::Tension {
+                between: ("disposable".into(), "kan-is-truth".into()),
+                why: "comments own the state cospan holds".into(),
+            },
+            crate::substrate::Tension {
+                between: ("poll".into(), "subscribe".into()),
+                why: "an unrelated trade-off".into(),
+            },
         ];
         let mut probes = std::collections::BTreeMap::new();
         probes.insert(
             "published-artifact".to_string(),
             "path: .claims/*".to_string(),
         );
-        let j = telos_detail(&t, &tensions, &probes).join("\n");
+        let j = lines_text(&telos_detail(&t, &tensions, &probes));
         assert!(j.contains("telos/kan-is-truth"), "{j}");
         assert!(j.contains("everything is a projection"), "{j}");
-        // The witness shows its probe description, not just its type name.
-        assert!(j.contains("published-artifact — path: .claims/*"), "{j}");
-        assert!(
-            j.contains("disposable vs kan-is-truth"),
-            "names the tension: {j}"
-        );
-        assert!(
-            !j.contains("poll vs subscribe"),
-            "omits unrelated tensions: {j}"
-        );
+        // The witness shows its probe description alongside its type name.
+        assert!(j.contains("published-artifact"), "{j}");
+        assert!(j.contains("path: .claims/*"), "{j}");
+        // The tension names the telos, shows the pair, and — the new detail —
+        // the recorded rationale; the unrelated tension is omitted entirely.
+        assert!(j.contains("kan-is-truth <-> disposable"), "pair: {j}");
+        assert!(j.contains("comments own the state"), "the why: {j}");
+        assert!(!j.contains("poll"), "omits unrelated tensions: {j}");
+        assert!(!j.contains("unrelated trade-off"), "{j}");
     }
 
     #[test]
@@ -4535,10 +4601,9 @@ mod tests {
             statement: "s".into(),
             witnesses: vec!["mystery-witness".into()],
         };
-        let j = telos_detail(&t, &[], &std::collections::BTreeMap::new()).join("\n");
-        // No probe known → the bare witness name, no dangling em dash.
+        let j = lines_text(&telos_detail(&t, &[], &std::collections::BTreeMap::new()));
+        assert!(j.contains("witnesses (1)"), "{j}");
         assert!(j.contains("· mystery-witness"), "{j}");
-        assert!(!j.contains("mystery-witness —"), "{j}");
     }
 
     #[test]
