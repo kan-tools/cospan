@@ -937,10 +937,11 @@ impl AppState {
             (ProcessPane::Telos, false) => self.telos_select(delta),
             (ProcessPane::Telos, true) => {
                 let p = &self.fold.process;
+                let w = self.telos_detail_width();
                 let max = p
                     .teloi
                     .get(self.telos_selected)
-                    .map(|t| telos_detail(t, &p.tensions, &p.witnesses).len())
+                    .map(|t| telos_detail(t, &p.tensions, &p.witnesses, w).len())
                     .unwrap_or(1)
                     .saturating_sub(1);
                 self.telos_scroll =
@@ -957,6 +958,16 @@ impl AppState {
         }
         self.atom_selected =
             (self.atom_selected as isize + delta).clamp(0, n as isize - 1) as usize;
+    }
+
+    /// Width the telos detail wraps to — the detail pane's inner width, matching
+    /// `draw_telos`'s split (62% when wide, full when narrow), for the scroll clamp.
+    fn telos_detail_width(&self) -> usize {
+        let w = match layout_mode(self.body_w) {
+            Fit::Wide => (self.body_w as usize) * 62 / 100,
+            Fit::Narrow => self.body_w as usize,
+        };
+        w.saturating_sub(2).max(1)
     }
 
     /// Move the highlighted telos in the list, clamped.
@@ -3108,60 +3119,98 @@ pub fn telos_detail(
     t: &substrate::TelosView,
     tensions: &[substrate::Tension],
     probes: &std::collections::BTreeMap<String, String>,
+    width: usize,
 ) -> Vec<ratatui::text::Line<'static>> {
     use ratatui::style::{Color, Modifier, Style};
     use ratatui::text::{Line, Span};
 
     let dim = Style::new().add_modifier(Modifier::DIM);
-    let header = |s: String| {
+    let header_style = Style::new().fg(Color::Cyan).add_modifier(Modifier::BOLD);
+
+    let mut out: Vec<Line<'static>> = Vec::new();
+    // Push `line` at `indent` columns, wrapping to the pane width with a hanging
+    // indent — every wrapped continuation keeps the indent instead of falling
+    // back to column 0.
+    let push = |out: &mut Vec<Line<'static>>, indent: usize, line: Line<'static>| {
+        let inner = width.saturating_sub(indent).max(1);
+        for wl in wrap_line(&line, inner) {
+            let mut spans: Vec<Span<'static>> = Vec::new();
+            if indent > 0 {
+                spans.push(Span::raw(" ".repeat(indent)));
+            }
+            spans.extend(wl.spans);
+            out.push(Line::from(spans));
+        }
+    };
+
+    push(
+        &mut out,
+        0,
         Line::from(Span::styled(
-            s,
-            Style::new().fg(Color::Cyan).add_modifier(Modifier::BOLD),
-        ))
-    };
-    let indent = |mut l: Line<'static>, n: usize| {
-        l.spans.insert(0, Span::raw(" ".repeat(n)));
-        l
-    };
-
-    let mut out: Vec<Line<'static>> = vec![Line::from(Span::styled(
-        format!("telos/{}", t.slug),
-        Style::new().fg(Color::Magenta).add_modifier(Modifier::BOLD),
-    ))];
+            format!("telos/{}", t.slug),
+            Style::new().fg(Color::Magenta).add_modifier(Modifier::BOLD),
+        )),
+    );
     if !t.title.is_empty() && t.title != t.slug {
-        out.push(Line::from(Span::styled(
-            t.title.clone(),
-            Style::new().add_modifier(Modifier::BOLD),
-        )));
+        push(
+            &mut out,
+            0,
+            Line::from(Span::styled(
+                t.title.clone(),
+                Style::new().add_modifier(Modifier::BOLD),
+            )),
+        );
     }
 
     out.push(Line::from(""));
-    out.push(header("statement".to_string()));
+    push(
+        &mut out,
+        0,
+        Line::from(Span::styled("statement", header_style)),
+    );
     for l in crate::markdown::render(&t.statement) {
-        out.push(indent(l, 2));
+        push(&mut out, 2, l);
     }
 
     out.push(Line::from(""));
-    out.push(header(format!("witnesses ({})", t.witnesses.len())));
+    push(
+        &mut out,
+        0,
+        Line::from(Span::styled(
+            format!("witnesses ({})", t.witnesses.len()),
+            header_style,
+        )),
+    );
     if t.witnesses.is_empty() {
-        out.push(Line::from(Span::styled("  (none declared)", dim)));
+        push(
+            &mut out,
+            2,
+            Line::from(Span::styled("(none declared)", dim)),
+        );
     }
     for w in &t.witnesses {
         let mut spans = vec![
-            Span::styled("  · ", dim),
+            Span::styled("· ", dim),
             Span::styled(w.clone(), Style::new().fg(Color::Green)),
         ];
         if let Some(p) = probes.get(w) {
             spans.push(Span::styled(format!("   {p}"), dim));
         }
-        out.push(Line::from(spans));
+        push(&mut out, 2, Line::from(spans));
     }
 
     out.push(Line::from(""));
     let related: Vec<&substrate::Tension> = tensions.iter().filter(|x| x.names(&t.slug)).collect();
-    out.push(header(format!("tensions ({})", related.len())));
+    push(
+        &mut out,
+        0,
+        Line::from(Span::styled(
+            format!("tensions ({})", related.len()),
+            header_style,
+        )),
+    );
     if related.is_empty() {
-        out.push(Line::from(Span::styled("  (none)", dim)));
+        push(&mut out, 2, Line::from(Span::styled("(none)", dim)));
     }
     for x in &related {
         let other = if x.between.0 == t.slug {
@@ -3169,16 +3218,20 @@ pub fn telos_detail(
         } else {
             &x.between.0
         };
-        out.push(Line::from(vec![
-            Span::styled("  · ", dim),
-            Span::styled(
-                format!("{} <-> {}", t.slug, other),
-                Style::new().fg(Color::Yellow),
-            ),
-        ]));
+        push(
+            &mut out,
+            2,
+            Line::from(vec![
+                Span::styled("· ", dim),
+                Span::styled(
+                    format!("{} <-> {}", t.slug, other),
+                    Style::new().fg(Color::Yellow),
+                ),
+            ]),
+        );
         if !x.why.is_empty() {
             for l in crate::markdown::render(&x.why) {
-                out.push(indent(l, 4));
+                push(&mut out, 4, l);
             }
         }
     }
@@ -3231,7 +3284,7 @@ fn draw_atoms(frame: &mut ratatui::Frame, state: &AppState, area: ratatui::layou
 fn draw_telos(frame: &mut ratatui::Frame, state: &AppState, area: ratatui::layout::Rect) {
     use ratatui::layout::{Constraint, Layout};
     use ratatui::style::{Color, Modifier, Style};
-    use ratatui::widgets::{List, ListItem, ListState, Paragraph, Wrap};
+    use ratatui::widgets::{List, ListItem, ListState, Paragraph};
     let p = &state.fold.process;
 
     if p.teloi.is_empty() {
@@ -3249,7 +3302,6 @@ fn draw_telos(frame: &mut ratatui::Frame, state: &AppState, area: ratatui::layou
     // terminal shows only the focused pane.
     let detail_focused = state.process_detail;
     let sel = state.telos_selected.min(p.teloi.len().saturating_sub(1));
-    let detail_lines = telos_detail(&p.teloi[sel], &p.tensions, &p.witnesses);
 
     let render_list = |frame: &mut ratatui::Frame, a: ratatui::layout::Rect| {
         let items: Vec<ListItem> = p
@@ -3279,16 +3331,19 @@ fn draw_telos(frame: &mut ratatui::Frame, state: &AppState, area: ratatui::layou
             &mut ls,
         );
     };
+    // Lay the detail out to the actual pane width so hanging indents wrap exactly
+    // (no double-wrap: the lines are already wrapped, so no `Wrap` on the widget).
     let render_detail = |frame: &mut ratatui::Frame, a: ratatui::layout::Rect| {
-        let scroll = state.telos_scroll.min(detail_lines.len().saturating_sub(1));
+        let inner_w = (a.width as usize).saturating_sub(2).max(1);
+        let lines = telos_detail(&p.teloi[sel], &p.tensions, &p.witnesses, inner_w);
+        let scroll = state.telos_scroll.min(lines.len().saturating_sub(1));
         let title = if detail_focused {
             " detail · Esc back "
         } else {
             " detail "
         };
         frame.render_widget(
-            Paragraph::new(detail_lines[scroll..].to_vec())
-                .wrap(Wrap { trim: false })
+            Paragraph::new(lines[scroll..].to_vec())
                 .block(pane_block(title.to_string(), detail_focused)),
             a,
         );
@@ -4579,7 +4634,7 @@ mod tests {
             "published-artifact".to_string(),
             "path: .claims/*".to_string(),
         );
-        let j = lines_text(&telos_detail(&t, &tensions, &probes));
+        let j = lines_text(&telos_detail(&t, &tensions, &probes, 80));
         assert!(j.contains("telos/kan-is-truth"), "{j}");
         assert!(j.contains("everything is a projection"), "{j}");
         // The witness shows its probe description alongside its type name.
@@ -4601,7 +4656,12 @@ mod tests {
             statement: "s".into(),
             witnesses: vec!["mystery-witness".into()],
         };
-        let j = lines_text(&telos_detail(&t, &[], &std::collections::BTreeMap::new()));
+        let j = lines_text(&telos_detail(
+            &t,
+            &[],
+            &std::collections::BTreeMap::new(),
+            80,
+        ));
         assert!(j.contains("witnesses (1)"), "{j}");
         assert!(j.contains("· mystery-witness"), "{j}");
     }
