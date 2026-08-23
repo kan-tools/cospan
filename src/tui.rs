@@ -3410,12 +3410,15 @@ fn draw_comments(
         return;
     }
 
-    // Wide: the file tree rail beside the content pane; narrow: content only.
+    // Wide: the file tree rail beside the content pane; narrow: content only. The
+    // rail is 32% of the width but capped at RAIL_MAX, so on a wide terminal it
+    // stops growing instead of eating half the screen with mostly-empty gutter.
+    const RAIL_MAX: u16 = 40;
     let (files_area, main_area) = match layout_mode(width) {
         Fit::Wide => {
+            let rail_w = ((body.width as u32 * 32 / 100) as u16).min(RAIL_MAX);
             let [l, r] =
-                Layout::horizontal([Constraint::Percentage(32), Constraint::Percentage(68)])
-                    .areas(body);
+                Layout::horizontal([Constraint::Length(rail_w), Constraint::Min(0)]).areas(body);
             (Some(l), r)
         }
         Fit::Narrow => (None, body),
