@@ -41,17 +41,19 @@ struct TrieNode {
 }
 
 /// One row of the Comments file tree (S2): a collapsible `Dir` or a selectable
-/// `File` carrying its git status. `depth` drives the render indent.
+/// `File` carrying its git status. `guide` is the pre-rendered ancestry prefix
+/// (`│  ` / `   ` per ancestor, then a `├─ ` / `└─ ` connector) that draws the
+/// nesting lines and keeps every row at the same depth aligned.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum FileRow {
     Dir {
         path: String,
-        depth: usize,
+        guide: String,
         collapsed: bool,
     },
     File {
         path: String,
-        depth: usize,
+        guide: String,
         status: filetree::GitStatus,
     },
 }
@@ -76,7 +78,7 @@ struct FileNode {
 /// the subtree of any collapsed directory (`dir:<path>` in `collapsed`).
 pub fn build_file_rows(
     entries: &[filetree::FileEntry],
-    collapsed: &HashSet<String>,
+    expanded: &HashSet<String>,
 ) -> Vec<FileRow> {
     let mut root = FileNode::default();
     for e in entries {
@@ -94,40 +96,48 @@ pub fn build_file_rows(
             }
         }
     }
+    // Directories are collapsed by DEFAULT; a dir is walked into only when its
+    // `dir:<path>` key is in `expanded`. `ancestors` is the guide prefix drawn to
+    // the left of this level (`│  ` where an ancestor has more siblings below,
+    // `   ` where it was the last child).
     fn walk(
         node: &FileNode,
         prefix: &str,
-        depth: usize,
-        collapsed: &HashSet<String>,
+        ancestors: &str,
+        expanded: &HashSet<String>,
         rows: &mut Vec<FileRow>,
     ) {
-        for (seg, child) in &node.children {
+        let n = node.children.len();
+        for (i, (seg, child)) in node.children.iter().enumerate() {
+            let last = i == n - 1;
             let full = if prefix.is_empty() {
                 seg.clone()
             } else {
                 format!("{prefix}/{seg}")
             };
+            let guide = format!("{ancestors}{}", if last { "└─ " } else { "├─ " });
             if child.children.is_empty() {
                 rows.push(FileRow::File {
                     path: full,
-                    depth,
+                    guide,
                     status: child.status.unwrap_or(filetree::GitStatus::Clean),
                 });
             } else {
-                let is_col = collapsed.contains(&format!("dir:{full}"));
+                let is_open = expanded.contains(&format!("dir:{full}"));
                 rows.push(FileRow::Dir {
                     path: full.clone(),
-                    depth,
-                    collapsed: is_col,
+                    guide,
+                    collapsed: !is_open,
                 });
-                if !is_col {
-                    walk(child, &full, depth + 1, collapsed, rows);
+                if is_open {
+                    let child_anc = format!("{ancestors}{}", if last { "   " } else { "│  " });
+                    walk(child, &full, &child_anc, expanded, rows);
                 }
             }
         }
     }
     let mut rows = Vec::new();
-    walk(&root, "", 0, collapsed, &mut rows);
+    walk(&root, "", "", expanded, &mut rows);
     rows
 }
 
@@ -211,12 +221,13 @@ pub struct AppState {
     /// The repo's browsable files with git status, rebuilt on entering the view,
     /// on a re-fold, and when `.git/index` changes.
     pub file_entries: Vec<filetree::FileEntry>,
-    /// The file tree flattened to visible rows (dirs collapse via `file_collapsed`).
+    /// The file tree flattened to visible rows (dirs are collapsed by default and
+    /// expanded via `file_expanded`).
     pub file_rows: Vec<FileRow>,
     /// Cursor into `file_rows` (the rail).
     pub file_selected: usize,
-    /// Collapsed directory keys (`dir:<path>`).
-    pub file_collapsed: HashSet<String>,
+    /// Expanded directory keys (`dir:<path>`); everything else is collapsed.
+    pub file_expanded: HashSet<String>,
     /// The repo-relative file the operator has opened for commenting, or `None`
     /// before one is chosen. Drives `comment_content`/`comment_localized`.
     pub open_file: Option<PathBuf>,
@@ -531,7 +542,7 @@ impl AppState {
             file_entries: Vec::new(),
             file_rows: Vec::new(),
             file_selected: 0,
-            file_collapsed: HashSet::new(),
+            file_expanded: HashSet::new(),
             open_file: None,
             file_index_mtime: None,
             comment_focus: CommentFocus::Tree,
@@ -784,10 +795,10 @@ impl AppState {
         self.rebuild_file_rows();
     }
 
-    /// Reflatten `file_rows` from the cached entries and current collapse set,
+    /// Reflatten `file_rows` from the cached entries and current expansion set,
     /// keeping the cursor in range.
     pub fn rebuild_file_rows(&mut self) {
-        self.file_rows = build_file_rows(&self.file_entries, &self.file_collapsed);
+        self.file_rows = build_file_rows(&self.file_entries, &self.file_expanded);
         self.file_selected = self
             .file_selected
             .min(self.file_rows.len().saturating_sub(1));
@@ -807,13 +818,15 @@ impl AppState {
         }
     }
 
-    /// Enter the Comments view: rebuild the file tree and focus the rail.
+    /// Enter the Comments view: rebuild the file tree, focus the rail, and preview
+    /// the file under the cursor.
     pub fn enter_comments(&mut self) {
         self.reload_files();
         self.comment_focus = CommentFocus::Tree;
+        self.preview_selected();
     }
 
-    /// Move the file-tree cursor, clamped.
+    /// Move the file-tree cursor, clamped, then live-preview the file it lands on.
     pub fn file_move(&mut self, delta: isize) {
         let n = self.file_rows.len();
         if n == 0 {
@@ -821,16 +834,38 @@ impl AppState {
         }
         self.file_selected =
             (self.file_selected as isize + delta).clamp(0, n as isize - 1) as usize;
+        self.preview_selected();
     }
 
-    /// `Enter` in the tree: toggle a directory's collapse, or open a file (which
-    /// loads it and moves focus to the gutter).
+    /// Load the file under the cursor into the gutter *without* changing focus —
+    /// the live preview as you browse. A directory row leaves the last preview up.
+    pub fn preview_selected(&mut self) {
+        if let Some(FileRow::File { path, .. }) = self.file_rows.get(self.file_selected).cloned() {
+            self.set_preview(PathBuf::from(path));
+        }
+    }
+
+    /// Point the gutter at `rel`, loading it only when it differs from what is
+    /// already shown (so scrolling the rail doesn't thrash a re-read).
+    fn set_preview(&mut self, rel: PathBuf) {
+        if self.open_file.as_deref() == Some(rel.as_path()) {
+            return;
+        }
+        self.open_file = Some(rel);
+        self.comment_selected = 0;
+        self.comment_scroll = 0;
+        self.comment_msg = None;
+        self.reload_after_write(); // comment_loaded now differs -> forces the read
+    }
+
+    /// `Enter` in the tree: toggle a directory's expansion, or focus the gutter on
+    /// the file under the cursor (already previewed) so it can be commented on.
     pub fn file_activate(&mut self) {
         match self.file_rows.get(self.file_selected).cloned() {
             Some(FileRow::Dir { path, .. }) => {
                 let key = format!("dir:{path}");
-                if !self.file_collapsed.remove(&key) {
-                    self.file_collapsed.insert(key);
+                if !self.file_expanded.remove(&key) {
+                    self.file_expanded.insert(key);
                 }
                 self.rebuild_file_rows();
             }
@@ -839,15 +874,10 @@ impl AppState {
         }
     }
 
-    /// Open a repo-relative file for commenting: load its content + sidecar and
-    /// give the gutter focus. Forces a re-read on the next `refresh_comments`.
+    /// Open a repo-relative file into the gutter and give it focus for commenting.
     pub fn open_path(&mut self, rel: PathBuf) {
-        self.open_file = Some(rel);
-        self.comment_selected = 0;
-        self.comment_scroll = 0;
-        self.comment_msg = None;
+        self.set_preview(rel);
         self.comment_focus = CommentFocus::Comments;
-        self.reload_after_write(); // comment_loaded now differs -> forces the read
     }
 
     /// Refresh the open file's comment localizations. Re-reads when the open file
@@ -2987,7 +3017,7 @@ fn view_header(view: View) -> String {
     let keys = match view {
         View::Chat => "· ←→ session · z fold · j/k scroll · ⇧↑↓ msg · ↵ expand ",
         View::Comments => {
-            "· j/k move · ↵ open/fold · Esc tree · a add · r reply · e/d edit/del · x resolve "
+            "· j/k browse · ↵ fold/comment · Esc tree · a add · r reply · e/d edit/del · x resolve "
         }
         View::Process => "· ←→ atoms/telos · j/k scroll ",
         View::Ledger => "",
@@ -3315,35 +3345,37 @@ fn git_marker_style(s: filetree::GitStatus) -> (char, ratatui::style::Color) {
     (filetree::marker(s), color)
 }
 
-/// One rail row: an indented collapsible directory, or a file with its git marker.
+/// One rail row: the dim ancestry guide, then a collapsible directory (fold
+/// arrow + bold name) or a file (git marker + name), aligned by the guide width.
 fn file_row_item(row: &FileRow) -> ratatui::widgets::ListItem<'static> {
-    use ratatui::style::{Modifier, Style};
+    use ratatui::style::{Color, Modifier, Style};
     use ratatui::text::{Line, Span};
     use ratatui::widgets::ListItem;
     let base = |p: &str| p.rsplit('/').next().unwrap_or(p).to_string();
+    let guide_style = Style::new().fg(Color::DarkGray);
     match row {
         FileRow::Dir {
             path,
-            depth,
+            guide,
             collapsed,
         } => {
             let arrow = if *collapsed { "▸" } else { "▾" };
             ListItem::new(Line::from(vec![
-                Span::raw(format!("{}{arrow} ", "  ".repeat(*depth))),
+                Span::styled(guide.clone(), guide_style),
                 Span::styled(
-                    format!("{}/", base(path)),
+                    format!("{arrow} {}/", base(path)),
                     Style::new().add_modifier(Modifier::BOLD),
                 ),
             ]))
         }
         FileRow::File {
             path,
-            depth,
+            guide,
             status,
         } => {
             let (m, color) = git_marker_style(*status);
             ListItem::new(Line::from(vec![
-                Span::raw(format!("{}  ", "  ".repeat(*depth))),
+                Span::styled(guide.clone(), guide_style),
                 Span::styled(format!("{m} "), Style::new().fg(color)),
                 Span::styled(base(path), Style::new().fg(color)),
             ]))
@@ -3401,7 +3433,7 @@ fn draw_comments(
         frame.render_stateful_widget(
             List::new(items)
                 .block(pane_block(
-                    format!(" files · {} · ↵ open ", state.file_entries.len()),
+                    format!(" files · {} · ↵ fold/comment ", state.file_entries.len()),
                     focused,
                 ))
                 .highlight_style(Style::new().add_modifier(Modifier::REVERSED))
@@ -5580,14 +5612,14 @@ mod tests {
     fn comments_header_shows_the_navigation_legend() {
         // The tree-nav, open, and authoring keys are visible in the header.
         let h = view_header(View::Comments);
-        assert!(h.contains("open/fold"), "no tree-open hint: {h}");
+        assert!(h.contains("fold/comment"), "no tree hint: {h}");
         assert!(h.contains("a add"), "no authoring hint: {h}");
         // Other views do not carry the authoring hint.
         assert!(!view_header(View::Ledger).contains("a add"));
     }
 
     #[test]
-    fn build_file_rows_makes_a_collapsible_tree() {
+    fn build_file_rows_is_collapsed_by_default_and_expands_on_demand() {
         use crate::filetree::{FileEntry, GitStatus};
         let entries = vec![
             FileEntry {
@@ -5603,30 +5635,45 @@ mod tests {
                 status: GitStatus::Untracked,
             },
         ];
-        let mut collapsed = HashSet::new();
-        let rows = build_file_rows(&entries, &collapsed);
-        // BTreeMap sorts "README.md" < "src", so the file comes first, then the dir.
+        // Nothing expanded: only top level, `src` collapsed and its subtree hidden.
+        let mut expanded = HashSet::new();
+        let rows = build_file_rows(&entries, &expanded);
         assert!(matches!(&rows[0], FileRow::File { path, .. } if path == "README.md"));
-        assert!(matches!(&rows[1], FileRow::Dir { path, .. } if path == "src"));
-        assert!(rows
-            .iter()
-            .any(|r| matches!(r, FileRow::File { path, .. } if path == "src/sub/b.rs")));
+        assert!(
+            matches!(&rows[1], FileRow::Dir { path, collapsed, .. } if path == "src" && *collapsed)
+        );
+        assert_eq!(rows.len(), 2, "a collapsed dir shows no children: {rows:?}");
 
-        // Collapsing `src` hides its whole subtree; the dir row is marked collapsed.
-        collapsed.insert("dir:src".into());
-        let rows = build_file_rows(&entries, &collapsed);
+        // Expand `src`: its direct children appear; `src/sub` is still collapsed.
+        expanded.insert("dir:src".into());
+        let rows = build_file_rows(&entries, &expanded);
         assert!(rows
             .iter()
-            .all(|r| !matches!(r, FileRow::File { path, .. } if path.starts_with("src/"))));
-        assert!(rows.iter().any(
-            |r| matches!(r, FileRow::Dir { path, collapsed, .. } if path == "src" && *collapsed)
-        ));
+            .any(|r| matches!(r, FileRow::File { path, .. } if path == "src/a.rs")));
+        assert!(rows
+            .iter()
+            .all(|r| !matches!(r, FileRow::File { path, .. } if path == "src/sub/b.rs")));
+
+        // Expand `src/sub` too: the nested file appears, and its guide is deeper.
+        expanded.insert("dir:src/sub".into());
+        let rows = build_file_rows(&entries, &expanded);
+        let b = rows
+            .iter()
+            .find(|r| matches!(r, FileRow::File { path, .. } if path == "src/sub/b.rs"))
+            .expect("b.rs shows when its dirs are expanded");
+        let FileRow::File { guide, .. } = b else {
+            unreachable!()
+        };
+        assert!(
+            guide.contains("└─") || guide.contains("├─"),
+            "guide draws a connector: {guide:?}"
+        );
     }
 
     #[test]
-    fn file_move_clamps_and_activate_opens_a_file() {
-        // Over a real temp git repo: the tree lists files, Enter on a File opens it
-        // into the gutter and shifts focus.
+    fn file_move_previews_and_activate_opens_a_file() {
+        // Over a real temp git repo: dirs are collapsed by default, moving onto a
+        // file previews it (no focus change), and Enter focuses the gutter.
         let repo = comments_tmp("tree-open");
         std::fs::create_dir_all(repo.join("src")).unwrap();
         std::fs::write(repo.join("src/a.rs"), "fn a() {}\n").unwrap();
@@ -5646,19 +5693,44 @@ mod tests {
         let mut a = AppState::new(repo.clone(), fold_of(&[]), None);
         a.enter_comments();
         assert!(!a.file_rows.is_empty(), "the tree lists the repo's files");
-        a.file_move(100);
-        assert!(a.file_selected < a.file_rows.len(), "cursor stays in range");
+        // `src` is collapsed by default, so `src/a.rs` is not visible yet.
+        assert!(
+            a.file_rows
+                .iter()
+                .all(|r| !matches!(r, FileRow::File { path, .. } if path == "src/a.rs")),
+            "dirs are collapsed by default: {:?}",
+            a.file_rows
+        );
 
+        // Expand `src` (its Dir row is the only row on this fixture).
+        let dir_idx = a
+            .file_rows
+            .iter()
+            .position(|r| matches!(r, FileRow::Dir { path, .. } if path == "src"))
+            .expect("src dir row");
+        a.file_selected = dir_idx;
+        a.file_activate(); // expands, stays in Tree focus
+        assert_eq!(a.comment_focus, CommentFocus::Tree);
+
+        // Move the cursor onto src/a.rs -> it previews without focus change.
         let idx = a
             .file_rows
             .iter()
             .position(|r| matches!(r, FileRow::File { path, .. } if path == "src/a.rs"))
-            .expect("src/a.rs is in the tree");
-        a.file_selected = idx;
-        a.file_activate();
+            .expect("src/a.rs visible once src is expanded");
+        a.file_move(idx as isize - a.file_selected as isize);
         assert_eq!(a.open_file.as_deref(), Some(Path::new("src/a.rs")));
-        assert_eq!(a.comment_focus, CommentFocus::Comments);
         assert_eq!(a.comment_content, "fn a() {}\n");
+        assert_eq!(
+            a.comment_focus,
+            CommentFocus::Tree,
+            "preview does not steal focus"
+        );
+
+        // Enter focuses the gutter for commenting.
+        a.file_activate();
+        assert_eq!(a.comment_focus, CommentFocus::Comments);
+        assert_eq!(a.open_file.as_deref(), Some(Path::new("src/a.rs")));
         std::fs::remove_dir_all(&repo).ok();
     }
 
