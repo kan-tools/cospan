@@ -1591,6 +1591,31 @@ impl AppState {
         })
     }
 
+    /// The ids of the open file's comments that have been promoted to kan — read
+    /// from the in-memory fold (a projection of the log, `telos/kan-is-truth`), so
+    /// the indicator appears once a promote's claim lands in the next re-fold and
+    /// reflects promotions from any session, not just this one. No subprocess.
+    pub fn promoted_ids(&self) -> HashSet<String> {
+        let mut set = HashSet::new();
+        let Some(rel) = self.open_file.as_ref() else {
+            return set;
+        };
+        let subject = comments::comment_subject(&rel.to_string_lossy());
+        let Some(claims) = self.fold.claims.get(&subject) else {
+            return set;
+        };
+        for (c, _) in &self.comment_localized {
+            let needle = format!("\"id\":\"{}\"", c.id);
+            if claims
+                .iter()
+                .any(|cl| cl.text.as_deref().is_some_and(|t| t.contains(&needle)))
+            {
+                set.insert(c.id.clone());
+            }
+        }
+        set
+    }
+
     /// Commit the active compose: create the comment / append the reply / rewrite
     /// the body, persist, and re-read. A no-op unless a `Compose` is active — so
     /// `Ctrl-S` in pick-line mode does nothing.
@@ -1759,6 +1784,7 @@ pub fn gutter_lines<'a>(
     upto: usize,
     localized: &'a [(Comment, Localization)],
     selected: usize,
+    promoted: &HashSet<String>,
 ) -> (Vec<ratatui::text::Line<'static>>, Vec<&'a Comment>) {
     use ratatui::style::{Modifier, Style};
     use ratatui::text::{Line, Span};
@@ -1789,12 +1815,19 @@ pub fn gutter_lines<'a>(
                         .find(|(_, (_, loc))| covers(loc))
                 });
             let (marker, style) = match hit {
-                Some((idx, (_, loc))) => {
+                Some((idx, (c, loc))) => {
                     let mut st = state_style(loc.state);
                     if idx == selected {
                         st = st.add_modifier(Modifier::REVERSED);
                     }
-                    ("●", st)
+                    // A promoted (kan-snapshotted) comment gets a filled diamond
+                    // instead of the dot, so the durable ones stand out at a glance.
+                    let glyph = if promoted.contains(&c.id) {
+                        "◆"
+                    } else {
+                        "●"
+                    };
+                    (glyph, st)
                 }
                 None => (" ", Style::new()),
             };
@@ -1818,8 +1851,12 @@ pub fn gutter_lines<'a>(
 /// The detail-strip lines for one comment: a header (state · where · confidence ·
 /// author), the body, each reply indented and attributed, and a `[resolved]`
 /// marker when resolved. Pure, so the thread render is unit-testable.
-pub fn thread_lines(c: &Comment, loc: &Localization) -> Vec<ratatui::text::Line<'static>> {
-    use ratatui::style::{Modifier, Style};
+pub fn thread_lines(
+    c: &Comment,
+    loc: &Localization,
+    promoted: bool,
+) -> Vec<ratatui::text::Line<'static>> {
+    use ratatui::style::{Color, Modifier, Style};
     use ratatui::text::{Line, Span};
     let at = loc
         .span
@@ -1832,6 +1869,12 @@ pub fn thread_lines(c: &Comment, loc: &Localization) -> Vec<ratatui::text::Line<
             loc.confidence, c.author.id
         )),
     ];
+    if promoted {
+        header.push(Span::styled(
+            "  ◆ kan",
+            Style::new().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+        ));
+    }
     if c.resolved {
         header.push(Span::styled(
             "  [resolved]",
@@ -3218,11 +3261,15 @@ pub fn note_block(
     loc: &Localization,
     w: usize,
     selected: bool,
+    promoted: bool,
 ) -> Vec<ratatui::text::Line<'static>> {
     use ratatui::style::{Modifier, Style};
     use ratatui::text::{Line, Span};
     const BODY_CAP: usize = 3;
     let mut label = format!("@{} · {:?}", c.author.id, loc.state);
+    if promoted {
+        label.push_str(" · kan");
+    }
     if c.resolved {
         label.push_str(" [resolved]");
     }
@@ -3231,8 +3278,11 @@ pub fn note_block(
     } else {
         Style::new()
     };
+    // A filled diamond (◆) marks a promoted comment; a hollow dot (●) an
+    // ephemeral one — same signal as the code gutter.
+    let bullet = if promoted { "◆ " } else { "● " };
     let mut lines = vec![Line::from(vec![
-        Span::styled("● ", state_style(loc.state)),
+        Span::styled(bullet, state_style(loc.state)),
         Span::styled(label, header_style),
     ])];
 
@@ -3603,12 +3653,14 @@ fn draw_comments(
         return;
     }
 
+    let promoted = state.promoted_ids();
     let (code_lines, unresolved) = gutter_lines(
         &state.comment_content,
         &state.selected_ext(),
         state.highlight_upto(content_area.height),
         &state.comment_localized,
         state.comment_selected,
+        &promoted,
     );
     let file_title = state
         .open_file
@@ -3662,7 +3714,13 @@ fn draw_comments(
                         (
                             idx,
                             s,
-                            note_block(c, loc, note_w, idx == state.comment_selected),
+                            note_block(
+                                c,
+                                loc,
+                                note_w,
+                                idx == state.comment_selected,
+                                promoted.contains(&c.id),
+                            ),
                         )
                     })
                 })
@@ -3704,7 +3762,7 @@ fn draw_comments(
     // Strip: the selected comment's full thread, then the unresolvable list.
     let mut strip: Vec<Line> = Vec::new();
     if let Some((c, loc)) = state.comment_localized.get(state.comment_selected) {
-        strip.extend(thread_lines(c, loc));
+        strip.extend(thread_lines(c, loc, promoted.contains(&c.id)));
     }
     if !unresolved.is_empty() {
         strip.push(Line::from(Span::styled(
@@ -3786,6 +3844,7 @@ fn draw_compose(
         upto,
         &state.comment_localized,
         state.comment_selected,
+        &state.promoted_ids(),
     );
     if let Some(t) = target {
         if let Some(l) = code_lines.get_mut(t) {
@@ -5940,7 +5999,8 @@ mod tests {
                 },
             ),
         ];
-        let (lines, unresolved) = gutter_lines(content, "", usize::MAX, &localized, 0);
+        let (lines, unresolved) =
+            gutter_lines(content, "", usize::MAX, &localized, 0, &HashSet::new());
         assert_eq!(lines.len(), 3);
         // Line index 1 (the anchored one) carries the ● marker; the others a space.
         let marker = |i: usize| lines[i].spans[0].content.to_string();
@@ -5986,7 +6046,7 @@ mod tests {
             span: Some((0, 0)),
             confidence: 0.8,
         };
-        let lines = note_block(&c, &loc, 12, false);
+        let lines = note_block(&c, &loc, 12, false, false);
         let joined = lines.iter().map(line_text).collect::<Vec<_>>().join("\n");
         assert!(joined.contains("@tester"), "{joined}");
         assert!(joined.contains("Drifted"), "{joined}");
@@ -6046,7 +6106,8 @@ mod tests {
             .filter_map(|(i, (_, loc))| loc.span.map(|(s, _)| (i, s)))
             .collect();
         assert_eq!(notes, vec![(0, 0)]); // only the anchored one
-        let (_lines, unresolved) = gutter_lines(content, "", usize::MAX, &localized, 0);
+        let (_lines, unresolved) =
+            gutter_lines(content, "", usize::MAX, &localized, 0, &HashSet::new());
         assert_eq!(unresolved.len(), 1);
         assert_eq!(unresolved[0].body, "lost");
     }
@@ -6090,7 +6151,7 @@ mod tests {
             span: Some((0, 0)),
             confidence: 1.0,
         };
-        let texts: Vec<String> = thread_lines(&c, &loc)
+        let texts: Vec<String> = thread_lines(&c, &loc, false)
             .iter()
             .map(|l| {
                 l.spans
@@ -6107,6 +6168,71 @@ mod tests {
             "reply not attributed/indented: {texts:?}"
         );
         assert!(texts.iter().any(|t| t.contains("[resolved]")), "{texts:?}");
+    }
+
+    #[test]
+    fn promoted_comment_gets_a_diamond_marker_and_kan_tag() {
+        let content = "l0\nl1\n";
+        let c = mk_comment(content, 0, "note"); // id "c_note"
+        let loc = Localization {
+            state: State::Anchored,
+            span: Some((0, 0)),
+            confidence: 1.0,
+        };
+        let localized = vec![(c.clone(), loc.clone())];
+
+        // Not promoted: the hollow dot, and no kan tag in the strip.
+        let empty = HashSet::new();
+        let (lines, _) = gutter_lines(content, "", usize::MAX, &localized, 0, &empty);
+        assert_eq!(lines[0].spans[0].content.as_ref(), "●");
+        let strip = thread_lines(&c, &loc, false);
+        assert!(!strip
+            .iter()
+            .flat_map(|l| l.spans.iter())
+            .any(|s| s.content.contains("kan")));
+
+        // Promoted: a filled diamond, and a `◆ kan` tag in the strip header.
+        let mut promoted = HashSet::new();
+        promoted.insert("c_note".to_string());
+        let (lines, _) = gutter_lines(content, "", usize::MAX, &localized, 0, &promoted);
+        assert_eq!(lines[0].spans[0].content.as_ref(), "◆");
+        let strip = thread_lines(&c, &loc, true);
+        assert!(strip
+            .iter()
+            .flat_map(|l| l.spans.iter())
+            .any(|s| s.content.contains("kan")));
+    }
+
+    #[test]
+    fn promoted_ids_reads_promotions_from_the_fold() {
+        // A comment is "promoted" when a claim on comment/<file> carries its id.
+        let mut a = app(&[]);
+        a.open_file = Some(PathBuf::from("src/a.rs"));
+        let content = "l0\n";
+        a.comment_localized = vec![(
+            mk_comment(content, 0, "note"), // id "c_note"
+            Localization {
+                state: State::Anchored,
+                span: Some((0, 0)),
+                confidence: 1.0,
+            },
+        )];
+        // A promoted claim on the file's subject, carrying the comment id.
+        a.fold.claims.insert(
+            "comment/src/a.rs".into(),
+            vec![mk_claim(
+                "Observation",
+                "note\n\n```cospan-comment\n{\"id\":\"c_note\"}\n```",
+            )],
+        );
+        assert!(a.promoted_ids().contains("c_note"));
+
+        // A claim for a different id does not mark this comment promoted.
+        a.fold.claims.insert(
+            "comment/src/a.rs".into(),
+            vec![mk_claim("Observation", "x\n\n{\"id\":\"c_other\"}")],
+        );
+        assert!(a.promoted_ids().is_empty());
     }
 
     #[test]
@@ -6221,6 +6347,7 @@ mod tests {
             usize::MAX,
             &a.comment_localized,
             a.comment_selected,
+            &HashSet::new(),
         );
         assert!(lines.is_empty());
         assert_eq!(unresolved.len(), 2);
@@ -6724,7 +6851,7 @@ mod tests {
             confidence: 1.0,
         };
         let localized = vec![(c, loc)];
-        let (lines, _u) = gutter_lines(content, "rs", usize::MAX, &localized, 0);
+        let (lines, _u) = gutter_lines(content, "rs", usize::MAX, &localized, 0, &HashSet::new());
         // Every line still begins with the marker cell.
         assert!(lines.iter().all(|l| {
             let m = l.spans[0].content.as_ref();
