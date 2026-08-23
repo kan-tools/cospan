@@ -31,7 +31,9 @@ struct Memo {
 fn hl() -> &'static Hl {
     static H: OnceLock<Hl> = OnceLock::new();
     H.get_or_init(|| {
-        let ss = SyntaxSet::load_defaults_newlines();
+        // two-face bundles bat's large syntax set (~150 languages incl. Lean),
+        // a superset of syntect's defaults, so md/tex/rs still resolve.
+        let ss = two_face::syntax::extra_newlines();
         let ts = ThemeSet::load_defaults();
         // A mid-contrast dark theme that reads on the default terminal background.
         let theme = ts.themes["base16-ocean.dark"].clone();
@@ -215,5 +217,31 @@ mod tests {
     fn memo_returns_same_result_across_calls() {
         let c = "let x = 1;\n";
         assert_eq!(styled(c, "rs"), styled(c, "rs"));
+    }
+
+    #[test]
+    fn broadened_language_set_covers_lean_and_friends() {
+        // two-face lifts the grammar set from syntect's ~40 defaults to ~150. Lean
+        // (the operator's language) and a few other non-default languages now
+        // highlight instead of falling back to plain.
+        for (ext, sample) in [
+            (
+                "lean",
+                "theorem foo : 1 + 1 = 2 := by rfl\n-- a comment\n#check Nat\n",
+            ),
+            ("go", "package main\nfunc main() { println(\"hi\") }\n"),
+            ("swift", "let x = 1 // a comment\nprint(x)\n"),
+        ] {
+            let styles: std::collections::HashSet<_> = styled(sample, ext)
+                .into_iter()
+                .flatten()
+                .map(|(st, _)| format!("{:?}", st.fg))
+                .collect();
+            assert!(
+                styles.len() > 1,
+                "{ext} did not highlight (only {} style(s)) — grammar missing?",
+                styles.len()
+            );
+        }
     }
 }
