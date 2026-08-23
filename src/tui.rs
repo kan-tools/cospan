@@ -3505,7 +3505,7 @@ fn draw_comments(
             // TEXT_MAX first, and only then does the extra width go to the notes —
             // so wide terminals give reading width to the code, not empty gutter.
             const NOTE_MIN: u16 = 30;
-            const TEXT_MAX: u16 = 82;
+            const TEXT_MAX: u16 = 100;
             let code_w = content_area.width.saturating_sub(NOTE_MIN).min(TEXT_MAX);
             let [code_area, note_area] =
                 Layout::horizontal([Constraint::Length(code_w), Constraint::Min(0)])
