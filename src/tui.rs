@@ -1487,6 +1487,110 @@ impl AppState {
         }
     }
 
+    // --- Promote-to-kan (S4): the explicit human action ---
+
+    /// `p`: promote the selected comment into a durable kan claim, never touching
+    /// the sidecar (the snapshot is immutable; the sidecar keeps re-localizing).
+    pub fn promote_selected(&mut self) {
+        self.comment_msg = None;
+        let Some(rel) = self.open_file.clone() else {
+            return;
+        };
+        let Some((c, loc)) = self.comment_localized.get(self.comment_selected) else {
+            return;
+        };
+        let (c, span) = (c.clone(), loc.span);
+        let rel = rel.to_string_lossy().to_string();
+        self.comment_msg = Some(match self.promote_one(&rel, &c, span) {
+            Ok(cid) => format!("promoted → {}", short_cid(&cid)),
+            Err(e) => format!("promote failed: {e}"),
+        });
+    }
+
+    /// `P`: promote the open file's whole comment set — one claim per comment.
+    pub fn promote_file(&mut self) {
+        self.comment_msg = None;
+        let Some(rel) = self.open_file.clone() else {
+            return;
+        };
+        let rel = rel.to_string_lossy().to_string();
+        let items: Vec<(Comment, Option<(usize, usize)>)> = self
+            .comment_localized
+            .iter()
+            .map(|(c, l)| (c.clone(), l.span))
+            .collect();
+        if items.is_empty() {
+            self.comment_msg = Some("no comments to promote".into());
+            return;
+        }
+        let mut ok = 0usize;
+        let mut failed = None;
+        for (c, span) in &items {
+            match self.promote_one(&rel, c, *span) {
+                Ok(_) => ok += 1,
+                Err(e) => {
+                    failed = Some(e);
+                    break;
+                }
+            }
+        }
+        self.comment_msg = Some(match failed {
+            Some(e) => format!("promoted {ok}, then failed: {e}"),
+            None => format!("promoted {ok} comment(s) → kan"),
+        });
+    }
+
+    /// Shell `kan observe` to snapshot one comment onto `comment/<file>`, citing
+    /// the prior promoted claim on a re-promote. Returns the new claim's CID.
+    fn promote_one(
+        &self,
+        rel: &str,
+        c: &Comment,
+        span: Option<(usize, usize)>,
+    ) -> Result<String, String> {
+        let subject = comments::comment_subject(rel);
+        let prior = self.prior_promoted_cid(&subject, &c.id);
+        let argv = comments::promote_argv(rel, c, span, prior.as_deref());
+        let out = std::process::Command::new("kan")
+            .current_dir(&self.repo)
+            .args(&argv)
+            .output()
+            .map_err(|e| e.to_string())?;
+        if !out.status.success() {
+            return Err(String::from_utf8_lossy(&out.stderr)
+                .lines()
+                .next()
+                .unwrap_or("kan failed")
+                .to_string());
+        }
+        Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
+    }
+
+    /// The CID of the newest claim on `subject` that already carries this comment
+    /// id in its `cospan-comment` block, so a re-promote cites its own prior
+    /// snapshot rather than writing an unlinked duplicate. `None` on first promote.
+    fn prior_promoted_cid(&self, subject: &str, comment_id: &str) -> Option<String> {
+        let out = std::process::Command::new("kan")
+            .current_dir(&self.repo)
+            .args(["show", subject, "--json"])
+            .output()
+            .ok()?;
+        if !out.status.success() {
+            return None;
+        }
+        let v: serde_json::Value = serde_json::from_slice(&out.stdout).ok()?;
+        let claims = v.get("claims")?.as_array()?;
+        let needle = format!("\"id\":\"{comment_id}\"");
+        claims.iter().rev().find_map(|claim| {
+            let text = claim.get("text").and_then(|t| t.as_str())?;
+            if text.contains(&needle) {
+                claim.get("cid").and_then(|c| c.as_str()).map(String::from)
+            } else {
+                None
+            }
+        })
+    }
+
     /// Commit the active compose: create the comment / append the reply / rewrite
     /// the body, persist, and re-read. A no-op unless a `Compose` is active — so
     /// `Ctrl-S` in pick-line mode does nothing.
@@ -2921,6 +3025,20 @@ pub fn run(repo: PathBuf) -> std::io::Result<()> {
                         {
                             state.toggle_resolve_selected()
                         }
+                        // Promote to a durable kan claim: `p` the selected comment,
+                        // `P` the whole file's set.
+                        KeyCode::Char('p')
+                            if state.view == View::Comments
+                                && state.comment_focus == CommentFocus::Comments =>
+                        {
+                            state.promote_selected()
+                        }
+                        KeyCode::Char('P')
+                            if state.view == View::Comments
+                                && state.comment_focus == CommentFocus::Comments =>
+                        {
+                            state.promote_file()
+                        }
                         KeyCode::Char('[') | KeyCode::Left if state.view == View::Chat => {
                             state.select_chat_session(-1)
                         }
@@ -3040,7 +3158,7 @@ fn view_header(view: View) -> String {
     let keys = match view {
         View::Chat => "· ←→ session · z fold · j/k scroll · ⇧↑↓ msg · ↵ expand ",
         View::Comments => {
-            "· j/k browse · ↵ fold/comment · Esc tree · a add · r reply · e/d edit/del · x resolve "
+            "· j/k browse · ↵ fold/comment · Esc tree · a add · r reply · e/d edit/del · x resolve · p promote "
         }
         View::Process => "· ←→ atoms/telos · j/k scroll ",
         View::Ledger => "",

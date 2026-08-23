@@ -178,6 +178,60 @@ pub fn now_micros() -> i64 {
         .unwrap_or(0)
 }
 
+// --- Promote-to-kan (S4): the explicit human action that snapshots a sidecar
+// --- comment into a durable, signed kan claim. Pure argv/text builders here; the
+// --- TUI shells `kan` with them so the round trip is testable without kan.
+
+/// The kan subject a file's promoted comments live on: `comment/<repo-rel path>`.
+pub fn comment_subject(repo_rel: &str) -> String {
+    format!(
+        "comment/{}",
+        repo_rel.strip_prefix("./").unwrap_or(repo_rel)
+    )
+}
+
+/// The claim body for promoting `c`: the human text, then a fenced
+/// `cospan-comment` JSON block carrying the full record (fingerprint, author,
+/// thread, resolved) — everything the kan line anchor does not, for a 1:1 round
+/// trip back to a `Comment`.
+pub fn promote_text(c: &Comment) -> String {
+    let block = serde_json::to_string(c).unwrap_or_default();
+    format!("{}\n\n```cospan-comment\n{block}\n```", c.body)
+}
+
+/// The `--file` anchor for a localized span: `path:start-end` in 1-based inclusive
+/// lines, or the bare path when the comment is unplaced (`Unresolvable`).
+pub fn promote_anchor(repo_rel: &str, span: Option<(usize, usize)>) -> String {
+    match span {
+        Some((s, e)) => format!("{repo_rel}:{}-{}", s + 1, e + 1),
+        None => repo_rel.to_string(),
+    }
+}
+
+/// The `kan observe` arguments (after the program name) that promote `c` at
+/// `span` in `rel`, citing `prior` (the previous promoted claim's CID) when a
+/// re-promote. Pure, so the command is unit-testable without running kan.
+pub fn promote_argv(
+    rel: &str,
+    c: &Comment,
+    span: Option<(usize, usize)>,
+    prior: Option<&str>,
+) -> Vec<String> {
+    let mut v = vec![
+        "observe".to_string(),
+        "--subject".to_string(),
+        comment_subject(rel),
+        promote_text(c),
+        "--file".to_string(),
+        promote_anchor(rel, span),
+    ];
+    if let Some(p) = prior {
+        v.push("--cites".to_string());
+        v.push(p.to_string());
+    }
+    v
+}
+
 /// A one-line summary suffix for a comment: reply count and resolved state, or
 /// empty when it has neither.
 pub fn thread_summary(c: &Comment) -> String {
@@ -355,6 +409,52 @@ mod tests {
         assert!(cs[0].resolved);
         assert!(!resolve(&mut cs, "nope"));
         assert_eq!(cs[0].thread.len(), 1, "a failed reply must not append");
+    }
+
+    #[test]
+    fn promote_helpers_build_subject_anchor_and_round_trip_block() {
+        let c = comment_at(V0, 1); // id "c_1", body "is this cached?"
+        assert_eq!(comment_subject("src/tui.rs"), "comment/src/tui.rs");
+        assert_eq!(comment_subject("./README.md"), "comment/README.md");
+        // 1-based inclusive anchor; unplaced -> bare path.
+        assert_eq!(promote_anchor("src/a.rs", Some((1, 2))), "src/a.rs:2-3");
+        assert_eq!(promote_anchor("src/a.rs", None), "src/a.rs");
+        // The fenced block round-trips back to the same Comment.
+        let text = promote_text(&c);
+        assert!(text.starts_with(&c.body), "body leads the claim: {text}");
+        let json = text
+            .split("```cospan-comment\n")
+            .nth(1)
+            .and_then(|s| s.split("\n```").next())
+            .expect("a cospan-comment block");
+        let back: Comment = serde_json::from_str(json).unwrap();
+        assert_eq!(back, c, "the block is a lossless snapshot");
+    }
+
+    #[test]
+    fn promote_argv_carries_subject_anchor_and_optional_cite() {
+        let c = comment_at(V0, 1);
+        let argv = promote_argv("src/a.rs", &c, Some((0, 0)), None);
+        assert_eq!(argv[0], "observe");
+        assert_eq!(argv[1], "--subject");
+        assert_eq!(argv[2], "comment/src/a.rs");
+        assert!(
+            argv[3].contains("cospan-comment"),
+            "the block is the text arg"
+        );
+        assert_eq!(argv[4], "--file");
+        assert_eq!(argv[5], "src/a.rs:1-1");
+        assert!(
+            !argv.contains(&"--cites".to_string()),
+            "no cite on first promote"
+        );
+        // A re-promote cites the prior claim.
+        let re = promote_argv("src/a.rs", &c, Some((0, 0)), Some("bafyPRIOR"));
+        let i = re
+            .iter()
+            .position(|a| a == "--cites")
+            .expect("cites on re-promote");
+        assert_eq!(re[i + 1], "bafyPRIOR");
     }
 
     #[test]
