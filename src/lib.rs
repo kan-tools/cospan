@@ -24,6 +24,7 @@
 
 pub mod command_bus;
 pub mod comments;
+pub mod highlight;
 pub mod markdown;
 pub mod substrate;
 pub mod transcripts;
