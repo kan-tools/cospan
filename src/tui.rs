@@ -3500,9 +3500,15 @@ fn draw_comments(
     match layout_mode(width) {
         Fit::Wide => {
             // Code column beside a right comment column; the code reflows down so
-            // a multi-line note never overlaps code or a neighbour.
+            // a multi-line note never overlaps code or a neighbour. Sizing priority:
+            // the note column holds a fixed small width, the code column grows to
+            // TEXT_MAX first, and only then does the extra width go to the notes —
+            // so wide terminals give reading width to the code, not empty gutter.
+            const NOTE_MIN: u16 = 30;
+            const TEXT_MAX: u16 = 82;
+            let code_w = content_area.width.saturating_sub(NOTE_MIN).min(TEXT_MAX);
             let [code_area, note_area] =
-                Layout::horizontal([Constraint::Percentage(58), Constraint::Percentage(42)])
+                Layout::horizontal([Constraint::Length(code_w), Constraint::Min(0)])
                     .areas(content_area);
             let note_w = note_area.width.saturating_sub(2) as usize;
             let notes: Vec<(usize, usize, Vec<Line>)> = state
