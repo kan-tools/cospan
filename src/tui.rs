@@ -136,6 +136,12 @@ pub struct AppState {
     pub comment_selected: usize,
     /// Scroll offset into the file-content pane.
     pub comment_scroll: usize,
+    /// The active authoring interaction over the Comments view (pick-line /
+    /// compose / reply / edit), or `None` in read-navigate mode. See [`Editing`].
+    pub editing: Option<Editing>,
+    /// A transient one-line status for the Comments view (e.g. "not your
+    /// comment"), shown until the next authoring action clears it.
+    pub comment_msg: Option<String>,
 
     // --- Chat view: cross-harness session buffers from transcripts (read-only). ---
     /// The repo's discovered sessions across all harnesses, newest-active first.
@@ -255,6 +261,132 @@ pub enum Focus {
     Detail,
 }
 
+/// An in-progress authoring action over the Comments view. `None` on `AppState`
+/// is read/navigate mode; `Some(_)` captures every keystroke until it commits
+/// (`Ctrl-S`) or cancels (`Esc`), so a letter like `q` types into the buffer
+/// rather than quitting the app.
+pub enum Editing {
+    /// Choosing the source line a new comment will anchor to (the gutter shows
+    /// the cursor). `Enter` opens the compose; `Esc` cancels.
+    PickLine { cursor: usize },
+    /// Composing body text; `kind` says what the committed text becomes.
+    Compose { kind: ComposeKind, buf: TextBuf },
+}
+
+/// What a composed body becomes on commit.
+pub enum ComposeKind {
+    /// A new comment anchored at this 0-based source line.
+    NewComment { line: usize },
+    /// A reply appended to the comment with this id.
+    Reply { id: String },
+    /// A rewrite of the body of the comment with this id (author-gated).
+    Edit { id: String },
+}
+
+/// A minimal multi-line text buffer with one insertion cursor — enough to author
+/// a paragraph of comment prose in the TUI (ratatui ships no text input). The
+/// cursor is a *character* index into `text`, so a multi-byte character moves and
+/// deletes as one unit.
+#[derive(Default, Clone)]
+pub struct TextBuf {
+    pub text: String,
+    pub cursor: usize,
+}
+
+impl TextBuf {
+    /// A buffer pre-filled with `s`, cursor at the end — for editing an existing body.
+    pub fn prefilled(s: &str) -> TextBuf {
+        TextBuf {
+            text: s.to_string(),
+            cursor: s.chars().count(),
+        }
+    }
+
+    /// Byte offset of character index `i` (or the string end for `i` past the last).
+    fn byte_of(&self, i: usize) -> usize {
+        self.text
+            .char_indices()
+            .nth(i)
+            .map(|(b, _)| b)
+            .unwrap_or(self.text.len())
+    }
+
+    fn char_count(&self) -> usize {
+        self.text.chars().count()
+    }
+
+    /// Insert a character (including `'\n'`) at the cursor and advance past it.
+    pub fn insert(&mut self, ch: char) {
+        let b = self.byte_of(self.cursor);
+        self.text.insert(b, ch);
+        self.cursor += 1;
+    }
+
+    /// Delete the character before the cursor, if any.
+    pub fn backspace(&mut self) {
+        if self.cursor > 0 {
+            let b = self.byte_of(self.cursor - 1);
+            self.text.remove(b);
+            self.cursor -= 1;
+        }
+    }
+
+    pub fn left(&mut self) {
+        self.cursor = self.cursor.saturating_sub(1);
+    }
+
+    pub fn right(&mut self) {
+        self.cursor = (self.cursor + 1).min(self.char_count());
+    }
+
+    pub fn home(&mut self) {
+        self.cursor = 0;
+    }
+
+    pub fn end(&mut self) {
+        self.cursor = self.char_count();
+    }
+
+    /// The `(row, col)` of the cursor in logical lines (0-based), splitting on `'\n'`.
+    pub fn row_col(&self) -> (usize, usize) {
+        let pre = &self.text[..self.byte_of(self.cursor)];
+        let row = pre.matches('\n').count();
+        let col = pre
+            .rsplit('\n')
+            .next()
+            .map(|s| s.chars().count())
+            .unwrap_or(0);
+        (row, col)
+    }
+
+    /// Move the cursor up one line, keeping the column where the line is long enough.
+    pub fn up(&mut self) {
+        self.move_vert(-1);
+    }
+
+    /// Move the cursor down one line, keeping the column where the line is long enough.
+    pub fn down(&mut self) {
+        self.move_vert(1);
+    }
+
+    fn move_vert(&mut self, d: isize) {
+        let (row, col) = self.row_col();
+        let lines: Vec<&str> = self.text.split('\n').collect();
+        let target_row =
+            (row as isize + d).clamp(0, lines.len().saturating_sub(1) as isize) as usize;
+        if target_row == row {
+            return;
+        }
+        let target_col = col.min(lines[target_row].chars().count());
+        // Char index = every char of the preceding lines (+1 per `'\n'`) then the column.
+        let mut idx = 0;
+        for l in &lines[..target_row] {
+            idx += l.chars().count() + 1;
+        }
+        self.cursor = (idx + target_col).min(self.char_count());
+    }
+}
+
 /// The responsive layout mode for a given terminal width.
 #[derive(PartialEq, Eq, Debug)]
 pub enum Fit {
@@ -301,6 +433,8 @@ impl AppState {
             comment_mtime: None,
             comment_selected: 0,
             comment_scroll: 0,
+            editing: None,
+            comment_msg: None,
             chat_sessions: Vec::new(),
             chat_selected: 0,
             chat_session: None,
@@ -1000,6 +1134,286 @@ impl AppState {
         self.comment_scroll = 0;
         // The next `refresh_comments` re-reads because the selected file now
         // differs from `comment_loaded`; no sentinel reset needed.
+    }
+
+    // --- Comment authoring (S1): interactive add/reply/edit/delete/resolve. ---
+
+    /// The `Author` of a comment written here — the human at `$USER`.
+    fn me(&self) -> comments::Author {
+        comments::Author {
+            who: "human".into(),
+            id: std::env::var("USER").unwrap_or_else(|_| "local".into()),
+        }
+    }
+
+    /// The absolute sidecar path for the currently selected commented file.
+    fn current_sidecar(&self) -> Option<PathBuf> {
+        let rel = self
+            .comment_files
+            .get(self.comment_file_selected)?
+            .0
+            .clone();
+        Some(
+            self.repo
+                .join(comments::sidecar_path(&rel.to_string_lossy())),
+        )
+    }
+
+    /// Force the Comments view to re-read the sidecar after a write: the *source*
+    /// file's mtime is unchanged, so the normal same-file gate would skip it.
+    fn reload_after_write(&mut self) {
+        self.comment_loaded = None;
+        self.refresh_comments();
+    }
+
+    /// Move the comment cursor onto the comment with `id`, if it is present.
+    fn select_comment_by_id(&mut self, id: &str) {
+        if let Some(i) = self.comment_localized.iter().position(|(c, _)| c.id == id) {
+            self.comment_selected = i;
+            if let Some((s, _)) = self.comment_localized[i].1.span {
+                self.comment_scroll = s;
+            }
+        }
+    }
+
+    /// The source line a new comment starts on: the selected comment's anchored
+    /// line, else the current scroll, clamped to the file.
+    fn authoring_line(&self) -> usize {
+        let start = self
+            .comment_localized
+            .get(self.comment_selected)
+            .and_then(|(_, loc)| loc.span.map(|(s, _)| s))
+            .unwrap_or(self.comment_scroll);
+        start.min(self.comment_content.lines().count().saturating_sub(1))
+    }
+
+    /// `a`/`i`: begin choosing the line for a new comment.
+    pub fn begin_new_comment(&mut self) {
+        self.comment_msg = None;
+        if self.comment_files.is_empty() {
+            return;
+        }
+        let cursor = self.authoring_line();
+        self.comment_scroll = cursor;
+        self.editing = Some(Editing::PickLine { cursor });
+    }
+
+    /// `r`: begin a reply to the selected comment.
+    pub fn begin_reply(&mut self) {
+        self.comment_msg = None;
+        if let Some((c, _)) = self.comment_localized.get(self.comment_selected) {
+            let id = c.id.clone();
+            self.editing = Some(Editing::Compose {
+                kind: ComposeKind::Reply { id },
+                buf: TextBuf::default(),
+            });
+        }
+    }
+
+    /// `e`: begin editing the selected comment's body — only your own.
+    pub fn begin_edit(&mut self) {
+        self.comment_msg = None;
+        let me = self.me().id;
+        if let Some((c, _)) = self.comment_localized.get(self.comment_selected) {
+            if c.author.id == me {
+                let (id, buf) = (c.id.clone(), TextBuf::prefilled(&c.body));
+                self.editing = Some(Editing::Compose {
+                    kind: ComposeKind::Edit { id },
+                    buf,
+                });
+            } else {
+                self.comment_msg = Some("not your comment".into());
+            }
+        }
+    }
+
+    /// `d`: delete the selected comment — only your own.
+    pub fn delete_selected(&mut self) {
+        self.comment_msg = None;
+        let me = self.me().id;
+        let Some((c, _)) = self.comment_localized.get(self.comment_selected) else {
+            return;
+        };
+        let id = c.id.clone();
+        let Some(path) = self.current_sidecar() else {
+            return;
+        };
+        let mut cs = comments::load(&path).unwrap_or_default();
+        match comments::delete(&mut cs, &id, &me) {
+            comments::Mutation::Applied => {
+                let _ = comments::save(&path, &cs);
+                self.comment_selected = self.comment_selected.saturating_sub(1);
+                self.comment_msg = Some("deleted".into());
+                self.reload_after_write();
+            }
+            comments::Mutation::Forbidden => self.comment_msg = Some("not your comment".into()),
+            comments::Mutation::NotFound => {}
+        }
+    }
+
+    /// `x`: toggle the resolved flag of the selected comment (anyone may resolve).
+    pub fn toggle_resolve_selected(&mut self) {
+        self.comment_msg = None;
+        let Some((c, _)) = self.comment_localized.get(self.comment_selected) else {
+            return;
+        };
+        let (id, target) = (c.id.clone(), !c.resolved);
+        let Some(path) = self.current_sidecar() else {
+            return;
+        };
+        let mut cs = comments::load(&path).unwrap_or_default();
+        if comments::set_resolved(&mut cs, &id, target) {
+            let _ = comments::save(&path, &cs);
+            self.reload_after_write();
+            self.select_comment_by_id(&id);
+        }
+    }
+
+    /// Commit the active compose: create the comment / append the reply / rewrite
+    /// the body, persist, and re-read. A no-op unless a `Compose` is active — so
+    /// `Ctrl-S` in pick-line mode does nothing.
+    pub fn commit_editing(&mut self) {
+        // Peek before taking: `Ctrl-S` in pick-line mode (or with nothing active)
+        // must leave `editing` intact rather than silently cancelling the pick.
+        if !matches!(self.editing, Some(Editing::Compose { .. })) {
+            return;
+        }
+        let Some(Editing::Compose { kind, buf }) = self.editing.take() else {
+            return;
+        };
+        let body = buf.text.trim_end().to_string();
+        if body.is_empty() {
+            self.comment_msg = Some("empty — discarded".into());
+            return;
+        }
+        let Some(path) = self.current_sidecar() else {
+            return;
+        };
+        let mut cs = comments::load(&path).unwrap_or_default();
+        let me = self.me();
+        let focus: Option<String>;
+        match kind {
+            ComposeKind::NewComment { line } => {
+                let created_at = comments::now_micros();
+                let id = format!("c_{created_at}_{}", cs.len());
+                let anchor = comments::StoredAnchor::capture(&self.comment_content, line, 2);
+                cs.push(comments::Comment {
+                    id: id.clone(),
+                    anchor,
+                    body,
+                    author: me,
+                    created_at,
+                    resolved: false,
+                    thread: Vec::new(),
+                });
+                focus = Some(id);
+            }
+            ComposeKind::Reply { id } => {
+                let r = comments::Reply {
+                    author: me,
+                    body,
+                    created_at: comments::now_micros(),
+                };
+                if !comments::add_reply(&mut cs, &id, r) {
+                    self.comment_msg = Some("comment is gone".into());
+                    return;
+                }
+                focus = Some(id);
+            }
+            ComposeKind::Edit { id } => {
+                match comments::edit_body(&mut cs, &id, &me.id, &body, &self.comment_content) {
+                    comments::Mutation::Applied => focus = Some(id),
+                    comments::Mutation::Forbidden => {
+                        self.comment_msg = Some("not your comment".into());
+                        return;
+                    }
+                    comments::Mutation::NotFound => {
+                        self.comment_msg = Some("comment is gone".into());
+                        return;
+                    }
+                }
+            }
+        }
+        let _ = comments::save(&path, &cs);
+        self.reload_after_write();
+        if let Some(id) = focus {
+            self.select_comment_by_id(&id);
+        }
+    }
+
+    /// True while the Comments view is capturing keys for an authoring action.
+    pub fn editing_active(&self) -> bool {
+        self.view == View::Comments && self.editing.is_some()
+    }
+
+    /// Mouse-wheel scroll while composing: move the caret vertically a few lines,
+    /// so the wheel scrolls the editor rather than the comment list underneath.
+    pub fn compose_scroll(&mut self, delta: isize) {
+        if let Some(Editing::Compose { buf, .. }) = &mut self.editing {
+            for _ in 0..3 {
+                if delta > 0 {
+                    buf.down();
+                } else {
+                    buf.up();
+                }
+            }
+        }
+    }
+
+    /// Route a keystroke while an `Editing` interaction is active. Terminal keys
+    /// (`Esc` cancel, `Ctrl-S` commit, `Enter` in pick-line) replace `editing`
+    /// wholesale; the rest move the pick cursor or edit the compose buffer.
+    pub fn handle_editing_key(&mut self, key: crossterm::event::KeyEvent) {
+        use crossterm::event::{KeyCode, KeyModifiers};
+        // Whole-state transitions first, so the in-place borrow below never has to
+        // reassign `self.editing`.
+        match key.code {
+            KeyCode::Esc => {
+                self.editing = None;
+                return;
+            }
+            KeyCode::Char('s') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                self.commit_editing();
+                return;
+            }
+            KeyCode::Enter => {
+                if let Some(Editing::PickLine { cursor }) = &self.editing {
+                    let line = *cursor;
+                    self.editing = Some(Editing::Compose {
+                        kind: ComposeKind::NewComment { line },
+                        buf: TextBuf::default(),
+                    });
+                    return;
+                }
+            }
+            _ => {}
+        }
+        match &mut self.editing {
+            Some(Editing::PickLine { cursor }) => {
+                let last = self.comment_content.lines().count().saturating_sub(1);
+                match key.code {
+                    KeyCode::Up | KeyCode::Char('k') => *cursor = cursor.saturating_sub(1),
+                    KeyCode::Down | KeyCode::Char('j') => *cursor = (*cursor + 1).min(last),
+                    _ => {}
+                }
+                self.comment_scroll = *cursor;
+            }
+            Some(Editing::Compose { buf, .. }) => match key.code {
+                KeyCode::Enter => buf.insert('\n'),
+                KeyCode::Backspace => buf.backspace(),
+                KeyCode::Left => buf.left(),
+                KeyCode::Right => buf.right(),
+                KeyCode::Up => buf.up(),
+                KeyCode::Down => buf.down(),
+                KeyCode::Home => buf.home(),
+                KeyCode::End => buf.end(),
+                KeyCode::Char(ch) if !key.modifiers.contains(KeyModifiers::CONTROL) => {
+                    buf.insert(ch)
+                }
+                _ => {}
+            },
+            None => {}
+        }
     }
 }
 
@@ -2229,84 +2643,113 @@ pub fn run(repo: PathBuf) -> std::io::Result<()> {
 
         match event::poll(tick) {
             Ok(true) => match event::read() {
-                Ok(Event::Key(key)) if key.kind == KeyEventKind::Press => match key.code {
-                    KeyCode::Char('q') => break Ok(()),
-                    KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                        break Ok(())
+                Ok(Event::Key(key)) if key.kind == KeyEventKind::Press => {
+                    // Ctrl-C always quits — the one hard escape hatch that works
+                    // even mid-compose (where every other key types into the buffer).
+                    if key.code == KeyCode::Char('c')
+                        && key.modifiers.contains(KeyModifiers::CONTROL)
+                    {
+                        break Ok(());
                     }
-                    KeyCode::Char(d @ '1'..='4') => {
-                        if let Some(v) = View::from_digit(d) {
-                            state.view = v;
-                            if v == View::Comments {
+                    // While composing a comment, all other keys go to the editor (so
+                    // `q` types rather than quits); it commits/cancels on its own.
+                    if state.view == View::Comments && state.editing.is_some() {
+                        state.handle_editing_key(key);
+                        continue;
+                    }
+                    match key.code {
+                        KeyCode::Char('q') => break Ok(()),
+                        KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                            break Ok(())
+                        }
+                        KeyCode::Char(d @ '1'..='4') => {
+                            if let Some(v) = View::from_digit(d) {
+                                state.view = v;
+                                if v == View::Comments {
+                                    state.reload_comment_files();
+                                } else if v == View::Chat {
+                                    state.reload_chat_sessions();
+                                }
+                            }
+                        }
+                        KeyCode::Tab => {
+                            state.view = state.view.next();
+                            if state.view == View::Comments {
                                 state.reload_comment_files();
-                            } else if v == View::Chat {
+                            } else if state.view == View::Chat {
                                 state.reload_chat_sessions();
                             }
                         }
-                    }
-                    KeyCode::Tab => {
-                        state.view = state.view.next();
-                        if state.view == View::Comments {
-                            state.reload_comment_files();
-                        } else if state.view == View::Chat {
-                            state.reload_chat_sessions();
+                        // ←/→ (or [ / ]): switch commented file (Comments), switch
+                        // session (Chat), or toggle the atoms/telos sub-pane (Process).
+                        KeyCode::Char('[') | KeyCode::Left if state.view == View::Comments => {
+                            state.select_comment_file(-1)
                         }
-                    }
-                    // ←/→ (or [ / ]): switch commented file (Comments), switch
-                    // session (Chat), or toggle the atoms/telos sub-pane (Process).
-                    KeyCode::Char('[') | KeyCode::Left if state.view == View::Comments => {
-                        state.select_comment_file(-1)
-                    }
-                    KeyCode::Char(']') | KeyCode::Right if state.view == View::Comments => {
-                        state.select_comment_file(1)
-                    }
-                    KeyCode::Char('[') | KeyCode::Left if state.view == View::Chat => {
-                        state.select_chat_session(-1)
-                    }
-                    KeyCode::Char(']') | KeyCode::Right if state.view == View::Chat => {
-                        state.select_chat_session(1)
-                    }
-                    KeyCode::Char('[' | ']') | KeyCode::Left | KeyCode::Right
-                        if state.view == View::Process =>
-                    {
-                        state.process_pane = state.process_pane.toggled();
-                        state.process_detail = false; // leave any drill-down on a pane switch
-                    }
-                    // Fold/unfold the selected session's subagent group (Chat).
-                    KeyCode::Char('z') if state.view == View::Chat => state.chat_toggle_fold(),
-                    // Skip to the previous/next message (Chat): Shift+↑/↓ or { / }.
-                    KeyCode::Char('{') if state.view == View::Chat => state.chat_msg_jump(-1),
-                    KeyCode::Char('}') if state.view == View::Chat => state.chat_msg_jump(1),
-                    KeyCode::Up | KeyCode::Down
-                        if state.view == View::Chat
-                            && key.modifiers.contains(KeyModifiers::SHIFT) =>
-                    {
-                        state.chat_msg_jump(if key.code == KeyCode::Down { 1 } else { -1 })
-                    }
-                    // Page up/down: a screen of motion in the active view.
-                    KeyCode::PageDown => state.nav_step(state.page_rows()),
-                    KeyCode::PageUp => state.nav_step(-state.page_rows()),
-                    // Line/step motion in the active view.
-                    KeyCode::Char('j') | KeyCode::Down => state.nav_step(1),
-                    KeyCode::Char('k') | KeyCode::Up => state.nav_step(-1),
-                    KeyCode::Enter if state.view == View::Chat => state.chat_toggle_expand(),
-                    KeyCode::Enter if state.view == View::Ledger => {
-                        if state.focus == Focus::Subjects {
-                            state.activate(); // toggle a node, or descend a subject
-                        } else {
-                            state.descend();
+                        KeyCode::Char(']') | KeyCode::Right if state.view == View::Comments => {
+                            state.select_comment_file(1)
                         }
+                        // Comment authoring: add / reply / edit / delete / resolve.
+                        KeyCode::Char('a' | 'i') if state.view == View::Comments => {
+                            state.begin_new_comment()
+                        }
+                        KeyCode::Char('r') if state.view == View::Comments => state.begin_reply(),
+                        KeyCode::Char('e') if state.view == View::Comments => state.begin_edit(),
+                        KeyCode::Char('d') if state.view == View::Comments => {
+                            state.delete_selected()
+                        }
+                        KeyCode::Char('x') if state.view == View::Comments => {
+                            state.toggle_resolve_selected()
+                        }
+                        KeyCode::Char('[') | KeyCode::Left if state.view == View::Chat => {
+                            state.select_chat_session(-1)
+                        }
+                        KeyCode::Char(']') | KeyCode::Right if state.view == View::Chat => {
+                            state.select_chat_session(1)
+                        }
+                        KeyCode::Char('[' | ']') | KeyCode::Left | KeyCode::Right
+                            if state.view == View::Process =>
+                        {
+                            state.process_pane = state.process_pane.toggled();
+                            state.process_detail = false; // leave any drill-down on a pane switch
+                        }
+                        // Fold/unfold the selected session's subagent group (Chat).
+                        KeyCode::Char('z') if state.view == View::Chat => state.chat_toggle_fold(),
+                        // Skip to the previous/next message (Chat): Shift+↑/↓ or { / }.
+                        KeyCode::Char('{') if state.view == View::Chat => state.chat_msg_jump(-1),
+                        KeyCode::Char('}') if state.view == View::Chat => state.chat_msg_jump(1),
+                        KeyCode::Up | KeyCode::Down
+                            if state.view == View::Chat
+                                && key.modifiers.contains(KeyModifiers::SHIFT) =>
+                        {
+                            state.chat_msg_jump(if key.code == KeyCode::Down { 1 } else { -1 })
+                        }
+                        // Page up/down: a screen of motion in the active view.
+                        KeyCode::PageDown => state.nav_step(state.page_rows()),
+                        KeyCode::PageUp => state.nav_step(-state.page_rows()),
+                        // Line/step motion in the active view.
+                        KeyCode::Char('j') | KeyCode::Down => state.nav_step(1),
+                        KeyCode::Char('k') | KeyCode::Up => state.nav_step(-1),
+                        KeyCode::Enter if state.view == View::Chat => state.chat_toggle_expand(),
+                        KeyCode::Enter if state.view == View::Ledger => {
+                            if state.focus == Focus::Subjects {
+                                state.activate(); // toggle a node, or descend a subject
+                            } else {
+                                state.descend();
+                            }
+                        }
+                        // Drill the selected atom's detail in/out of view in Process.
+                        KeyCode::Enter if state.view == View::Process => state.process_drill(true),
+                        KeyCode::Esc if state.view == View::Process && state.process_detail => {
+                            state.process_drill(false)
+                        }
+                        KeyCode::Esc if state.view == View::Ledger => state.ascend(),
+                        _ => {}
                     }
-                    // Drill the selected atom's detail in/out of view in Process.
-                    KeyCode::Enter if state.view == View::Process => state.process_drill(true),
-                    KeyCode::Esc if state.view == View::Process && state.process_detail => {
-                        state.process_drill(false)
-                    }
-                    KeyCode::Esc if state.view == View::Ledger => state.ascend(),
-                    _ => {}
-                },
+                }
                 // Mouse wheel scrolls the active view a few lines at a time.
                 Ok(Event::Mouse(m)) => match m.kind {
+                    MouseEventKind::ScrollDown if state.editing_active() => state.compose_scroll(1),
+                    MouseEventKind::ScrollUp if state.editing_active() => state.compose_scroll(-1),
                     MouseEventKind::ScrollDown => state.nav_step(3),
                     MouseEventKind::ScrollUp => state.nav_step(-3),
                     _ => {}
@@ -2375,7 +2818,7 @@ fn view_header(view: View) -> String {
     // A per-view key legend so navigation is discoverable without reading source.
     let keys = match view {
         View::Chat => "· ←→ session · z fold · j/k scroll · ⇧↑↓ msg · ↵ expand ",
-        View::Comments => "· ←→ file · j/k comment ",
+        View::Comments => "· ←→ file · j/k comment · a add · r reply · e/d edit/del · x resolve ",
         View::Process => "· ←→ atoms/telos · j/k scroll ",
         View::Ledger => "",
     };
@@ -2710,6 +3153,13 @@ fn draw_comments(
         return;
     }
 
+    // Compose mode: a full-width editor view — the file rail collapses, the target
+    // line is highlighted, and the popup is placed clear of it.
+    if let Some(Editing::Compose { kind, buf }) = &state.editing {
+        draw_compose(frame, state, body, kind, buf);
+        return;
+    }
+
     // Wide: a commented-files rail beside the content pane; narrow: content only.
     let (files_area, main_area) = match layout_mode(width) {
         Fit::Wide => {
@@ -2755,6 +3205,30 @@ fn draw_comments(
         .get(state.comment_file_selected)
         .map(|(p, _)| p.to_string_lossy().to_string())
         .unwrap_or_default();
+    // Pick-line mode: one code pane with the target line highlighted; the note
+    // columns and compose popup are suppressed until a line is chosen.
+    if let Some(Editing::PickLine { cursor }) = &state.editing {
+        let mut lines = code_lines;
+        if let Some(l) = lines.get_mut(*cursor) {
+            for sp in &mut l.spans {
+                sp.style = sp.style.add_modifier(Modifier::REVERSED);
+            }
+        }
+        let scroll = cursor.saturating_sub(3).min(lines.len().saturating_sub(1));
+        frame.render_widget(
+            Paragraph::new(lines.split_off(scroll)).block(Block::bordered().title(format!(
+                " pick line {} · ↑/↓ · Enter here · Esc ",
+                cursor + 1
+            ))),
+            content_area,
+        );
+        frame.render_widget(
+            Paragraph::new("choose the line to comment on, then Enter")
+                .block(Block::bordered().title(" new comment ")),
+            strip_area,
+        );
+        return;
+    }
     match layout_mode(width) {
         Fit::Wide => {
             // Code column beside a right comment column; the code reflows down so
@@ -2824,7 +3298,7 @@ fn draw_comments(
             )));
         }
     }
-    let strip_title = match state.comment_localized.get(state.comment_selected) {
+    let base_title = match state.comment_localized.get(state.comment_selected) {
         Some((c, _)) => {
             let s = comments::thread_summary(c);
             if s.is_empty() {
@@ -2835,11 +3309,137 @@ fn draw_comments(
         }
         None => " comment ".to_string(),
     };
+    // A transient status (e.g. "not your comment") takes over the strip title.
+    let strip_title = match &state.comment_msg {
+        Some(m) => format!(" {m} "),
+        None => base_title,
+    };
     frame.render_widget(
         Paragraph::new(strip)
             .block(Block::bordered().title(strip_title))
             .wrap(Wrap { trim: false }),
         strip_area,
+    );
+}
+
+/// Compose view: the file body full-width (rail collapsed) with the commented
+/// line highlighted, and the editor popup placed in the half of the screen the
+/// line is *not* in — so you can see what you are commenting on while you type.
+/// The editor scrolls vertically to keep the caret in view and shows a
+/// `L<row>/<total>` position with `↑`/`↓` when there is more above or below.
+fn draw_compose(
+    frame: &mut ratatui::Frame,
+    state: &AppState,
+    body: ratatui::layout::Rect,
+    kind: &ComposeKind,
+    buf: &TextBuf,
+) {
+    use ratatui::layout::Rect;
+    use ratatui::style::Modifier;
+    use ratatui::text::Line;
+    use ratatui::widgets::{Block, Clear, Paragraph};
+
+    let file_title = state
+        .comment_files
+        .get(state.comment_file_selected)
+        .map(|(p, _)| p.to_string_lossy().to_string())
+        .unwrap_or_default();
+
+    // The source line this compose is about: the chosen line for a new comment,
+    // else the target comment's anchored line.
+    let target = match kind {
+        ComposeKind::NewComment { line } => Some(*line),
+        ComposeKind::Reply { id } | ComposeKind::Edit { id } => state
+            .comment_localized
+            .iter()
+            .find(|(c, _)| &c.id == id)
+            .and_then(|(_, loc)| loc.span.map(|(s, _)| s)),
+    };
+
+    // Full-width code with the target line highlighted, scrolled toward the top
+    // third so it stays on screen beside the popup.
+    let (mut code_lines, _) = gutter_lines(
+        &state.comment_content,
+        &state.comment_localized,
+        state.comment_selected,
+    );
+    if let Some(t) = target {
+        if let Some(l) = code_lines.get_mut(t) {
+            for sp in &mut l.spans {
+                sp.style = sp.style.add_modifier(Modifier::REVERSED);
+            }
+        }
+    }
+    let view_h = body.height as usize;
+    let scroll = target
+        .map(|t| t.saturating_sub(view_h / 3))
+        .unwrap_or(0)
+        .min(code_lines.len().saturating_sub(1));
+    frame.render_widget(
+        Paragraph::new(code_lines.split_off(scroll))
+            .block(Block::bordered().title(format!(" {file_title} · composing "))),
+        body,
+    );
+
+    // Place the popup in the half the target line is NOT in.
+    let target_row = target.map(|t| t.saturating_sub(scroll)).unwrap_or(0) as u16;
+    let lines: Vec<String> = buf.text.split('\n').map(str::to_string).collect();
+    let want_h = ((lines.len() as u16).saturating_add(2))
+        .clamp(5, body.height.saturating_sub(2).max(5))
+        .min(16);
+    let target_in_top = target_row < body.height / 2;
+    let pw = ((body.width as u32 * 72 / 100) as u16).clamp(20.min(body.width), body.width);
+    let px = body.x + body.width.saturating_sub(pw) / 2;
+    let py = if target_in_top {
+        // line up top -> popup at the bottom
+        body.y + body.height.saturating_sub(want_h).saturating_sub(1)
+    } else {
+        body.y + 1
+    };
+    let popup = Rect {
+        x: px,
+        y: py,
+        width: pw,
+        height: want_h.min(body.height),
+    };
+
+    let label = match kind {
+        ComposeKind::NewComment { line } => format!("new comment · line {}", line + 1),
+        ComposeKind::Reply { .. } => "reply".to_string(),
+        ComposeKind::Edit { .. } => "edit".to_string(),
+    };
+
+    // Caret at (row, col); scroll the editor so the caret line is visible. No wrap
+    // in the box, so one logical line is one row and the scroll math is exact.
+    let (caret_row, caret_col) = buf.row_col();
+    let inner_h = popup.height.saturating_sub(2).max(1) as usize;
+    let scroll_v = caret_row.saturating_sub(inner_h.saturating_sub(1));
+    let mut disp: Vec<Line> = Vec::new();
+    for (i, l) in lines.iter().enumerate() {
+        if i == caret_row {
+            let chars: Vec<char> = l.chars().collect();
+            let cc = caret_col.min(chars.len());
+            let a: String = chars[..cc].iter().collect();
+            let b: String = chars[cc..].iter().collect();
+            disp.push(Line::from(format!("{a}│{b}")));
+        } else {
+            disp.push(Line::from(l.clone()));
+        }
+    }
+    let end = (scroll_v + inner_h).min(disp.len());
+    let visible = disp[scroll_v..end].to_vec();
+    let title = format!(
+        " {label} · Ctrl-S save · Esc · L{}/{}{}{} ",
+        caret_row + 1,
+        lines.len(),
+        if scroll_v > 0 { " ↑" } else { "" },
+        if end < disp.len() { " ↓" } else { "" },
+    );
+
+    frame.render_widget(Clear, popup);
+    frame.render_widget(
+        Paragraph::new(visible).block(Block::bordered().title(title)),
+        popup,
     );
 }
 
@@ -5335,5 +5935,301 @@ mod tests {
             out[0].contains("Decision") && out[0].contains("hello"),
             "{out:?}"
         );
+    }
+
+    // --- S1: interactive comment authoring ---
+
+    /// The author id the authoring code stamps (`$USER`, else `local`), so a
+    /// fixture can be owned by "me" regardless of the CI environment.
+    fn me_id() -> String {
+        std::env::var("USER").unwrap_or_else(|_| "local".into())
+    }
+
+    fn mk_comment_by(content: &str, line0: usize, body: &str, author_id: &str) -> Comment {
+        let mut c = mk_comment(content, line0, body);
+        c.id = format!("id_{body}");
+        c.author = crate::comments::Author {
+            who: "human".into(),
+            id: author_id.into(),
+        };
+        c
+    }
+
+    /// An `AppState` over a temp repo whose `src/a.rs` carries `seed`, with the
+    /// Comments view loaded and ready to author.
+    fn authoring_state(tag: &str, content: &str, seed: &[Comment]) -> (AppState, PathBuf) {
+        let repo = comments_tmp(tag);
+        std::fs::create_dir_all(repo.join("src")).unwrap();
+        std::fs::write(repo.join("src/a.rs"), content).unwrap();
+        write_sidecar(&repo, "src/a.rs", seed);
+        let mut a = AppState::new(repo.clone(), fold_of(&[]), None);
+        a.reload_comment_files();
+        a.refresh_comments();
+        (a, repo)
+    }
+
+    fn sidecar_of(repo: &Path) -> Vec<Comment> {
+        comments::load(&repo.join(comments::sidecar_path("src/a.rs"))).unwrap()
+    }
+
+    #[test]
+    fn text_buf_inserts_newlines_moves_and_deletes() {
+        // (AC-6) newline is stored verbatim; the cursor inserts mid-buffer and
+        // backspaces the char before it.
+        let mut b = TextBuf::default();
+        for ch in "ab".chars() {
+            b.insert(ch);
+        }
+        b.insert('\n');
+        b.insert('c');
+        assert_eq!(b.text, "ab\nc");
+        // Move left twice (before the newline) and insert.
+        b.left();
+        b.left();
+        b.insert('X'); // after "ab", before "\nc"
+        assert_eq!(b.text, "abX\nc");
+        // Backspace removes the char before the cursor.
+        b.backspace();
+        assert_eq!(b.text, "ab\nc");
+        // Home/End bound the cursor.
+        b.home();
+        assert_eq!(b.cursor, 0);
+        b.end();
+        assert_eq!(b.cursor, b.text.chars().count());
+    }
+
+    #[test]
+    fn compose_new_comment_appends_with_line_anchor() {
+        // (AC-1/AC-7) composing a new comment on a line appends one record whose
+        // anchor targets that line's text, authored human, thread empty — the same
+        // structure `cospan comment add` (ctx 2) writes; then it surfaces on refresh.
+        let content = "l0\nl1\nl2\n";
+        let (mut a, repo) =
+            authoring_state("author-new", content, &[mk_comment(content, 0, "seed")]);
+        a.editing = Some(Editing::Compose {
+            kind: ComposeKind::NewComment { line: 2 },
+            buf: TextBuf::prefilled("new note"),
+        });
+        a.commit_editing();
+        assert!(a.editing.is_none(), "commit clears the compose");
+
+        let cs = sidecar_of(&repo);
+        assert_eq!(cs.len(), 2);
+        let added = cs.iter().find(|c| c.body == "new note").unwrap();
+        assert_eq!(added.anchor.target, "l2");
+        assert_eq!(added.anchor, comments::StoredAnchor::capture(content, 2, 2));
+        assert_eq!(added.author.who, "human");
+        assert!(added.thread.is_empty());
+        // Refresh surfaced it with a localization, and the cursor is on it.
+        assert!(a
+            .comment_localized
+            .iter()
+            .any(|(c, _)| c.body == "new note"));
+        assert_eq!(
+            a.comment_localized[a.comment_selected].0.body, "new note",
+            "the new comment is selected"
+        );
+    }
+
+    #[test]
+    fn compose_reply_grows_the_thread() {
+        // (AC-2)
+        let content = "l0\nl1\n";
+        let (mut a, repo) =
+            authoring_state("author-reply", content, &[mk_comment(content, 0, "seed")]);
+        let id = a.comment_localized[0].0.id.clone();
+        a.editing = Some(Editing::Compose {
+            kind: ComposeKind::Reply { id },
+            buf: TextBuf::prefilled("a reply"),
+        });
+        a.commit_editing();
+        let seed = sidecar_of(&repo)
+            .into_iter()
+            .find(|c| c.body == "seed")
+            .unwrap();
+        assert_eq!(seed.thread.len(), 1);
+        assert_eq!(seed.thread[0].body, "a reply");
+        assert_eq!(seed.thread[0].author.who, "human");
+    }
+
+    #[test]
+    fn compose_preserves_internal_newlines() {
+        // (AC-6) a paragraph body keeps its embedded newline through the sidecar.
+        let content = "l0\n";
+        let (mut a, repo) = authoring_state(
+            "author-multiline",
+            content,
+            &[mk_comment(content, 0, "seed")],
+        );
+        a.editing = Some(Editing::Compose {
+            kind: ComposeKind::NewComment { line: 0 },
+            buf: TextBuf::prefilled("line one\nline two"),
+        });
+        a.commit_editing();
+        let added = sidecar_of(&repo)
+            .into_iter()
+            .find(|c| c.body.contains("line one"))
+            .unwrap();
+        assert_eq!(added.body, "line one\nline two");
+    }
+
+    #[test]
+    fn toggle_resolve_flips_both_ways_through_the_sidecar() {
+        // (AC-3)
+        let content = "l0\nl1\n";
+        let (mut a, repo) =
+            authoring_state("author-resolve", content, &[mk_comment(content, 0, "seed")]);
+        a.comment_selected = 0;
+        a.toggle_resolve_selected();
+        assert!(sidecar_of(&repo)[0].resolved);
+        a.toggle_resolve_selected();
+        assert!(!sidecar_of(&repo)[0].resolved, "second toggle un-resolves");
+    }
+
+    #[test]
+    fn edit_and_delete_are_gated_to_the_author() {
+        // (AC-4/AC-5 at the TUI level) you can edit and delete your own comment;
+        // a comment owned by someone else is refused with a status, untouched.
+        let content = "l0\nl1\n";
+        let mine = mk_comment_by(content, 0, "mine", &me_id());
+        let (mut a, repo) = authoring_state("author-own", content, &[mine]);
+        a.comment_selected = 0;
+
+        // Edit own: begin_edit opens a pre-filled compose; commit rewrites it.
+        a.begin_edit();
+        assert!(
+            matches!(a.editing, Some(Editing::Compose { .. })),
+            "own comment is editable"
+        );
+        a.editing = Some(Editing::Compose {
+            kind: ComposeKind::Edit {
+                id: "id_mine".into(),
+            },
+            buf: TextBuf::prefilled("edited"),
+        });
+        a.commit_editing();
+        assert_eq!(sidecar_of(&repo)[0].body, "edited");
+
+        // Delete own: gone from the sidecar.
+        a.comment_selected = 0;
+        a.delete_selected();
+        assert!(sidecar_of(&repo).is_empty(), "own comment deleted");
+
+        // A foreign comment: neither edit nor delete touches it.
+        let theirs = mk_comment_by(content, 0, "theirs", "someone-else");
+        let (mut b, repo2) = authoring_state("author-foreign", content, &[theirs]);
+        b.comment_selected = 0;
+        b.begin_edit();
+        assert!(b.editing.is_none(), "a foreign comment is not editable");
+        assert_eq!(b.comment_msg.as_deref(), Some("not your comment"));
+        b.delete_selected();
+        assert_eq!(
+            sidecar_of(&repo2).len(),
+            1,
+            "a foreign comment is not deleted"
+        );
+        assert_eq!(b.comment_msg.as_deref(), Some("not your comment"));
+    }
+
+    #[test]
+    fn editing_keys_route_pick_then_compose() {
+        // Enter in pick-line opens a NewComment compose on that line; a letter
+        // types into the buffer (does not quit); Ctrl-S commits; Esc cancels.
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+        let content = "l0\nl1\nl2\n";
+        let (mut a, repo) =
+            authoring_state("author-keys", content, &[mk_comment(content, 0, "seed")]);
+        a.begin_new_comment();
+        assert!(matches!(a.editing, Some(Editing::PickLine { .. })));
+        // Move the pick cursor down one, then confirm the line.
+        a.handle_editing_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
+        a.handle_editing_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+        match &a.editing {
+            Some(Editing::Compose {
+                kind: ComposeKind::NewComment { line },
+                ..
+            }) => assert_eq!(*line, 1),
+            _ => panic!("expected a NewComment compose on line 1"),
+        }
+        // Type a 'q' — it must land in the buffer, not quit.
+        a.handle_editing_key(KeyEvent::new(KeyCode::Char('q'), KeyModifiers::NONE));
+        a.handle_editing_key(KeyEvent::new(KeyCode::Char('!'), KeyModifiers::NONE));
+        a.handle_editing_key(KeyEvent::new(KeyCode::Char('s'), KeyModifiers::CONTROL));
+        assert!(a.editing.is_none(), "Ctrl-S commits");
+        assert!(
+            sidecar_of(&repo).iter().any(|c| c.body == "q!"),
+            "typed body was saved"
+        );
+    }
+
+    #[test]
+    fn commit_in_pick_line_is_a_noop() {
+        // A stray Ctrl-S while still choosing the line must not cancel the pick.
+        let content = "l0\nl1\n";
+        let (mut a, _repo) = authoring_state(
+            "author-picknoop",
+            content,
+            &[mk_comment(content, 0, "seed")],
+        );
+        a.begin_new_comment();
+        assert!(matches!(a.editing, Some(Editing::PickLine { .. })));
+        a.commit_editing();
+        assert!(
+            matches!(a.editing, Some(Editing::PickLine { .. })),
+            "pick-line must survive a commit with no compose active"
+        );
+    }
+
+    #[test]
+    fn text_buf_vertical_movement_keeps_column_and_clamps() {
+        let mut b = TextBuf::prefilled("ab\ncdef\ng");
+        assert_eq!(b.row_col(), (2, 1)); // cursor at end, on "g"
+        b.up();
+        assert_eq!(b.row_col(), (1, 1)); // column preserved on the longer line
+        b.up();
+        assert_eq!(b.row_col(), (0, 1));
+        b.up();
+        assert_eq!(b.row_col(), (0, 1), "clamps at the top");
+        b.down();
+        b.down();
+        assert_eq!(b.row_col(), (2, 1)); // column clamped to the short last line
+        b.down();
+        assert_eq!(b.row_col(), (2, 1), "clamps at the bottom");
+    }
+
+    #[test]
+    fn compose_scroll_moves_the_caret_vertically() {
+        let content = "l0\n";
+        let (mut a, _repo) =
+            authoring_state("compose-scroll", content, &[mk_comment(content, 0, "seed")]);
+        a.editing = Some(Editing::Compose {
+            kind: ComposeKind::NewComment { line: 0 },
+            buf: TextBuf::prefilled("one\ntwo\nthree\nfour"),
+        });
+        let row = |a: &AppState| match &a.editing {
+            Some(Editing::Compose { buf, .. }) => buf.row_col().0,
+            _ => 99,
+        };
+        a.compose_scroll(-1); // wheel up: caret toward the top
+        assert_eq!(row(&a), 0);
+        a.compose_scroll(1); // wheel down: back to the bottom
+        assert_eq!(row(&a), 3);
+    }
+
+    #[test]
+    fn arrow_keys_move_the_caret_between_lines() {
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+        let content = "l0\n";
+        let (mut a, _repo) =
+            authoring_state("compose-arrows", content, &[mk_comment(content, 0, "seed")]);
+        a.editing = Some(Editing::Compose {
+            kind: ComposeKind::NewComment { line: 0 },
+            buf: TextBuf::prefilled("aaa\nbbb"),
+        });
+        a.handle_editing_key(KeyEvent::new(KeyCode::Up, KeyModifiers::NONE));
+        match &a.editing {
+            Some(Editing::Compose { buf, .. }) => assert_eq!(buf.row_col().0, 0, "Up moved a row"),
+            _ => panic!("compose ended unexpectedly"),
+        }
     }
 }
