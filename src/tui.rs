@@ -1239,6 +1239,11 @@ impl AppState {
     /// the body, persist, and re-read. A no-op unless a `Compose` is active — so
     /// `Ctrl-S` in pick-line mode does nothing.
     pub fn commit_editing(&mut self) {
+        // Peek before taking: `Ctrl-S` in pick-line mode (or with nothing active)
+        // must leave `editing` intact rather than silently cancelling the pick.
+        if !matches!(self.editing, Some(Editing::Compose { .. })) {
+            return;
+        }
         let Some(Editing::Compose { kind, buf }) = self.editing.take() else {
             return;
         };
@@ -2584,8 +2589,15 @@ pub fn run(repo: PathBuf) -> std::io::Result<()> {
         match event::poll(tick) {
             Ok(true) => match event::read() {
                 Ok(Event::Key(key)) if key.kind == KeyEventKind::Press => {
-                    // While composing a comment, all keys go to the editor (so `q`
-                    // types rather than quits); it commits/cancels on its own.
+                    // Ctrl-C always quits — the one hard escape hatch that works
+                    // even mid-compose (where every other key types into the buffer).
+                    if key.code == KeyCode::Char('c')
+                        && key.modifiers.contains(KeyModifiers::CONTROL)
+                    {
+                        break Ok(());
+                    }
+                    // While composing a comment, all other keys go to the editor (so
+                    // `q` types rather than quits); it commits/cancels on its own.
                     if state.view == View::Comments && state.editing.is_some() {
                         state.handle_editing_key(key);
                         continue;
@@ -6004,6 +6016,24 @@ mod tests {
         assert!(
             sidecar_of(&repo).iter().any(|c| c.body == "q!"),
             "typed body was saved"
+        );
+    }
+
+    #[test]
+    fn commit_in_pick_line_is_a_noop() {
+        // A stray Ctrl-S while still choosing the line must not cancel the pick.
+        let content = "l0\nl1\n";
+        let (mut a, _repo) = authoring_state(
+            "author-picknoop",
+            content,
+            &[mk_comment(content, 0, "seed")],
+        );
+        a.begin_new_comment();
+        assert!(matches!(a.editing, Some(Editing::PickLine { .. })));
+        a.commit_editing();
+        assert!(
+            matches!(a.editing, Some(Editing::PickLine { .. })),
+            "pick-line must survive a commit with no compose active"
         );
     }
 }
