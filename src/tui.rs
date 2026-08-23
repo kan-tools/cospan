@@ -1274,7 +1274,7 @@ impl AppState {
             .get(self.comment_selected)
             .and_then(|(_, loc)| loc.span.map(|(s, _)| s))
             .unwrap_or(0);
-        self.comment_scroll.max(sel_line) + view_h as usize + 32
+        self.comment_scroll.max(sel_line) + view_h as usize + 8
     }
 
     /// Move within the active Process sub-pane: select an atom box (atoms graph),
@@ -3360,6 +3360,57 @@ pub fn reflow_rows(
     (rows, note_rows)
 }
 
+/// Whether the notes need reflow — i.e. any note (sorted by `start`) would either
+/// run past the last code line or overlap the next note's start. When false, every
+/// note fits beside the code without pushing it down, so the cheaper, less-jumpy
+/// [`side_by_side_rows`] can be used instead of [`reflow_rows`].
+pub fn notes_need_reflow(
+    notes: &[(usize, usize, Vec<ratatui::text::Line<'static>>)],
+    code_len: usize,
+) -> bool {
+    for (i, (_, start, lines)) in notes.iter().enumerate() {
+        let end = start + lines.len(); // exclusive
+        if end > code_len {
+            return true; // note spills past the file — needs appended rows
+        }
+        if let Some((_, next_start, _)) = notes.get(i + 1) {
+            if *next_start < end {
+                return true; // this note's lines collide with the next note
+            }
+        }
+    }
+    false
+}
+
+/// Place each note's lines into the right column beside the code — no reflow, so
+/// the code column does not shift. Safe only when [`notes_need_reflow`] is false
+/// (every note fits within the code without colliding). Same return shape as
+/// [`reflow_rows`]: `(left,right)` rows and `(localized_index, first_row)` per note.
+#[allow(clippy::type_complexity)]
+pub fn side_by_side_rows(
+    code_lines: Vec<ratatui::text::Line<'static>>,
+    notes: &[(usize, usize, Vec<ratatui::text::Line<'static>>)],
+) -> (
+    Vec<(ratatui::text::Line<'static>, ratatui::text::Line<'static>)>,
+    Vec<(usize, usize)>,
+) {
+    use ratatui::text::Line;
+    let mut rows: Vec<(Line, Line)> = code_lines
+        .into_iter()
+        .map(|c| (c, Line::from("")))
+        .collect();
+    let mut note_rows: Vec<(usize, usize)> = Vec::new();
+    for (loc_idx, start, note_lines) in notes {
+        note_rows.push((*loc_idx, *start)); // the note's first row is its code line
+        for (j, nl) in note_lines.iter().enumerate() {
+            if let Some(row) = rows.get_mut(start + j) {
+                row.1 = nl.clone();
+            }
+        }
+    }
+    (rows, note_rows)
+}
+
 /// The Chat tab: a cross-harness session rail beside the selected session's
 /// conversation. Read-only projection of the harnesses' own transcripts.
 fn draw_chat(
@@ -3725,7 +3776,13 @@ fn draw_comments(
                     })
                 })
                 .collect();
-            let (rows, note_rows) = reflow_rows(code_lines, &notes);
+            // Only push the code down (reflow) when notes actually collide; when
+            // they fit beside the code, render side-by-side so the code stays put.
+            let (rows, note_rows) = if notes_need_reflow(&notes, code_lines.len()) {
+                reflow_rows(code_lines, &notes)
+            } else {
+                side_by_side_rows(code_lines, &notes)
+            };
             // Scroll so the selected comment's note is in view.
             let sel_row = note_rows
                 .iter()
@@ -6076,6 +6133,33 @@ mod tests {
         assert_eq!(line_text(&rows[2].1), "n1");
         assert_eq!(line_text(&rows[4].0), "l2"); // l2 pushed from row 2 to row 4
         assert_eq!(note_rows, vec![(0, 1)]); // note (loc idx 0) starts at row 1
+    }
+
+    #[test]
+    fn reflow_only_when_notes_collide() {
+        use ratatui::text::Line;
+        let code: Vec<Line> = (0..10).map(|i| Line::from(format!("l{i}"))).collect();
+        let two = |s: &str| vec![Line::from(format!("{s}0")), Line::from(format!("{s}1"))];
+        // Two 2-line notes at lines 1 and 5 — no collision (1..3 and 5..7 disjoint),
+        // and neither runs past the 10 code lines: no reflow needed.
+        let spaced = [(0usize, 1usize, two("a")), (1usize, 5usize, two("b"))];
+        assert!(!notes_need_reflow(&spaced, code.len()));
+        let (rows, note_rows) = side_by_side_rows(code.clone(), &spaced);
+        assert_eq!(rows.len(), 10, "code is NOT pushed down");
+        assert_eq!(line_text(&rows[1].0), "l1"); // code stays put
+        assert_eq!(line_text(&rows[1].1), "a0"); // note beside its line
+        assert_eq!(line_text(&rows[2].1), "a1"); // continuation beside the next code
+        assert_eq!(line_text(&rows[2].0), "l2"); // …which is unchanged
+        assert_eq!(note_rows, vec![(0, 1), (1, 5)]);
+
+        // Notes at lines 1 and 2 — the first (2 lines) spills onto line 2 where the
+        // second starts: they collide, so reflow IS needed.
+        let colliding = [(0usize, 1usize, two("a")), (1usize, 2usize, two("b"))];
+        assert!(notes_need_reflow(&colliding, code.len()));
+
+        // A note running past the last code line needs reflow (appended rows).
+        let past_eof = [(0usize, 9usize, two("a"))]; // 9..11 > 10
+        assert!(notes_need_reflow(&past_eof, code.len()));
     }
 
     #[test]
