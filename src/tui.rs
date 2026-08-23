@@ -347,9 +347,43 @@ impl TextBuf {
         self.cursor = self.char_count();
     }
 
-    /// The text split at the cursor, for rendering a visible caret between the halves.
-    pub fn split_at_cursor(&self) -> (&str, &str) {
-        self.text.split_at(self.byte_of(self.cursor))
+    /// The `(row, col)` of the cursor in logical lines (0-based), splitting on `'\n'`.
+    pub fn row_col(&self) -> (usize, usize) {
+        let pre = &self.text[..self.byte_of(self.cursor)];
+        let row = pre.matches('\n').count();
+        let col = pre
+            .rsplit('\n')
+            .next()
+            .map(|s| s.chars().count())
+            .unwrap_or(0);
+        (row, col)
+    }
+
+    /// Move the cursor up one line, keeping the column where the line is long enough.
+    pub fn up(&mut self) {
+        self.move_vert(-1);
+    }
+
+    /// Move the cursor down one line, keeping the column where the line is long enough.
+    pub fn down(&mut self) {
+        self.move_vert(1);
+    }
+
+    fn move_vert(&mut self, d: isize) {
+        let (row, col) = self.row_col();
+        let lines: Vec<&str> = self.text.split('\n').collect();
+        let target_row =
+            (row as isize + d).clamp(0, lines.len().saturating_sub(1) as isize) as usize;
+        if target_row == row {
+            return;
+        }
+        let target_col = col.min(lines[target_row].chars().count());
+        // Char index = every char of the preceding lines (+1 per `'\n'`) then the column.
+        let mut idx = 0;
+        for l in &lines[..target_row] {
+            idx += l.chars().count() + 1;
+        }
+        self.cursor = (idx + target_col).min(self.char_count());
     }
 }
 
@@ -1307,6 +1341,25 @@ impl AppState {
         }
     }
 
+    /// True while the Comments view is capturing keys for an authoring action.
+    pub fn editing_active(&self) -> bool {
+        self.view == View::Comments && self.editing.is_some()
+    }
+
+    /// Mouse-wheel scroll while composing: move the caret vertically a few lines,
+    /// so the wheel scrolls the editor rather than the comment list underneath.
+    pub fn compose_scroll(&mut self, delta: isize) {
+        if let Some(Editing::Compose { buf, .. }) = &mut self.editing {
+            for _ in 0..3 {
+                if delta > 0 {
+                    buf.down();
+                } else {
+                    buf.up();
+                }
+            }
+        }
+    }
+
     /// Route a keystroke while an `Editing` interaction is active. Terminal keys
     /// (`Esc` cancel, `Ctrl-S` commit, `Enter` in pick-line) replace `editing`
     /// wholesale; the rest move the pick cursor or edit the compose buffer.
@@ -1350,6 +1403,8 @@ impl AppState {
                 KeyCode::Backspace => buf.backspace(),
                 KeyCode::Left => buf.left(),
                 KeyCode::Right => buf.right(),
+                KeyCode::Up => buf.up(),
+                KeyCode::Down => buf.down(),
                 KeyCode::Home => buf.home(),
                 KeyCode::End => buf.end(),
                 KeyCode::Char(ch) if !key.modifiers.contains(KeyModifiers::CONTROL) => {
@@ -2693,6 +2748,8 @@ pub fn run(repo: PathBuf) -> std::io::Result<()> {
                 }
                 // Mouse wheel scrolls the active view a few lines at a time.
                 Ok(Event::Mouse(m)) => match m.kind {
+                    MouseEventKind::ScrollDown if state.editing_active() => state.compose_scroll(1),
+                    MouseEventKind::ScrollUp if state.editing_active() => state.compose_scroll(-1),
                     MouseEventKind::ScrollDown => state.nav_step(3),
                     MouseEventKind::ScrollUp => state.nav_step(-3),
                     _ => {}
@@ -3083,7 +3140,7 @@ fn draw_comments(
     use ratatui::layout::{Constraint, Layout};
     use ratatui::style::{Modifier, Style};
     use ratatui::text::{Line, Span};
-    use ratatui::widgets::{Block, Clear, List, ListItem, ListState, Paragraph, Wrap};
+    use ratatui::widgets::{Block, List, ListItem, ListState, Paragraph, Wrap};
 
     if state.comment_files.is_empty() {
         frame.render_widget(
@@ -3093,6 +3150,13 @@ fn draw_comments(
             .block(Block::bordered().title(" comments ")),
             body,
         );
+        return;
+    }
+
+    // Compose mode: a full-width editor view — the file rail collapses, the target
+    // line is highlighted, and the popup is placed clear of it.
+    if let Some(Editing::Compose { kind, buf }) = &state.editing {
+        draw_compose(frame, state, body, kind, buf);
         return;
     }
 
@@ -3256,48 +3320,127 @@ fn draw_comments(
             .wrap(Wrap { trim: false }),
         strip_area,
     );
-
-    // Compose popup: an overlay editor for a new comment / reply / edit body.
-    if let Some(Editing::Compose { kind, buf }) = &state.editing {
-        let title = match kind {
-            ComposeKind::NewComment { line } => {
-                format!(
-                    " new comment · line {} · Ctrl-S save · Esc cancel ",
-                    line + 1
-                )
-            }
-            ComposeKind::Reply { .. } => " reply · Ctrl-S save · Esc cancel ".to_string(),
-            ComposeKind::Edit { .. } => " edit · Ctrl-S save · Esc cancel ".to_string(),
-        };
-        let (pre, post) = buf.split_at_cursor();
-        // A visible caret between the halves; wrapped so long prose stays legible.
-        let shown = format!("{pre}│{post}");
-        let body_lines: Vec<Line> = shown
-            .split('\n')
-            .map(|l| Line::from(l.to_string()))
-            .collect();
-        let popup = centered_rect(60, 12, body);
-        frame.render_widget(Clear, popup);
-        frame.render_widget(
-            Paragraph::new(body_lines)
-                .block(Block::bordered().title(title))
-                .wrap(Wrap { trim: false }),
-            popup,
-        );
-    }
 }
 
-/// A rectangle `pct_w`% of `area`'s width and up to `max_h` tall, centered in it —
-/// the frame for the compose overlay.
-fn centered_rect(pct_w: u16, max_h: u16, area: ratatui::layout::Rect) -> ratatui::layout::Rect {
-    let w = ((area.width as u32 * pct_w as u32 / 100) as u16).clamp(20.min(area.width), area.width);
-    let h = max_h.min(area.height);
-    ratatui::layout::Rect {
-        x: area.x + area.width.saturating_sub(w) / 2,
-        y: area.y + area.height.saturating_sub(h) / 2,
-        width: w,
-        height: h,
+/// Compose view: the file body full-width (rail collapsed) with the commented
+/// line highlighted, and the editor popup placed in the half of the screen the
+/// line is *not* in — so you can see what you are commenting on while you type.
+/// The editor scrolls vertically to keep the caret in view and shows a
+/// `L<row>/<total>` position with `↑`/`↓` when there is more above or below.
+fn draw_compose(
+    frame: &mut ratatui::Frame,
+    state: &AppState,
+    body: ratatui::layout::Rect,
+    kind: &ComposeKind,
+    buf: &TextBuf,
+) {
+    use ratatui::layout::Rect;
+    use ratatui::style::Modifier;
+    use ratatui::text::Line;
+    use ratatui::widgets::{Block, Clear, Paragraph};
+
+    let file_title = state
+        .comment_files
+        .get(state.comment_file_selected)
+        .map(|(p, _)| p.to_string_lossy().to_string())
+        .unwrap_or_default();
+
+    // The source line this compose is about: the chosen line for a new comment,
+    // else the target comment's anchored line.
+    let target = match kind {
+        ComposeKind::NewComment { line } => Some(*line),
+        ComposeKind::Reply { id } | ComposeKind::Edit { id } => state
+            .comment_localized
+            .iter()
+            .find(|(c, _)| &c.id == id)
+            .and_then(|(_, loc)| loc.span.map(|(s, _)| s)),
+    };
+
+    // Full-width code with the target line highlighted, scrolled toward the top
+    // third so it stays on screen beside the popup.
+    let (mut code_lines, _) = gutter_lines(
+        &state.comment_content,
+        &state.comment_localized,
+        state.comment_selected,
+    );
+    if let Some(t) = target {
+        if let Some(l) = code_lines.get_mut(t) {
+            for sp in &mut l.spans {
+                sp.style = sp.style.add_modifier(Modifier::REVERSED);
+            }
+        }
     }
+    let view_h = body.height as usize;
+    let scroll = target
+        .map(|t| t.saturating_sub(view_h / 3))
+        .unwrap_or(0)
+        .min(code_lines.len().saturating_sub(1));
+    frame.render_widget(
+        Paragraph::new(code_lines.split_off(scroll))
+            .block(Block::bordered().title(format!(" {file_title} · composing "))),
+        body,
+    );
+
+    // Place the popup in the half the target line is NOT in.
+    let target_row = target.map(|t| t.saturating_sub(scroll)).unwrap_or(0) as u16;
+    let lines: Vec<String> = buf.text.split('\n').map(str::to_string).collect();
+    let want_h = ((lines.len() as u16).saturating_add(2))
+        .clamp(5, body.height.saturating_sub(2).max(5))
+        .min(16);
+    let target_in_top = target_row < body.height / 2;
+    let pw = ((body.width as u32 * 72 / 100) as u16).clamp(20.min(body.width), body.width);
+    let px = body.x + body.width.saturating_sub(pw) / 2;
+    let py = if target_in_top {
+        // line up top -> popup at the bottom
+        body.y + body.height.saturating_sub(want_h).saturating_sub(1)
+    } else {
+        body.y + 1
+    };
+    let popup = Rect {
+        x: px,
+        y: py,
+        width: pw,
+        height: want_h.min(body.height),
+    };
+
+    let label = match kind {
+        ComposeKind::NewComment { line } => format!("new comment · line {}", line + 1),
+        ComposeKind::Reply { .. } => "reply".to_string(),
+        ComposeKind::Edit { .. } => "edit".to_string(),
+    };
+
+    // Caret at (row, col); scroll the editor so the caret line is visible. No wrap
+    // in the box, so one logical line is one row and the scroll math is exact.
+    let (caret_row, caret_col) = buf.row_col();
+    let inner_h = popup.height.saturating_sub(2).max(1) as usize;
+    let scroll_v = caret_row.saturating_sub(inner_h.saturating_sub(1));
+    let mut disp: Vec<Line> = Vec::new();
+    for (i, l) in lines.iter().enumerate() {
+        if i == caret_row {
+            let chars: Vec<char> = l.chars().collect();
+            let cc = caret_col.min(chars.len());
+            let a: String = chars[..cc].iter().collect();
+            let b: String = chars[cc..].iter().collect();
+            disp.push(Line::from(format!("{a}│{b}")));
+        } else {
+            disp.push(Line::from(l.clone()));
+        }
+    }
+    let end = (scroll_v + inner_h).min(disp.len());
+    let visible = disp[scroll_v..end].to_vec();
+    let title = format!(
+        " {label} · Ctrl-S save · Esc · L{}/{}{}{} ",
+        caret_row + 1,
+        lines.len(),
+        if scroll_v > 0 { " ↑" } else { "" },
+        if end < disp.len() { " ↓" } else { "" },
+    );
+
+    frame.render_widget(Clear, popup);
+    frame.render_widget(
+        Paragraph::new(visible).block(Block::bordered().title(title)),
+        popup,
+    );
 }
 
 fn draw_browser(
@@ -6035,5 +6178,58 @@ mod tests {
             matches!(a.editing, Some(Editing::PickLine { .. })),
             "pick-line must survive a commit with no compose active"
         );
+    }
+
+    #[test]
+    fn text_buf_vertical_movement_keeps_column_and_clamps() {
+        let mut b = TextBuf::prefilled("ab\ncdef\ng");
+        assert_eq!(b.row_col(), (2, 1)); // cursor at end, on "g"
+        b.up();
+        assert_eq!(b.row_col(), (1, 1)); // column preserved on the longer line
+        b.up();
+        assert_eq!(b.row_col(), (0, 1));
+        b.up();
+        assert_eq!(b.row_col(), (0, 1), "clamps at the top");
+        b.down();
+        b.down();
+        assert_eq!(b.row_col(), (2, 1)); // column clamped to the short last line
+        b.down();
+        assert_eq!(b.row_col(), (2, 1), "clamps at the bottom");
+    }
+
+    #[test]
+    fn compose_scroll_moves_the_caret_vertically() {
+        let content = "l0\n";
+        let (mut a, _repo) =
+            authoring_state("compose-scroll", content, &[mk_comment(content, 0, "seed")]);
+        a.editing = Some(Editing::Compose {
+            kind: ComposeKind::NewComment { line: 0 },
+            buf: TextBuf::prefilled("one\ntwo\nthree\nfour"),
+        });
+        let row = |a: &AppState| match &a.editing {
+            Some(Editing::Compose { buf, .. }) => buf.row_col().0,
+            _ => 99,
+        };
+        a.compose_scroll(-1); // wheel up: caret toward the top
+        assert_eq!(row(&a), 0);
+        a.compose_scroll(1); // wheel down: back to the bottom
+        assert_eq!(row(&a), 3);
+    }
+
+    #[test]
+    fn arrow_keys_move_the_caret_between_lines() {
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+        let content = "l0\n";
+        let (mut a, _repo) =
+            authoring_state("compose-arrows", content, &[mk_comment(content, 0, "seed")]);
+        a.editing = Some(Editing::Compose {
+            kind: ComposeKind::NewComment { line: 0 },
+            buf: TextBuf::prefilled("aaa\nbbb"),
+        });
+        a.handle_editing_key(KeyEvent::new(KeyCode::Up, KeyModifiers::NONE));
+        match &a.editing {
+            Some(Editing::Compose { buf, .. }) => assert_eq!(buf.row_col().0, 0, "Up moved a row"),
+            _ => panic!("compose ended unexpectedly"),
+        }
     }
 }
