@@ -107,6 +107,77 @@ pub fn resolve(comments: &mut [Comment], id: &str) -> bool {
     }
 }
 
+/// Set the resolved flag of the comment with `id` to `val`; returns whether one
+/// matched. Unlike [`resolve`], this can also un-resolve (`val = false`) — the
+/// toggle the interactive authoring surface needs.
+pub fn set_resolved(comments: &mut [Comment], id: &str, val: bool) -> bool {
+    match comments.iter_mut().find(|c| c.id == id) {
+        Some(c) => {
+            c.resolved = val;
+            true
+        }
+        None => false,
+    }
+}
+
+/// The outcome of an author-gated mutation ([`edit_body`] / [`delete`]).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Mutation {
+    /// Applied to the matched comment.
+    Applied,
+    /// No comment carried that id.
+    NotFound,
+    /// The comment exists but is authored by someone else — refused, so one
+    /// author can never rewrite or remove another's comment.
+    Forbidden,
+}
+
+/// Rewrite the body of the comment with `id`, but only if it is authored by
+/// `by_id`; then re-capture its anchor against the current `content` so the
+/// edited comment is anchored to the file as it now stands. A comment authored
+/// by someone else is [`Mutation::Forbidden`].
+pub fn edit_body(
+    comments: &mut [Comment],
+    id: &str,
+    by_id: &str,
+    new_body: &str,
+    content: &str,
+) -> Mutation {
+    match comments.iter_mut().find(|c| c.id == id) {
+        None => Mutation::NotFound,
+        Some(c) if c.author.id != by_id => Mutation::Forbidden,
+        Some(c) => {
+            // Re-anchor to the current position first (refreshing `base_hash`),
+            // then replace the prose.
+            localize_and_update(c, content);
+            c.body = new_body.to_string();
+            Mutation::Applied
+        }
+    }
+}
+
+/// Remove the comment with `id`, but only if it is authored by `by_id`. Gated
+/// like [`edit_body`]: another author's comment is [`Mutation::Forbidden`].
+pub fn delete(comments: &mut Vec<Comment>, id: &str, by_id: &str) -> Mutation {
+    match comments.iter().position(|c| c.id == id) {
+        None => Mutation::NotFound,
+        Some(i) if comments[i].author.id != by_id => Mutation::Forbidden,
+        Some(i) => {
+            comments.remove(i);
+            Mutation::Applied
+        }
+    }
+}
+
+/// Microseconds since the Unix epoch (0 if the clock reads before the epoch) —
+/// the timestamp stamped on a freshly authored comment or reply.
+pub fn now_micros() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_micros() as i64)
+        .unwrap_or(0)
+}
+
 /// A one-line summary suffix for a comment: reply count and resolved state, or
 /// empty when it has neither.
 pub fn thread_summary(c: &Comment) -> String {
@@ -284,6 +355,77 @@ mod tests {
         assert!(cs[0].resolved);
         assert!(!resolve(&mut cs, "nope"));
         assert_eq!(cs[0].thread.len(), 1, "a failed reply must not append");
+    }
+
+    #[test]
+    fn set_resolved_toggles_both_ways() {
+        // (AC-3) the interactive toggle can un-resolve, unlike `resolve`.
+        let mut cs = vec![comment_at(V0, 1)];
+        assert!(set_resolved(&mut cs, "c_1", true));
+        assert!(cs[0].resolved);
+        assert!(set_resolved(&mut cs, "c_1", false));
+        assert!(!cs[0].resolved, "un-resolve must clear the flag");
+        assert!(!set_resolved(&mut cs, "nope", true));
+    }
+
+    fn owned_by(id: &str) -> Comment {
+        let mut c = comment_at(V0, 1);
+        c.author = Author {
+            who: "human".into(),
+            id: id.into(),
+        };
+        c
+    }
+
+    #[test]
+    fn edit_body_rewrites_and_reanchors_own_but_refuses_others() {
+        // (AC-4) an author edits their own comment: the body changes and the
+        // anchor re-captures against the current content; a foreign comment is
+        // Forbidden and left untouched.
+        let mut cs = vec![owned_by("alice")];
+        // Edit against shifted content so the re-anchor is observable.
+        let shifted = format!("// pushed down\n{V0}");
+        assert_eq!(
+            edit_body(&mut cs, "c_1", "alice", "now cached?", &shifted),
+            Mutation::Applied
+        );
+        assert_eq!(cs[0].body, "now cached?");
+        assert_eq!(
+            cs[0].anchor.base_hash,
+            content_hash(&shifted),
+            "the anchor must re-capture against the edited-against content"
+        );
+
+        // Bob cannot rewrite Alice's comment.
+        assert_eq!(
+            edit_body(&mut cs, "c_1", "bob", "hijacked", V0),
+            Mutation::Forbidden
+        );
+        assert_eq!(cs[0].body, "now cached?", "a forbidden edit must not apply");
+        assert_eq!(
+            edit_body(&mut cs, "nope", "alice", "x", V0),
+            Mutation::NotFound
+        );
+    }
+
+    #[test]
+    fn delete_removes_own_but_refuses_others() {
+        // (AC-5) deleting your own comment removes exactly it; another author's is
+        // Forbidden and stays.
+        let mut cs = vec![owned_by("alice"), {
+            let mut b = owned_by("bob");
+            b.id = "c_2".into();
+            b
+        }];
+        assert_eq!(delete(&mut cs, "c_2", "alice"), Mutation::Forbidden);
+        assert_eq!(cs.len(), 2, "a forbidden delete must not remove anything");
+        assert_eq!(delete(&mut cs, "c_1", "alice"), Mutation::Applied);
+        assert_eq!(cs.len(), 1);
+        assert_eq!(
+            cs[0].id, "c_2",
+            "the surviving comment is the other author's"
+        );
+        assert_eq!(delete(&mut cs, "gone", "bob"), Mutation::NotFound);
     }
 
     #[test]
