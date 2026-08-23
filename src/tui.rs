@@ -796,10 +796,13 @@ impl AppState {
     /// Cheap per-tick gate: rebuild the file list when `.git/index` changed (a
     /// stage/commit), without a subprocess unless it did (`telos/poll-dont-subscribe`).
     pub fn refresh_files(&mut self) {
+        // Gate purely on the index mtime: the initial load already ran (via
+        // `enter_comments` / `AppState::new`), so a non-git or empty repo — where
+        // the entry list stays empty forever — must NOT re-shell git every tick.
         let mtime = std::fs::metadata(self.repo.join(".git/index"))
             .ok()
             .and_then(|m| m.modified().ok());
-        if self.file_entries.is_empty() || should_refold(self.file_index_mtime, mtime) {
+        if should_refold(self.file_index_mtime, mtime) {
             self.reload_files();
         }
     }

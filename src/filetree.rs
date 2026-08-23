@@ -42,6 +42,10 @@ fn git(repo: &Path, args: &[&str]) -> Option<String> {
     let out = Command::new("git")
         .arg("-C")
         .arg(repo)
+        // `core.quotepath=false` keeps non-ASCII paths verbatim (UTF-8) instead of
+        // git's default octal-escaped, double-quoted form — otherwise a file like
+        // `café.txt` comes back mangled, opens blank, and misroutes its sidecar.
+        .args(["-c", "core.quotepath=false"])
         .args(args)
         .output()
         .ok()?;
@@ -179,6 +183,39 @@ mod tests {
         assert!(
             by("ignored.txt").is_none(),
             "ignored files are not browsable"
+        );
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn non_ascii_filenames_come_back_verbatim() {
+        // Regression: git's default core.quotepath octal-escapes non-ASCII paths;
+        // `list` must return the real UTF-8 path so it opens and its sidecar keys
+        // match the CLI/re-localizer.
+        let dir = std::env::temp_dir().join(format!("cospan-ft-utf8-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let run = |args: &[&str]| {
+            Command::new("git")
+                .arg("-C")
+                .arg(&dir)
+                .args(args)
+                .output()
+                .unwrap();
+        };
+        run(&["init", "-q"]);
+        run(&["config", "user.email", "t@t"]);
+        run(&["config", "user.name", "t"]);
+        std::fs::write(dir.join("café.txt"), "hi\n").unwrap();
+        run(&["add", "-A"]);
+
+        let entries = list(&dir);
+        assert!(
+            entries
+                .iter()
+                .any(|e| e.path.as_path() == Path::new("café.txt")),
+            "non-ASCII path was mangled: {:?}",
+            entries.iter().map(|e| &e.path).collect::<Vec<_>>()
         );
         std::fs::remove_dir_all(&dir).ok();
     }
