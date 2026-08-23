@@ -8,6 +8,7 @@
 //! (`telos/poll-dont-subscribe`).
 
 use crate::comments::{self, Comment};
+use crate::filetree;
 use crate::substrate::{
     self, is_day_subject, namespace, short_cid, Atom, Claim, Fold, ProcessSnapshot,
 };
@@ -37,6 +38,107 @@ pub enum Row {
 struct TrieNode {
     is_subject: bool,
     children: std::collections::BTreeMap<String, TrieNode>,
+}
+
+/// One row of the Comments file tree (S2): a collapsible `Dir` or a selectable
+/// `File` carrying its git status. `guide` is the pre-rendered ancestry prefix
+/// (`│  ` / `   ` per ancestor, then a `├─ ` / `└─ ` connector) that draws the
+/// nesting lines and keeps every row at the same depth aligned.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum FileRow {
+    Dir {
+        path: String,
+        guide: String,
+        collapsed: bool,
+    },
+    File {
+        path: String,
+        guide: String,
+        status: filetree::GitStatus,
+    },
+}
+
+/// Which pane of the Comments view has focus: the file tree (rail) or the
+/// commented gutter. `Enter` on a file descends Tree -> Comments; `Esc` ascends.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum CommentFocus {
+    Tree,
+    Comments,
+}
+
+/// A file-tree node: a leaf carries its git status; a node with children is a
+/// directory.
+#[derive(Default)]
+struct FileNode {
+    status: Option<filetree::GitStatus>,
+    children: std::collections::BTreeMap<String, FileNode>,
+}
+
+/// Flatten file entries into a collapsible tree of rows, sorted by path, skipping
+/// the subtree of any collapsed directory (`dir:<path>` in `collapsed`).
+pub fn build_file_rows(
+    entries: &[filetree::FileEntry],
+    expanded: &HashSet<String>,
+) -> Vec<FileRow> {
+    let mut root = FileNode::default();
+    for e in entries {
+        let comps: Vec<String> = e
+            .path
+            .iter()
+            .map(|c| c.to_string_lossy().to_string())
+            .collect();
+        let n = comps.len();
+        let mut node = &mut root;
+        for (i, seg) in comps.into_iter().enumerate() {
+            node = node.children.entry(seg).or_default();
+            if i == n - 1 {
+                node.status = Some(e.status);
+            }
+        }
+    }
+    // Directories are collapsed by DEFAULT; a dir is walked into only when its
+    // `dir:<path>` key is in `expanded`. `ancestors` is the guide prefix drawn to
+    // the left of this level (`│  ` where an ancestor has more siblings below,
+    // `   ` where it was the last child).
+    fn walk(
+        node: &FileNode,
+        prefix: &str,
+        ancestors: &str,
+        expanded: &HashSet<String>,
+        rows: &mut Vec<FileRow>,
+    ) {
+        let n = node.children.len();
+        for (i, (seg, child)) in node.children.iter().enumerate() {
+            let last = i == n - 1;
+            let full = if prefix.is_empty() {
+                seg.clone()
+            } else {
+                format!("{prefix}/{seg}")
+            };
+            let guide = format!("{ancestors}{}", if last { "└─ " } else { "├─ " });
+            if child.children.is_empty() {
+                rows.push(FileRow::File {
+                    path: full,
+                    guide,
+                    status: child.status.unwrap_or(filetree::GitStatus::Clean),
+                });
+            } else {
+                let is_open = expanded.contains(&format!("dir:{full}"));
+                rows.push(FileRow::Dir {
+                    path: full.clone(),
+                    guide,
+                    collapsed: !is_open,
+                });
+                if is_open {
+                    let child_anc = format!("{ancestors}{}", if last { "   " } else { "│  " });
+                    walk(child, &full, &child_anc, expanded, rows);
+                }
+            }
+        }
+    }
+    let mut rows = Vec::new();
+    walk(&root, "", "", expanded, &mut rows);
+    rows
 }
 
 /// Flatten a trie node's children into rows at `depth`. A childless node is a
@@ -115,13 +217,25 @@ pub struct AppState {
     /// Keys of collapsed tree nodes (`sec:<label>` / `path:<prefix>`).
     pub collapsed: HashSet<String>,
 
-    // --- Comments view (P1): a picker over commented files + a live gutter. ---
-    /// Source files that have a sidecar, with their comment count; rebuilt on
-    /// entering the view or on a re-fold.
-    pub comment_files: Vec<(PathBuf, usize)>,
-    /// Index into `comment_files`.
-    pub comment_file_selected: usize,
-    /// Cached content of the selected file (for the gutter render).
+    // --- Comments view: a repo file tree (S2) beside a live commented gutter. ---
+    /// The repo's browsable files with git status, rebuilt on entering the view,
+    /// on a re-fold, and when `.git/index` changes.
+    pub file_entries: Vec<filetree::FileEntry>,
+    /// The file tree flattened to visible rows (dirs are collapsed by default and
+    /// expanded via `file_expanded`).
+    pub file_rows: Vec<FileRow>,
+    /// Cursor into `file_rows` (the rail).
+    pub file_selected: usize,
+    /// Expanded directory keys (`dir:<path>`); everything else is collapsed.
+    pub file_expanded: HashSet<String>,
+    /// The repo-relative file the operator has opened for commenting, or `None`
+    /// before one is chosen. Drives `comment_content`/`comment_localized`.
+    pub open_file: Option<PathBuf>,
+    /// `.git/index` mtime, the cheap gate for rebuilding the file list.
+    file_index_mtime: Option<SystemTime>,
+    /// Whether the rail (tree) or the gutter (comments) has focus.
+    pub comment_focus: CommentFocus,
+    /// Cached content of the open file (for the gutter render).
     pub comment_content: String,
     /// The selected file's comments with their current localization, newest gate.
     pub comment_localized: Vec<(Comment, Localization)>,
@@ -425,8 +539,13 @@ impl AppState {
             atom_scroll: 0,
             telos_scroll: 0,
             collapsed: HashSet::new(),
-            comment_files: Vec::new(),
-            comment_file_selected: 0,
+            file_entries: Vec::new(),
+            file_rows: Vec::new(),
+            file_selected: 0,
+            file_expanded: HashSet::new(),
+            open_file: None,
+            file_index_mtime: None,
+            comment_focus: CommentFocus::Tree,
             comment_content: String::new(),
             comment_localized: Vec::new(),
             comment_loaded: None,
@@ -459,7 +578,7 @@ impl AppState {
         };
         s.rebuild_rows();
         s.selected = s.first_subject_index().unwrap_or(0);
-        s.comment_files = commented_files(&s.repo);
+        s.reload_files();
         s
     }
 
@@ -666,32 +785,115 @@ impl AppState {
             .min(self.rows.len().saturating_sub(1));
     }
 
-    /// Re-scan the sidecar tree for commented files. Called on entering the
-    /// Comments view so newly-commented files appear.
-    pub fn reload_comment_files(&mut self) {
-        self.comment_files = commented_files(&self.repo);
-        self.comment_file_selected = self
-            .comment_file_selected
-            .min(self.comment_files.len().saturating_sub(1));
+    /// Rebuild the browsable file list (git status) and its tree rows. Called on
+    /// entering the Comments view, on a re-fold, and when `.git/index` changes.
+    pub fn reload_files(&mut self) {
+        self.file_entries = filetree::list(&self.repo);
+        self.file_index_mtime = std::fs::metadata(self.repo.join(".git/index"))
+            .ok()
+            .and_then(|m| m.modified().ok());
+        self.rebuild_file_rows();
     }
 
-    /// Refresh the selected file's comment localizations. Re-reads when the
-    /// selected file differs from the loaded one (first open / file switch) or its
-    /// content changed since last tick; otherwise a single `stat` and early
-    /// return, so an unchanged file triggers no re-read or `save`
+    /// Reflatten `file_rows` from the cached entries and current expansion set,
+    /// keeping the cursor in range.
+    pub fn rebuild_file_rows(&mut self) {
+        self.file_rows = build_file_rows(&self.file_entries, &self.file_expanded);
+        self.file_selected = self
+            .file_selected
+            .min(self.file_rows.len().saturating_sub(1));
+    }
+
+    /// Cheap per-tick gate: rebuild the file list when `.git/index` changed (a
+    /// stage/commit), without a subprocess unless it did (`telos/poll-dont-subscribe`).
+    pub fn refresh_files(&mut self) {
+        // Gate purely on the index mtime: the initial load already ran (via
+        // `enter_comments` / `AppState::new`), so a non-git or empty repo — where
+        // the entry list stays empty forever — must NOT re-shell git every tick.
+        let mtime = std::fs::metadata(self.repo.join(".git/index"))
+            .ok()
+            .and_then(|m| m.modified().ok());
+        if should_refold(self.file_index_mtime, mtime) {
+            self.reload_files();
+        }
+    }
+
+    /// Enter the Comments view: rebuild the file tree, focus the rail, and preview
+    /// the file under the cursor.
+    pub fn enter_comments(&mut self) {
+        self.reload_files();
+        self.comment_focus = CommentFocus::Tree;
+        self.preview_selected();
+    }
+
+    /// Move the file-tree cursor, clamped, then live-preview the file it lands on.
+    pub fn file_move(&mut self, delta: isize) {
+        let n = self.file_rows.len();
+        if n == 0 {
+            return;
+        }
+        self.file_selected =
+            (self.file_selected as isize + delta).clamp(0, n as isize - 1) as usize;
+        self.preview_selected();
+    }
+
+    /// Load the file under the cursor into the gutter *without* changing focus —
+    /// the live preview as you browse. A directory row leaves the last preview up.
+    pub fn preview_selected(&mut self) {
+        if let Some(FileRow::File { path, .. }) = self.file_rows.get(self.file_selected).cloned() {
+            self.set_preview(PathBuf::from(path));
+        }
+    }
+
+    /// Point the gutter at `rel`, loading it only when it differs from what is
+    /// already shown (so scrolling the rail doesn't thrash a re-read).
+    fn set_preview(&mut self, rel: PathBuf) {
+        if self.open_file.as_deref() == Some(rel.as_path()) {
+            return;
+        }
+        self.open_file = Some(rel);
+        self.comment_selected = 0;
+        self.comment_scroll = 0;
+        self.comment_msg = None;
+        self.reload_after_write(); // comment_loaded now differs -> forces the read
+    }
+
+    /// `Enter` in the tree: toggle a directory's expansion, or focus the gutter on
+    /// the file under the cursor (already previewed) so it can be commented on.
+    pub fn file_activate(&mut self) {
+        match self.file_rows.get(self.file_selected).cloned() {
+            Some(FileRow::Dir { path, .. }) => {
+                let key = format!("dir:{path}");
+                if !self.file_expanded.remove(&key) {
+                    self.file_expanded.insert(key);
+                }
+                self.rebuild_file_rows();
+            }
+            Some(FileRow::File { path, .. }) => self.open_path(PathBuf::from(path)),
+            None => {}
+        }
+    }
+
+    /// Open a repo-relative file into the gutter and give it focus for commenting.
+    pub fn open_path(&mut self, rel: PathBuf) {
+        self.set_preview(rel);
+        self.comment_focus = CommentFocus::Comments;
+    }
+
+    /// Refresh the open file's comment localizations. Re-reads when the open file
+    /// differs from the loaded one (first open / switch) or its content changed
+    /// since last tick; otherwise one `stat` and early return
     /// (`telos/poll-dont-subscribe`). A missing source reads as empty, so its
-    /// comments localize to `Unresolvable` and reach the resolve-by-hand list
-    /// rather than leaving another file's content on screen (`honest-ambiguity`).
+    /// comments localize to `Unresolvable` rather than leaving stale content on
+    /// screen (`honest-ambiguity`).
     pub fn refresh_comments(&mut self) {
-        if self.comment_files.is_empty() {
+        let Some(rel) = self.open_file.clone() else {
             self.comment_content.clear();
             self.comment_localized.clear();
             self.comment_loaded = None;
             self.comment_mtime = None;
             return;
-        }
-        self.comment_file_selected = self.comment_file_selected.min(self.comment_files.len() - 1);
-        let rel = self.comment_files[self.comment_file_selected].0.clone();
+        };
         let src = self.repo.join(&rel);
         let mtime = std::fs::metadata(&src).ok().and_then(|m| m.modified().ok());
         let already_loaded = self.comment_loaded.as_deref() == Some(rel.as_path());
@@ -1025,7 +1227,10 @@ impl AppState {
         match self.view {
             View::Chat => self.chat_scroll_by(delta),
             View::Process => self.process_move(delta),
-            View::Comments => self.select_comment(delta),
+            View::Comments => match self.comment_focus {
+                CommentFocus::Tree => self.file_move(delta),
+                CommentFocus::Comments => self.select_comment(delta),
+            },
             View::Ledger => {
                 for _ in 0..delta.unsigned_abs() {
                     if delta > 0 {
@@ -1122,20 +1327,6 @@ impl AppState {
         self.telos_scroll = 0;
     }
 
-    /// Switch the selected commented file, resetting the per-file re-read gate.
-    pub fn select_comment_file(&mut self, delta: isize) {
-        let n = self.comment_files.len();
-        if n == 0 {
-            return;
-        }
-        self.comment_file_selected =
-            (self.comment_file_selected as isize + delta).clamp(0, n as isize - 1) as usize;
-        self.comment_selected = 0;
-        self.comment_scroll = 0;
-        // The next `refresh_comments` re-reads because the selected file now
-        // differs from `comment_loaded`; no sentinel reset needed.
-    }
-
     // --- Comment authoring (S1): interactive add/reply/edit/delete/resolve. ---
 
     /// The `Author` of a comment written here — the human at `$USER`.
@@ -1146,25 +1337,21 @@ impl AppState {
         }
     }
 
-    /// The absolute sidecar path for the currently selected commented file.
+    /// The absolute sidecar path for the open file.
     fn current_sidecar(&self) -> Option<PathBuf> {
-        let rel = self
-            .comment_files
-            .get(self.comment_file_selected)?
-            .0
-            .clone();
+        let rel = self.open_file.clone()?;
         Some(
             self.repo
                 .join(comments::sidecar_path(&rel.to_string_lossy())),
         )
     }
 
-    /// The extension of the currently selected commented file, for choosing a
-    /// syntax grammar (empty when there is none — the plain fallback).
+    /// The extension of the open file, for choosing a syntax grammar (empty when
+    /// there is none — the plain fallback).
     fn selected_ext(&self) -> String {
-        self.comment_files
-            .get(self.comment_file_selected)
-            .and_then(|(p, _)| p.extension())
+        self.open_file
+            .as_ref()
+            .and_then(|p| p.extension())
             .map(|e| e.to_string_lossy().to_string())
             .unwrap_or_default()
     }
@@ -1200,7 +1387,7 @@ impl AppState {
     /// `a`/`i`: begin choosing the line for a new comment.
     pub fn begin_new_comment(&mut self) {
         self.comment_msg = None;
-        if self.comment_files.is_empty() {
+        if self.open_file.is_none() {
             return;
         }
         let cursor = self.authoring_line();
@@ -1423,39 +1610,6 @@ impl AppState {
                 _ => {}
             },
             None => {}
-        }
-    }
-}
-
-/// Discover source files that have a comment sidecar, with their comment count,
-/// by walking `.cospan/comments`. Repo-relative source paths, sorted.
-pub fn commented_files(repo: &Path) -> Vec<(PathBuf, usize)> {
-    let base = repo.join(".cospan/comments");
-    let mut out = Vec::new();
-    collect_sidecars(&base, &base, &mut out);
-    out.sort_by(|a, b| a.0.cmp(&b.0));
-    out
-}
-
-fn collect_sidecars(base: &Path, dir: &Path, out: &mut Vec<(PathBuf, usize)>) {
-    let Ok(entries) = std::fs::read_dir(dir) else {
-        return;
-    };
-    for e in entries.flatten() {
-        let p = e.path();
-        // `file_type()` does not follow symlinks, so a symlinked directory is not
-        // recursed into — no cycle can blow the stack under this ephemeral tree.
-        let is_dir = e.file_type().map(|t| t.is_dir()).unwrap_or(false);
-        if is_dir {
-            collect_sidecars(base, &p, out);
-        } else if p.extension().is_some_and(|x| x == "jsonl") {
-            // The source path is the sidecar's path under `base`, minus `.jsonl`.
-            if let Ok(rel) = p.strip_prefix(base) {
-                let s = rel.to_string_lossy();
-                let src = PathBuf::from(s.strip_suffix(".jsonl").unwrap_or(&s));
-                let count = comments::load(&p).map(|v| v.len()).unwrap_or(0);
-                out.push((src, count));
-            }
         }
     }
 }
@@ -2628,8 +2782,10 @@ pub fn run(repo: PathBuf) -> std::io::Result<()> {
             let fresh = substrate::fold(&state.repo);
             state.refold(fresh, now);
         }
-        // Second gate, same tick: re-localize the Comments view's file on change.
+        // Second gate, same tick: refresh the file tree's git status on an index
+        // change, and re-localize the open file on a content change.
         if state.view == View::Comments {
+            state.refresh_files();
             state.refresh_comments();
         }
         // Footer gate: refresh day's status line on a cache/width change.
@@ -2683,7 +2839,7 @@ pub fn run(repo: PathBuf) -> std::io::Result<()> {
                             if let Some(v) = View::from_digit(d) {
                                 state.view = v;
                                 if v == View::Comments {
-                                    state.reload_comment_files();
+                                    state.enter_comments();
                                 } else if v == View::Chat {
                                     state.reload_chat_sessions();
                                 }
@@ -2692,29 +2848,54 @@ pub fn run(repo: PathBuf) -> std::io::Result<()> {
                         KeyCode::Tab => {
                             state.view = state.view.next();
                             if state.view == View::Comments {
-                                state.reload_comment_files();
+                                state.enter_comments();
                             } else if state.view == View::Chat {
                                 state.reload_chat_sessions();
                             }
                         }
-                        // ←/→ (or [ / ]): switch commented file (Comments), switch
-                        // session (Chat), or toggle the atoms/telos sub-pane (Process).
-                        KeyCode::Char('[') | KeyCode::Left if state.view == View::Comments => {
-                            state.select_comment_file(-1)
+                        // Enter (Comments/tree focus): toggle a directory or open a
+                        // file into the gutter. Esc returns focus to the tree.
+                        KeyCode::Enter
+                            if state.view == View::Comments
+                                && state.comment_focus == CommentFocus::Tree =>
+                        {
+                            state.file_activate()
                         }
-                        KeyCode::Char(']') | KeyCode::Right if state.view == View::Comments => {
-                            state.select_comment_file(1)
+                        KeyCode::Esc
+                            if state.view == View::Comments
+                                && state.comment_focus == CommentFocus::Comments =>
+                        {
+                            state.comment_focus = CommentFocus::Tree
                         }
-                        // Comment authoring: add / reply / edit / delete / resolve.
-                        KeyCode::Char('a' | 'i') if state.view == View::Comments => {
+                        // Comment authoring (gutter focus): add / reply / edit / delete / resolve.
+                        KeyCode::Char('a' | 'i')
+                            if state.view == View::Comments
+                                && state.comment_focus == CommentFocus::Comments =>
+                        {
                             state.begin_new_comment()
                         }
-                        KeyCode::Char('r') if state.view == View::Comments => state.begin_reply(),
-                        KeyCode::Char('e') if state.view == View::Comments => state.begin_edit(),
-                        KeyCode::Char('d') if state.view == View::Comments => {
+                        KeyCode::Char('r')
+                            if state.view == View::Comments
+                                && state.comment_focus == CommentFocus::Comments =>
+                        {
+                            state.begin_reply()
+                        }
+                        KeyCode::Char('e')
+                            if state.view == View::Comments
+                                && state.comment_focus == CommentFocus::Comments =>
+                        {
+                            state.begin_edit()
+                        }
+                        KeyCode::Char('d')
+                            if state.view == View::Comments
+                                && state.comment_focus == CommentFocus::Comments =>
+                        {
                             state.delete_selected()
                         }
-                        KeyCode::Char('x') if state.view == View::Comments => {
+                        KeyCode::Char('x')
+                            if state.view == View::Comments
+                                && state.comment_focus == CommentFocus::Comments =>
+                        {
                             state.toggle_resolve_selected()
                         }
                         KeyCode::Char('[') | KeyCode::Left if state.view == View::Chat => {
@@ -2835,7 +3016,9 @@ fn view_header(view: View) -> String {
     // A per-view key legend so navigation is discoverable without reading source.
     let keys = match view {
         View::Chat => "· ←→ session · z fold · j/k scroll · ⇧↑↓ msg · ↵ expand ",
-        View::Comments => "· ←→ file · j/k comment · a add · r reply · e/d edit/del · x resolve ",
+        View::Comments => {
+            "· j/k browse · ↵ fold/comment · Esc tree · a add · r reply · e/d edit/del · x resolve "
+        }
         View::Process => "· ←→ atoms/telos · j/k scroll ",
         View::Ledger => "",
     };
@@ -3148,6 +3331,58 @@ fn pane_block(
     }
 }
 
+/// A one-char git marker and its color for a file row (blank/gray when clean).
+fn git_marker_style(s: filetree::GitStatus) -> (char, ratatui::style::Color) {
+    use filetree::GitStatus::*;
+    use ratatui::style::Color;
+    let color = match s {
+        Clean => Color::Gray,
+        Modified => Color::Yellow,
+        Added => Color::Green,
+        Untracked => Color::Cyan,
+        Deleted => Color::Red,
+    };
+    (filetree::marker(s), color)
+}
+
+/// One rail row: the dim ancestry guide, then a collapsible directory (fold
+/// arrow + bold name) or a file (git marker + name), aligned by the guide width.
+fn file_row_item(row: &FileRow) -> ratatui::widgets::ListItem<'static> {
+    use ratatui::style::{Color, Modifier, Style};
+    use ratatui::text::{Line, Span};
+    use ratatui::widgets::ListItem;
+    let base = |p: &str| p.rsplit('/').next().unwrap_or(p).to_string();
+    let guide_style = Style::new().fg(Color::DarkGray);
+    match row {
+        FileRow::Dir {
+            path,
+            guide,
+            collapsed,
+        } => {
+            let arrow = if *collapsed { "▸" } else { "▾" };
+            ListItem::new(Line::from(vec![
+                Span::styled(guide.clone(), guide_style),
+                Span::styled(
+                    format!("{arrow} {}/", base(path)),
+                    Style::new().add_modifier(Modifier::BOLD),
+                ),
+            ]))
+        }
+        FileRow::File {
+            path,
+            guide,
+            status,
+        } => {
+            let (m, color) = git_marker_style(*status);
+            ListItem::new(Line::from(vec![
+                Span::styled(guide.clone(), guide_style),
+                Span::styled(format!("{m} "), Style::new().fg(color)),
+                Span::styled(base(path), Style::new().fg(color)),
+            ]))
+        }
+    }
+}
+
 fn draw_comments(
     frame: &mut ratatui::Frame,
     state: &AppState,
@@ -3159,12 +3394,10 @@ fn draw_comments(
     use ratatui::text::{Line, Span};
     use ratatui::widgets::{Block, List, ListItem, ListState, Paragraph, Wrap};
 
-    if state.comment_files.is_empty() {
+    if state.file_rows.is_empty() {
         frame.render_widget(
-            Paragraph::new(
-                "no comments yet — drop one with `cospan comment add <file> --line <N> <body>`",
-            )
-            .block(Block::bordered().title(" comments ")),
+            Paragraph::new("no files to browse (not a git repo, or an empty one)")
+                .block(Block::bordered().title(" comments ")),
             body,
         );
         return;
@@ -3177,31 +3410,35 @@ fn draw_comments(
         return;
     }
 
-    // Wide: a commented-files rail beside the content pane; narrow: content only.
+    // Wide: the file tree rail beside the content pane; narrow: content only. The
+    // rail is 32% of the width but capped at RAIL_MAX, so on a wide terminal it
+    // stops growing instead of eating half the screen with mostly-empty gutter.
+    const RAIL_MAX: u16 = 40;
     let (files_area, main_area) = match layout_mode(width) {
         Fit::Wide => {
+            let rail_w = ((body.width as u32 * 32 / 100) as u16).min(RAIL_MAX);
             let [l, r] =
-                Layout::horizontal([Constraint::Percentage(32), Constraint::Percentage(68)])
-                    .areas(body);
+                Layout::horizontal([Constraint::Length(rail_w), Constraint::Min(0)]).areas(body);
             (Some(l), r)
         }
         Fit::Narrow => (None, body),
     };
 
     if let Some(area) = files_area {
-        let items: Vec<ListItem> = state
-            .comment_files
-            .iter()
-            .map(|(p, n)| ListItem::new(format!("{} ({n})", p.to_string_lossy())))
-            .collect();
+        let items: Vec<ListItem> = state.file_rows.iter().map(file_row_item).collect();
         let mut ls = ListState::default();
-        ls.select(Some(state.comment_file_selected));
+        ls.select(Some(
+            state
+                .file_selected
+                .min(state.file_rows.len().saturating_sub(1)),
+        ));
+        let focused = state.comment_focus == CommentFocus::Tree;
         frame.render_stateful_widget(
             List::new(items)
-                .block(
-                    Block::bordered()
-                        .title(format!(" files · {} · ←/→ ", state.comment_files.len())),
-                )
+                .block(pane_block(
+                    format!(" files · {} · ↵ fold/comment ", state.file_entries.len()),
+                    focused,
+                ))
                 .highlight_style(Style::new().add_modifier(Modifier::REVERSED))
                 .highlight_symbol("> "),
             area,
@@ -3212,6 +3449,19 @@ fn draw_comments(
     let [content_area, strip_area] =
         Layout::vertical([Constraint::Min(3), Constraint::Length(6)]).areas(main_area);
 
+    let gutter_focused = state.comment_focus == CommentFocus::Comments;
+
+    // Nothing opened yet: prompt the operator to pick a file from the tree.
+    if state.open_file.is_none() {
+        frame.render_widget(
+            Paragraph::new("select a file in the tree (↑/↓ · Enter) to read and comment on it")
+                .block(pane_block(" file ", gutter_focused)),
+            content_area,
+        );
+        frame.render_widget(Block::bordered().title(" comment "), strip_area);
+        return;
+    }
+
     let (code_lines, unresolved) = gutter_lines(
         &state.comment_content,
         &state.selected_ext(),
@@ -3219,9 +3469,9 @@ fn draw_comments(
         state.comment_selected,
     );
     let file_title = state
-        .comment_files
-        .get(state.comment_file_selected)
-        .map(|(p, _)| p.to_string_lossy().to_string())
+        .open_file
+        .as_ref()
+        .map(|p| p.to_string_lossy().to_string())
         .unwrap_or_default();
     // Pick-line mode: one code pane with the target line highlighted; the note
     // columns and compose popup are suppressed until a line is chosen.
@@ -3250,9 +3500,15 @@ fn draw_comments(
     match layout_mode(width) {
         Fit::Wide => {
             // Code column beside a right comment column; the code reflows down so
-            // a multi-line note never overlaps code or a neighbour.
+            // a multi-line note never overlaps code or a neighbour. Sizing priority:
+            // the note column holds a fixed small width, the code column grows to
+            // TEXT_MAX first, and only then does the extra width go to the notes —
+            // so wide terminals give reading width to the code, not empty gutter.
+            const NOTE_MIN: u16 = 30;
+            const TEXT_MAX: u16 = 100;
+            let code_w = content_area.width.saturating_sub(NOTE_MIN).min(TEXT_MAX);
             let [code_area, note_area] =
-                Layout::horizontal([Constraint::Percentage(58), Constraint::Percentage(42)])
+                Layout::horizontal([Constraint::Length(code_w), Constraint::Min(0)])
                     .areas(content_area);
             let note_w = note_area.width.saturating_sub(2) as usize;
             let notes: Vec<(usize, usize, Vec<Line>)> = state
@@ -3280,8 +3536,10 @@ fn draw_comments(
             let left: Vec<Line> = rows.iter().skip(scroll).map(|(l, _)| l.clone()).collect();
             let right: Vec<Line> = rows.iter().skip(scroll).map(|(_, r)| r.clone()).collect();
             frame.render_widget(
-                Paragraph::new(left)
-                    .block(Block::bordered().title(format!(" {file_title} · ←/→ file "))),
+                Paragraph::new(left).block(pane_block(
+                    format!(" {file_title} · Esc → tree "),
+                    gutter_focused,
+                )),
                 code_area,
             );
             frame.render_widget(
@@ -3292,8 +3550,10 @@ fn draw_comments(
         Fit::Narrow => {
             let scroll = state.comment_scroll.min(code_lines.len().saturating_sub(1));
             frame.render_widget(
-                Paragraph::new(code_lines[scroll..].to_vec())
-                    .block(Block::bordered().title(format!(" {file_title} · ←/→ file "))),
+                Paragraph::new(code_lines[scroll..].to_vec()).block(pane_block(
+                    format!(" {file_title} · Esc → tree "),
+                    gutter_focused,
+                )),
                 content_area,
             );
         }
@@ -3358,9 +3618,9 @@ fn draw_compose(
     use ratatui::widgets::{Block, Clear, Paragraph};
 
     let file_title = state
-        .comment_files
-        .get(state.comment_file_selected)
-        .map(|(p, _)| p.to_string_lossy().to_string())
+        .open_file
+        .as_ref()
+        .map(|p| p.to_string_lossy().to_string())
         .unwrap_or_default();
 
     // The source line this compose is about: the chosen line for a new comment,
@@ -5359,31 +5619,128 @@ mod tests {
 
     #[test]
     fn comments_header_shows_the_navigation_legend() {
-        // (AC-1) the file-switch and comment-move keys are visible in the header.
+        // The tree-nav, open, and authoring keys are visible in the header.
         let h = view_header(View::Comments);
-        assert!(h.contains("←→ file"), "no file-switch hint: {h}");
-        assert!(h.contains("j/k comment"), "no comment-move hint: {h}");
-        // Other views do not carry the comment-move hint.
-        assert!(!view_header(View::Ledger).contains("j/k comment"));
+        assert!(h.contains("fold/comment"), "no tree hint: {h}");
+        assert!(h.contains("a add"), "no authoring hint: {h}");
+        // Other views do not carry the authoring hint.
+        assert!(!view_header(View::Ledger).contains("a add"));
     }
 
     #[test]
-    fn select_comment_file_moves_and_clamps() {
-        // (AC-2) the action ←/→ (and [ ]) invoke: ±1, clamped at both ends.
-        let mut a = app(&["telos/a"]);
-        a.comment_files = vec![
-            (PathBuf::from("a.rs"), 1),
-            (PathBuf::from("b.rs"), 1),
-            (PathBuf::from("c.rs"), 1),
+    fn build_file_rows_is_collapsed_by_default_and_expands_on_demand() {
+        use crate::filetree::{FileEntry, GitStatus};
+        let entries = vec![
+            FileEntry {
+                path: PathBuf::from("src/a.rs"),
+                status: GitStatus::Modified,
+            },
+            FileEntry {
+                path: PathBuf::from("src/sub/b.rs"),
+                status: GitStatus::Clean,
+            },
+            FileEntry {
+                path: PathBuf::from("README.md"),
+                status: GitStatus::Untracked,
+            },
         ];
-        a.comment_file_selected = 0;
-        a.select_comment_file(-1); // clamps at the first
-        assert_eq!(a.comment_file_selected, 0);
-        a.select_comment_file(1);
-        a.select_comment_file(1);
-        assert_eq!(a.comment_file_selected, 2);
-        a.select_comment_file(1); // clamps at the last
-        assert_eq!(a.comment_file_selected, 2);
+        // Nothing expanded: only top level, `src` collapsed and its subtree hidden.
+        let mut expanded = HashSet::new();
+        let rows = build_file_rows(&entries, &expanded);
+        assert!(matches!(&rows[0], FileRow::File { path, .. } if path == "README.md"));
+        assert!(
+            matches!(&rows[1], FileRow::Dir { path, collapsed, .. } if path == "src" && *collapsed)
+        );
+        assert_eq!(rows.len(), 2, "a collapsed dir shows no children: {rows:?}");
+
+        // Expand `src`: its direct children appear; `src/sub` is still collapsed.
+        expanded.insert("dir:src".into());
+        let rows = build_file_rows(&entries, &expanded);
+        assert!(rows
+            .iter()
+            .any(|r| matches!(r, FileRow::File { path, .. } if path == "src/a.rs")));
+        assert!(rows
+            .iter()
+            .all(|r| !matches!(r, FileRow::File { path, .. } if path == "src/sub/b.rs")));
+
+        // Expand `src/sub` too: the nested file appears, and its guide is deeper.
+        expanded.insert("dir:src/sub".into());
+        let rows = build_file_rows(&entries, &expanded);
+        let b = rows
+            .iter()
+            .find(|r| matches!(r, FileRow::File { path, .. } if path == "src/sub/b.rs"))
+            .expect("b.rs shows when its dirs are expanded");
+        let FileRow::File { guide, .. } = b else {
+            unreachable!()
+        };
+        assert!(
+            guide.contains("└─") || guide.contains("├─"),
+            "guide draws a connector: {guide:?}"
+        );
+    }
+
+    #[test]
+    fn file_move_previews_and_activate_opens_a_file() {
+        // Over a real temp git repo: dirs are collapsed by default, moving onto a
+        // file previews it (no focus change), and Enter focuses the gutter.
+        let repo = comments_tmp("tree-open");
+        std::fs::create_dir_all(repo.join("src")).unwrap();
+        std::fs::write(repo.join("src/a.rs"), "fn a() {}\n").unwrap();
+        let git = |args: &[&str]| {
+            std::process::Command::new("git")
+                .arg("-C")
+                .arg(&repo)
+                .args(args)
+                .output()
+                .unwrap();
+        };
+        git(&["init", "-q"]);
+        git(&["config", "user.email", "t@t"]);
+        git(&["config", "user.name", "t"]);
+        git(&["add", "-A"]);
+
+        let mut a = AppState::new(repo.clone(), fold_of(&[]), None);
+        a.enter_comments();
+        assert!(!a.file_rows.is_empty(), "the tree lists the repo's files");
+        // `src` is collapsed by default, so `src/a.rs` is not visible yet.
+        assert!(
+            a.file_rows
+                .iter()
+                .all(|r| !matches!(r, FileRow::File { path, .. } if path == "src/a.rs")),
+            "dirs are collapsed by default: {:?}",
+            a.file_rows
+        );
+
+        // Expand `src` (its Dir row is the only row on this fixture).
+        let dir_idx = a
+            .file_rows
+            .iter()
+            .position(|r| matches!(r, FileRow::Dir { path, .. } if path == "src"))
+            .expect("src dir row");
+        a.file_selected = dir_idx;
+        a.file_activate(); // expands, stays in Tree focus
+        assert_eq!(a.comment_focus, CommentFocus::Tree);
+
+        // Move the cursor onto src/a.rs -> it previews without focus change.
+        let idx = a
+            .file_rows
+            .iter()
+            .position(|r| matches!(r, FileRow::File { path, .. } if path == "src/a.rs"))
+            .expect("src/a.rs visible once src is expanded");
+        a.file_move(idx as isize - a.file_selected as isize);
+        assert_eq!(a.open_file.as_deref(), Some(Path::new("src/a.rs")));
+        assert_eq!(a.comment_content, "fn a() {}\n");
+        assert_eq!(
+            a.comment_focus,
+            CommentFocus::Tree,
+            "preview does not steal focus"
+        );
+
+        // Enter focuses the gutter for commenting.
+        a.file_activate();
+        assert_eq!(a.comment_focus, CommentFocus::Comments);
+        assert_eq!(a.open_file.as_deref(), Some(Path::new("src/a.rs")));
+        std::fs::remove_dir_all(&repo).ok();
     }
 
     // --- Comments view (P1) ---------------------------------------------------
@@ -5413,33 +5770,6 @@ mod tests {
             resolved: false,
             thread: Vec::new(),
         }
-    }
-
-    #[test]
-    fn commented_files_discovers_only_files_with_a_sidecar() {
-        // (AC-2) two commented files, one un-commented; discovery returns the two.
-        let repo = comments_tmp("discover");
-        let content = "fn a() {}\nfn b() {}\n";
-        write_sidecar(&repo, "src/a.rs", &[mk_comment(content, 0, "one")]);
-        write_sidecar(
-            &repo,
-            "src/b.rs",
-            &[
-                mk_comment(content, 0, "two"),
-                mk_comment(content, 1, "three"),
-            ],
-        );
-        // A plain source file with no sidecar must not appear.
-        std::fs::write(repo.join("README.md"), "hi").unwrap();
-
-        let found = commented_files(&repo);
-        assert_eq!(
-            found,
-            vec![
-                (PathBuf::from("src/a.rs"), 1),
-                (PathBuf::from("src/b.rs"), 2),
-            ]
-        );
     }
 
     #[test]
@@ -5647,10 +5977,10 @@ mod tests {
     }
 
     #[test]
-    fn refresh_comments_is_safe_with_no_commented_files() {
-        // (AC-5) the per-file refresh no-ops cleanly when nothing is commented.
+    fn refresh_comments_is_safe_with_no_open_file() {
+        // The per-file refresh no-ops cleanly when no file is open.
         let mut a = app(&["telos/a"]);
-        a.comment_files.clear();
+        a.open_file = None;
         a.refresh_comments();
         assert!(a.comment_localized.is_empty());
         assert!(a.comment_content.is_empty());
@@ -5673,7 +6003,7 @@ mod tests {
             ],
         );
         let mut a = AppState::new(repo, fold_of(&[]), None);
-        a.refresh_comments();
+        a.open_path(PathBuf::from("src/a.rs"));
         let starts: Vec<usize> = a
             .comment_localized
             .iter()
@@ -5692,7 +6022,7 @@ mod tests {
         write_sidecar(&repo, "src/a.rs", &[mk_comment(content, 1, "on b")]);
 
         let mut a = AppState::new(repo, fold_of(&[]), None);
-        a.refresh_comments();
+        a.open_path(PathBuf::from("src/a.rs"));
         assert_eq!(a.comment_content, content);
         assert_eq!(a.comment_localized.len(), 1);
         assert_eq!(a.comment_localized[0].1.state, State::Anchored);
@@ -5719,15 +6049,13 @@ mod tests {
             ],
         );
 
-        // Files sort as [src/gone.rs, src/real.rs]; load real first.
+        // Open the real file first, then switch to the deleted-source one.
         let mut a = AppState::new(repo, fold_of(&[]), None);
-        a.comment_file_selected = 1;
-        a.refresh_comments();
+        a.open_path(PathBuf::from("src/real.rs"));
         assert_eq!(a.comment_content, content);
 
-        // Switch to the deleted-source file and refresh.
-        a.select_comment_file(-1);
-        a.refresh_comments();
+        // Switch to the deleted-source file.
+        a.open_path(PathBuf::from("src/gone.rs"));
         assert!(
             a.comment_content.is_empty(),
             "stale content from the previous file leaked: {:?}",
@@ -5986,8 +6314,7 @@ mod tests {
         std::fs::write(repo.join("src/a.rs"), content).unwrap();
         write_sidecar(&repo, "src/a.rs", seed);
         let mut a = AppState::new(repo.clone(), fold_of(&[]), None);
-        a.reload_comment_files();
-        a.refresh_comments();
+        a.open_path(PathBuf::from("src/a.rs"));
         (a, repo)
     }
 
