@@ -1159,6 +1159,16 @@ impl AppState {
         )
     }
 
+    /// The extension of the currently selected commented file, for choosing a
+    /// syntax grammar (empty when there is none — the plain fallback).
+    fn selected_ext(&self) -> String {
+        self.comment_files
+            .get(self.comment_file_selected)
+            .and_then(|(p, _)| p.extension())
+            .map(|e| e.to_string_lossy().to_string())
+            .unwrap_or_default()
+    }
+
     /// Force the Comments view to re-read the sidecar after a write: the *source*
     /// file's mtime is unchanged, so the normal same-file gate would skip it.
     fn reload_after_write(&mut self) {
@@ -1466,6 +1476,7 @@ fn state_style(state: State) -> ratatui::style::Style {
 /// separately since they cannot be placed on a line (`telos/honest-ambiguity`).
 pub fn gutter_lines<'a>(
     content: &str,
+    ext: &str,
     localized: &'a [(Comment, Localization)],
     selected: usize,
 ) -> (Vec<ratatui::text::Line<'static>>, Vec<&'a Comment>) {
@@ -1476,11 +1487,13 @@ pub fn gutter_lines<'a>(
         .filter(|(_, loc)| loc.span.is_none())
         .map(|(c, _)| c)
         .collect();
-    let num_w = content.lines().count().max(1).to_string().len();
-    let lines = content
-        .lines()
+    // Syntax-highlighted source, one entry of styled runs per line (memoized).
+    let styled = crate::highlight::styled(content, ext);
+    let num_w = styled.len().max(1).to_string().len();
+    let lines = styled
+        .iter()
         .enumerate()
-        .map(|(i, text)| {
+        .map(|(i, runs)| {
             let covers = |loc: &Localization| loc.span.is_some_and(|(s, e)| i >= s && i <= e);
             // Prefer the selected comment when it covers this line, so its marker
             // (not an overlapping neighbour's) carries the highlight.
@@ -1504,14 +1517,18 @@ pub fn gutter_lines<'a>(
                 }
                 None => (" ", Style::new()),
             };
-            Line::from(vec![
+            let mut spans = vec![
                 Span::styled(marker.to_string(), style),
                 Span::styled(
                     format!(" {:>num_w$} ", i + 1),
                     Style::new().add_modifier(Modifier::DIM),
                 ),
-                Span::raw(text.to_string()),
-            ])
+            ];
+            // The syntax-highlighted text of the line, run by run.
+            for (st, text) in runs {
+                spans.push(Span::styled(text.clone(), *st));
+            }
+            Line::from(spans)
         })
         .collect();
     (lines, unresolved)
@@ -3197,6 +3214,7 @@ fn draw_comments(
 
     let (code_lines, unresolved) = gutter_lines(
         &state.comment_content,
+        &state.selected_ext(),
         &state.comment_localized,
         state.comment_selected,
     );
@@ -3360,6 +3378,7 @@ fn draw_compose(
     // third so it stays on screen beside the popup.
     let (mut code_lines, _) = gutter_lines(
         &state.comment_content,
+        &state.selected_ext(),
         &state.comment_localized,
         state.comment_selected,
     );
@@ -5446,7 +5465,7 @@ mod tests {
                 },
             ),
         ];
-        let (lines, unresolved) = gutter_lines(content, &localized, 0);
+        let (lines, unresolved) = gutter_lines(content, "", &localized, 0);
         assert_eq!(lines.len(), 3);
         // Line index 1 (the anchored one) carries the ● marker; the others a space.
         let marker = |i: usize| lines[i].spans[0].content.to_string();
@@ -5552,7 +5571,7 @@ mod tests {
             .filter_map(|(i, (_, loc))| loc.span.map(|(s, _)| (i, s)))
             .collect();
         assert_eq!(notes, vec![(0, 0)]); // only the anchored one
-        let (_lines, unresolved) = gutter_lines(content, &localized, 0);
+        let (_lines, unresolved) = gutter_lines(content, "", &localized, 0);
         assert_eq!(unresolved.len(), 1);
         assert_eq!(unresolved[0].body, "lost");
     }
@@ -5723,8 +5742,12 @@ mod tests {
             "a deleted-source comment should be Unresolvable"
         );
         // gutter_lines surfaces them in the resolve-by-hand list, on no line.
-        let (lines, unresolved) =
-            gutter_lines(&a.comment_content, &a.comment_localized, a.comment_selected);
+        let (lines, unresolved) = gutter_lines(
+            &a.comment_content,
+            "",
+            &a.comment_localized,
+            a.comment_selected,
+        );
         assert!(lines.is_empty());
         assert_eq!(unresolved.len(), 2);
     }
@@ -6214,6 +6237,43 @@ mod tests {
         assert_eq!(row(&a), 0);
         a.compose_scroll(1); // wheel down: back to the bottom
         assert_eq!(row(&a), 3);
+    }
+
+    #[test]
+    fn highlighted_gutter_keeps_marker_and_selection() {
+        // (AC-13) with a real grammar the code text is highlighted (>1 style across
+        // the pane) while the gutter marker and the selected-line reverse survive.
+        let content = "fn main() {\n    let x = 1;\n}\n";
+        let c = mk_comment(content, 1, "note");
+        let loc = Localization {
+            state: State::Anchored,
+            span: Some((1, 1)),
+            confidence: 1.0,
+        };
+        let localized = vec![(c, loc)];
+        let (lines, _u) = gutter_lines(content, "rs", &localized, 0);
+        // Every line still begins with the marker cell.
+        assert!(lines.iter().all(|l| {
+            let m = l.spans[0].content.as_ref();
+            m == "●" || m == " "
+        }));
+        // The commented, selected line carries a reversed ● marker.
+        let marker = &lines[1].spans[0];
+        assert_eq!(marker.content.as_ref(), "●");
+        assert!(
+            marker
+                .style
+                .add_modifier
+                .contains(ratatui::style::Modifier::REVERSED),
+            "selected marker must be reversed"
+        );
+        // Highlighting produced more than one distinct text color across the pane.
+        let styles: std::collections::HashSet<String> = lines
+            .iter()
+            .flat_map(|l| l.spans.iter().skip(2))
+            .map(|s| format!("{:?}", s.style.fg))
+            .collect();
+        assert!(styles.len() > 1, "expected syntax colors, got {styles:?}");
     }
 
     #[test]
