@@ -22,11 +22,19 @@ struct Hl {
     memo: Mutex<Memo>,
 }
 
+/// Cache key: content hash, extension, and the bucketed line count highlighted
+/// (windowing — see `styled_upto`).
+type Key = (u64, String, usize);
+
+/// A small LRU of recently highlighted (windows of) files, newest last. Bounded
+/// so browsing many files does not grow without limit, but large enough that
+/// flipping back to a just-viewed file is instant instead of re-highlighting.
 #[derive(Default)]
 struct Memo {
-    key: Option<(u64, String)>,
-    lines: Vec<StyledLine>,
+    entries: Vec<(Key, Vec<StyledLine>)>,
 }
+
+const CACHE_N: usize = 8;
 
 fn hl() -> &'static Hl {
     static H: OnceLock<Hl> = OnceLock::new();
@@ -45,46 +53,86 @@ fn hl() -> &'static Hl {
     })
 }
 
-/// Per-line styled runs for `content`, choosing a grammar by file extension
-/// `ext` (e.g. `"rs"`, `"md"`, `"tex"`). Memoized on `(content hash, ext)`.
-/// An unknown extension yields one unstyled run per line.
+/// Per-line styled runs for the whole of `content` (every line highlighted).
+/// Choosing a grammar by file extension `ext` (e.g. `"rs"`, `"md"`, `"tex"`); an
+/// unknown extension yields one unstyled run per line.
 pub fn styled(content: &str, ext: &str) -> Vec<StyledLine> {
+    styled_upto(content, ext, usize::MAX)
+}
+
+/// Like [`styled`], but only the first `upto` lines are actually run through the
+/// grammar; lines past the window are returned plain (unstyled). Highlighting a
+/// large file is O(lines) and slow, but only the visible window is ever on
+/// screen — so a caller passes `scroll + viewport + margin` and a 6000-line file
+/// previews in the cost of a screenful, not the whole file. Every result is
+/// memoized in a small LRU keyed by `(content hash, ext, bucketed upto)`, so
+/// scrolling a little or flipping back to a recent file is instant.
+pub fn styled_upto(content: &str, ext: &str, upto: usize) -> Vec<StyledLine> {
     let h = hl();
-    let key = (crate::comments::content_hash(content), ext.to_string());
+    let key = (
+        crate::comments::content_hash(content),
+        ext.to_string(),
+        bucket(upto),
+    );
     if let Ok(m) = h.memo.lock() {
-        if m.key.as_ref() == Some(&key) {
-            return m.lines.clone();
+        if let Some((_, lines)) = m.entries.iter().find(|(k, _)| *k == key) {
+            return lines.clone();
         }
     }
-    let lines = match h.ss.find_syntax_by_extension(ext) {
-        Some(syntax) => {
-            let truecolor = truecolor();
-            let mut liner = HighlightLines::new(syntax, &h.theme);
-            LinesWithEndings::from(content)
-                .map(|line| match liner.highlight_line(line, &h.ss) {
-                    Ok(runs) => runs
-                        .into_iter()
-                        .map(|(st, text)| {
-                            (
-                                conv(st, truecolor),
-                                text.trim_end_matches(['\r', '\n']).to_string(),
-                            )
-                        })
-                        .collect(),
-                    Err(_) => vec![(
-                        Style::default(),
-                        line.trim_end_matches(['\r', '\n']).to_string(),
-                    )],
-                })
-                .collect()
-        }
-        None => plain(content),
-    };
+    // Compute outside the lock — highlighting can be slow.
+    let lines = compute(h, ext, key.2, content);
     if let Ok(mut m) = h.memo.lock() {
-        m.key = Some(key);
-        m.lines = lines.clone();
+        m.entries.retain(|(k, _)| *k != key); // de-dup, then push as newest
+        m.entries.push((key, lines.clone()));
+        let n = m.entries.len();
+        if n > CACHE_N {
+            m.entries.drain(0..n - CACHE_N); // evict oldest
+        }
     }
     lines
+}
+
+/// Round `upto` up to a 128-line boundary (plus a lookahead bucket) so small
+/// scrolls reuse a cached window rather than re-highlighting each tick. A
+/// full-file request (`usize::MAX`) maps to its own stable key.
+fn bucket(upto: usize) -> usize {
+    if upto >= 1_000_000 {
+        usize::MAX
+    } else {
+        (upto / 128 + 2) * 128
+    }
+}
+
+/// Highlight the first `upto` lines of `content`, plain beyond. Pure; the caller
+/// handles caching.
+fn compute(h: &Hl, ext: &str, upto: usize, content: &str) -> Vec<StyledLine> {
+    let Some(syntax) = h.ss.find_syntax_by_extension(ext) else {
+        return plain(content);
+    };
+    let truecolor = truecolor();
+    let mut liner = HighlightLines::new(syntax, &h.theme);
+    LinesWithEndings::from(content)
+        .enumerate()
+        .map(|(i, line)| {
+            let text = line.trim_end_matches(['\r', '\n']).to_string();
+            // Past the window: skip the (expensive) grammar work entirely.
+            if i >= upto {
+                return vec![(Style::default(), text)];
+            }
+            match liner.highlight_line(line, &h.ss) {
+                Ok(runs) => runs
+                    .into_iter()
+                    .map(|(st, t)| {
+                        (
+                            conv(st, truecolor),
+                            t.trim_end_matches(['\r', '\n']).to_string(),
+                        )
+                    })
+                    .collect(),
+                Err(_) => vec![(Style::default(), text)],
+            }
+        })
+        .collect()
 }
 
 /// One unstyled run per line — the fallback, and what a bare content pane wants.
@@ -243,5 +291,42 @@ mod tests {
                 styles.len()
             );
         }
+    }
+
+    #[test]
+    fn windowing_highlights_only_the_leading_lines() {
+        // A long file: with a small window only the leading lines run the grammar;
+        // lines past the window are plain, but every line is still present (so
+        // gutter markers and comment anchors stay aligned).
+        let mut src = String::from("fn a() {}\n");
+        for _ in 0..500 {
+            src.push_str("let z = 1;\n");
+        }
+        let out = styled_upto(&src, "rs", 10); // bucket -> first 256 lines
+        assert_eq!(out.len(), 501, "line count is preserved");
+        assert_eq!(out[500].len(), 1, "a beyond-window line is one plain run");
+        assert_eq!(
+            out[500][0].0,
+            Style::default(),
+            "a beyond-window line is unstyled"
+        );
+        // The full highlight colors that same deep line — proving the window, not
+        // the grammar, is what left it plain.
+        let full = styled(&src, "rs");
+        assert!(
+            full[500].iter().any(|(s, _)| *s != Style::default()),
+            "the deep line highlights when the whole file is requested"
+        );
+    }
+
+    #[test]
+    fn cache_returns_recent_files_consistently() {
+        // Two files both stay cached; revisiting one is stable (the LRU hit path).
+        let a = "let x = 1;\n";
+        let b = "fn main() {}\n";
+        let ra1 = styled_upto(a, "rs", 50);
+        let _rb = styled_upto(b, "rs", 50);
+        let ra2 = styled_upto(a, "rs", 50);
+        assert_eq!(ra1, ra2, "revisiting a recently-seen file is consistent");
     }
 }

@@ -908,6 +908,8 @@ impl AppState {
             .repo
             .join(comments::sidecar_path(&rel.to_string_lossy()));
         let mut cs = comments::load(&sidecar).unwrap_or_default();
+        let anchors_before: Vec<comments::StoredAnchor> =
+            cs.iter().map(|c| c.anchor.clone()).collect();
         let mut localized: Vec<(Comment, Localization)> = cs
             .iter_mut()
             .map(|c| {
@@ -918,8 +920,14 @@ impl AppState {
         // Order by anchored line (top to bottom) so `j`/`k` follow the file's
         // vertical layout; Unresolvable comments (no line) sort last, stably.
         localized.sort_by_key(|(_, loc)| loc.span.map(|(s, _)| s).unwrap_or(usize::MAX));
-        // Persist the re-anchored last-seen state, like `cospan comments`.
-        let _ = comments::save(&sidecar, &cs);
+        // Persist the re-anchored last-seen state (like `cospan comments`) ONLY when
+        // a comment exists and an anchor actually moved. Browsing a sidecar-less
+        // file must not create an empty sidecar, and an unchanged file must not be
+        // rewritten on every switch — both were per-switch disk I/O.
+        let reanchored = cs.iter().zip(&anchors_before).any(|(c, a)| c.anchor != *a);
+        if !cs.is_empty() && reanchored {
+            let _ = comments::save(&sidecar, &cs);
+        }
         self.comment_content = content;
         self.comment_localized = localized;
         self.comment_loaded = Some(rel);
@@ -1254,6 +1262,19 @@ impl AppState {
         if let Some((start, _)) = self.comment_localized[self.comment_selected].1.span {
             self.comment_scroll = start;
         }
+    }
+
+    /// How many leading lines the syntax highlighter needs to cover for the
+    /// current view: the furthest of the scroll and the selected comment's line,
+    /// plus a viewport and margin. Windowing the grammar to this keeps previewing
+    /// a large file cheap (a screenful, not the whole file).
+    fn highlight_upto(&self, view_h: u16) -> usize {
+        let sel_line = self
+            .comment_localized
+            .get(self.comment_selected)
+            .and_then(|(_, loc)| loc.span.map(|(s, _)| s))
+            .unwrap_or(0);
+        self.comment_scroll.max(sel_line) + view_h as usize + 32
     }
 
     /// Move within the active Process sub-pane: select an atom box (atoms graph),
@@ -1631,6 +1652,7 @@ fn state_style(state: State) -> ratatui::style::Style {
 pub fn gutter_lines<'a>(
     content: &str,
     ext: &str,
+    upto: usize,
     localized: &'a [(Comment, Localization)],
     selected: usize,
 ) -> (Vec<ratatui::text::Line<'static>>, Vec<&'a Comment>) {
@@ -1641,8 +1663,9 @@ pub fn gutter_lines<'a>(
         .filter(|(_, loc)| loc.span.is_none())
         .map(|(c, _)| c)
         .collect();
-    // Syntax-highlighted source, one entry of styled runs per line (memoized).
-    let styled = crate::highlight::styled(content, ext);
+    // Syntax-highlighted source (only the first `upto` lines run the grammar; the
+    // rest are plain), one entry of styled runs per line — memoized/LRU-cached.
+    let styled = crate::highlight::styled_upto(content, ext, upto);
     let num_w = styled.len().max(1).to_string().len();
     let lines = styled
         .iter()
@@ -3465,6 +3488,7 @@ fn draw_comments(
     let (code_lines, unresolved) = gutter_lines(
         &state.comment_content,
         &state.selected_ext(),
+        state.highlight_upto(content_area.height),
         &state.comment_localized,
         state.comment_selected,
     );
@@ -3635,10 +3659,13 @@ fn draw_compose(
     };
 
     // Full-width code with the target line highlighted, scrolled toward the top
-    // third so it stays on screen beside the popup.
+    // third so it stays on screen beside the popup. Highlight through the target
+    // line plus a screen, so composing on a deep line still shows it colored.
+    let upto = target.unwrap_or(0) + body.height as usize + 32;
     let (mut code_lines, _) = gutter_lines(
         &state.comment_content,
         &state.selected_ext(),
+        upto,
         &state.comment_localized,
         state.comment_selected,
     );
@@ -5795,7 +5822,7 @@ mod tests {
                 },
             ),
         ];
-        let (lines, unresolved) = gutter_lines(content, "", &localized, 0);
+        let (lines, unresolved) = gutter_lines(content, "", usize::MAX, &localized, 0);
         assert_eq!(lines.len(), 3);
         // Line index 1 (the anchored one) carries the ● marker; the others a space.
         let marker = |i: usize| lines[i].spans[0].content.to_string();
@@ -5901,7 +5928,7 @@ mod tests {
             .filter_map(|(i, (_, loc))| loc.span.map(|(s, _)| (i, s)))
             .collect();
         assert_eq!(notes, vec![(0, 0)]); // only the anchored one
-        let (_lines, unresolved) = gutter_lines(content, "", &localized, 0);
+        let (_lines, unresolved) = gutter_lines(content, "", usize::MAX, &localized, 0);
         assert_eq!(unresolved.len(), 1);
         assert_eq!(unresolved[0].body, "lost");
     }
@@ -6073,6 +6100,7 @@ mod tests {
         let (lines, unresolved) = gutter_lines(
             &a.comment_content,
             "",
+            usize::MAX,
             &a.comment_localized,
             a.comment_selected,
         );
@@ -6578,7 +6606,7 @@ mod tests {
             confidence: 1.0,
         };
         let localized = vec![(c, loc)];
-        let (lines, _u) = gutter_lines(content, "rs", &localized, 0);
+        let (lines, _u) = gutter_lines(content, "rs", usize::MAX, &localized, 0);
         // Every line still begins with the marker cell.
         assert!(lines.iter().all(|l| {
             let m = l.spans[0].content.as_ref();
