@@ -88,5 +88,37 @@ fn promote_records_a_claim_and_re_promote_cites_prior() {
         "the re-promote must cite the prior snapshot: {cites:?} vs {first_cid}"
     );
 
+    // A dash-led body (markdown bullet / `--help`-shaped) must record a real
+    // claim, not be swallowed as a kan flag — the argv `--` guard.
+    let dash = Comment {
+        id: "c_dash".into(),
+        anchor: StoredAnchor::capture(content, 2, 2),
+        body: "- should this be cached?".into(),
+        author: Author {
+            who: "human".into(),
+            id: "tester".into(),
+        },
+        created_at: 2,
+        resolved: false,
+        thread: Vec::new(),
+    };
+    comments::save(&dir.join(comments::sidecar_path("src/a.rs")), &[dash]).unwrap();
+    a.open_file = None; // force a fresh reload of the rewritten sidecar
+    a.open_path(PathBuf::from("src/a.rs"));
+    a.promote_selected();
+    let v = kan_json(&dir, "comment/src/a.rs");
+    let texts: Vec<String> = v["claims"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|c| c["text"].as_str().unwrap_or("").to_string())
+        .collect();
+    assert!(
+        texts
+            .iter()
+            .any(|t| t.starts_with("- should this be cached?")),
+        "the dash-led body was recorded verbatim: {texts:?}"
+    );
+
     std::fs::remove_dir_all(&dir).ok();
 }

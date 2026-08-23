@@ -217,11 +217,14 @@ pub fn promote_argv(
     span: Option<(usize, usize)>,
     prior: Option<&str>,
 ) -> Vec<String> {
+    // All flags first, then `--`, then the text as the sole trailing positional:
+    // a comment body that begins with `-`/`--` (a markdown bullet, `--help`, …)
+    // must NOT be parsed as a flag by kan's argument parser — that silently
+    // recorded nothing while looking like success.
     let mut v = vec![
         "observe".to_string(),
         "--subject".to_string(),
         comment_subject(rel),
-        promote_text(c),
         "--file".to_string(),
         promote_anchor(rel, span),
     ];
@@ -229,6 +232,8 @@ pub fn promote_argv(
         v.push("--cites".to_string());
         v.push(p.to_string());
     }
+    v.push("--".to_string());
+    v.push(promote_text(c));
     v
 }
 
@@ -435,26 +440,55 @@ mod tests {
     fn promote_argv_carries_subject_anchor_and_optional_cite() {
         let c = comment_at(V0, 1);
         let argv = promote_argv("src/a.rs", &c, Some((0, 0)), None);
+        let after = |flag: &str| {
+            argv.iter()
+                .position(|a| a == flag)
+                .map(|i| argv[i + 1].clone())
+        };
         assert_eq!(argv[0], "observe");
-        assert_eq!(argv[1], "--subject");
-        assert_eq!(argv[2], "comment/src/a.rs");
-        assert!(
-            argv[3].contains("cospan-comment"),
-            "the block is the text arg"
-        );
-        assert_eq!(argv[4], "--file");
-        assert_eq!(argv[5], "src/a.rs:1-1");
+        assert_eq!(after("--subject").as_deref(), Some("comment/src/a.rs"));
+        assert_eq!(after("--file").as_deref(), Some("src/a.rs:1-1"));
         assert!(
             !argv.contains(&"--cites".to_string()),
             "no cite on first promote"
         );
-        // A re-promote cites the prior claim.
+        // The text is the trailing positional, guarded by `--` so a dash-led body
+        // is never read as a flag.
+        assert_eq!(
+            argv[argv.len() - 2],
+            "--",
+            "text is guarded by a -- separator"
+        );
+        assert!(argv[argv.len() - 1].contains("cospan-comment"));
+        // A re-promote cites the prior claim, still before the `--`.
         let re = promote_argv("src/a.rs", &c, Some((0, 0)), Some("bafyPRIOR"));
         let i = re
             .iter()
             .position(|a| a == "--cites")
             .expect("cites on re-promote");
         assert_eq!(re[i + 1], "bafyPRIOR");
+        assert!(
+            re.iter().position(|a| a == "--").unwrap() > i,
+            "the cite flag is before the -- separator"
+        );
+    }
+
+    #[test]
+    fn promote_argv_guards_a_dash_led_body_behind_the_separator() {
+        // A markdown-bullet body (`- ...`) or a `--help`-shaped body must land as
+        // the trailing positional after `--`, never parsed as a flag.
+        for body in ["- should this be cached?", "--help", "-x"] {
+            let mut c = comment_at(V0, 1);
+            c.body = body.into();
+            let argv = promote_argv("src/a.rs", &c, Some((0, 0)), None);
+            let sep = argv.iter().position(|a| a == "--").expect("a -- separator");
+            assert_eq!(sep, argv.len() - 2, "-- immediately precedes the text");
+            assert!(
+                argv[sep + 1].starts_with(body),
+                "the dash-led body is the trailing positional: {:?}",
+                argv[sep + 1]
+            );
+        }
     }
 
     #[test]
