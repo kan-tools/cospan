@@ -42,6 +42,19 @@ fn sidecar(repo: &Path, file: &str) -> std::path::PathBuf {
     repo.join(comments::sidecar_path(file))
 }
 
+/// Reject a `file` that is absolute or escapes the repo via a `..` component, so
+/// an agent over MCP can only read/write files inside the watched repo — no path
+/// traversal to `../../etc/passwd`. Returns the error `Value` to return as-is.
+fn guard(file: &str) -> Result<(), Value> {
+    let p = Path::new(file);
+    let escapes = p.is_absolute() || p.components().any(|c| c == std::path::Component::ParentDir);
+    if escapes {
+        Err(json!({ "error": format!("file must be a path inside the repo: {file}") }))
+    } else {
+        Ok(())
+    }
+}
+
 fn comment_json(c: &Comment, loc: &Localization) -> Value {
     json!({
         "id": c.id,
@@ -61,6 +74,9 @@ fn comment_json(c: &Comment, loc: &Localization) -> Value {
 /// current content so its `state`/`line` are honest. A pure read: it does not
 /// persist re-anchoring.
 pub fn list_comments(repo: &Path, file: &str) -> Value {
+    if let Err(e) = guard(file) {
+        return e;
+    }
     let content = read_content(repo, file);
     let mut cs = comments::load(&sidecar(repo, file)).unwrap_or_default();
     let items: Vec<Value> = cs
@@ -75,6 +91,9 @@ pub fn list_comments(repo: &Path, file: &str) -> Value {
 
 /// `get_thread(file, id)` — one comment with its full reply thread, re-localized.
 pub fn get_thread(repo: &Path, file: &str, id: &str) -> Value {
+    if let Err(e) = guard(file) {
+        return e;
+    }
     let content = read_content(repo, file);
     let mut cs = comments::load(&sidecar(repo, file)).unwrap_or_default();
     match cs.iter_mut().find(|c| c.id == id) {
@@ -90,6 +109,9 @@ pub fn get_thread(repo: &Path, file: &str, id: &str) -> Value {
 /// the current file and append an agent-authored comment. Same sidecar the human
 /// TUI and CLI write, so it re-localizes and surfaces like any other comment.
 pub fn add_comment(repo: &Path, file: &str, line: usize, body: &str) -> Value {
+    if let Err(e) = guard(file) {
+        return e;
+    }
     let content = read_content(repo, file);
     let path = sidecar(repo, file);
     let mut cs = comments::load(&path).unwrap_or_default();
@@ -117,6 +139,9 @@ pub fn add_comment(repo: &Path, file: &str, line: usize, body: &str) -> Value {
 
 /// `reply(file, id, body)` — append an agent-authored reply to a comment's thread.
 pub fn reply(repo: &Path, file: &str, id: &str, body: &str) -> Value {
+    if let Err(e) = guard(file) {
+        return e;
+    }
     let path = sidecar(repo, file);
     let mut cs = comments::load(&path).unwrap_or_default();
     let r = comments::Reply {
@@ -135,6 +160,9 @@ pub fn reply(repo: &Path, file: &str, id: &str, body: &str) -> Value {
 
 /// `resolve(file, id, [value])` — set (default) or clear a comment's resolved flag.
 pub fn resolve(repo: &Path, file: &str, id: &str, value: bool) -> Value {
+    if let Err(e) = guard(file) {
+        return e;
+    }
     let path = sidecar(repo, file);
     let mut cs = comments::load(&path).unwrap_or_default();
     if !comments::set_resolved(&mut cs, id, value) {
@@ -458,6 +486,27 @@ mod tests {
         let repo = tmp("errors");
         assert!(call_tool(&repo, "nope", &json!({})).is_err());
         assert!(call_tool(&repo, "add_comment", &json!({"file":"src/a.rs"})).is_err()); // no line/body
+        std::fs::remove_dir_all(&repo).ok();
+    }
+
+    #[test]
+    fn path_traversal_is_refused() {
+        let repo = tmp("traversal");
+        // A `..`-escaping path and an absolute path are both refused, on read and
+        // write, so an agent cannot touch files outside the repo.
+        let r = call_tool(&repo, "list_comments", &json!({"file":"../../etc/passwd"})).unwrap();
+        assert!(r.get("error").is_some(), "escaping read must error: {r}");
+        let r = call_tool(
+            &repo,
+            "add_comment",
+            &json!({"file":"/etc/passwd","line":1,"body":"x"}),
+        )
+        .unwrap();
+        assert!(r.get("error").is_some(), "absolute write must error: {r}");
+        // No sidecar was written outside the repo tree.
+        assert!(!repo
+            .join(".cospan/comments/../../etc/passwd.jsonl")
+            .exists());
         std::fs::remove_dir_all(&repo).ok();
     }
 }
