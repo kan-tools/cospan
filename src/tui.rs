@@ -1786,7 +1786,7 @@ pub fn gutter_lines<'a>(
     selected: usize,
     promoted: &HashSet<String>,
 ) -> (Vec<ratatui::text::Line<'static>>, Vec<&'a Comment>) {
-    use ratatui::style::{Modifier, Style};
+    use ratatui::style::{Color, Modifier, Style};
     use ratatui::text::{Line, Span};
     let unresolved: Vec<&Comment> = localized
         .iter()
@@ -1814,25 +1814,27 @@ pub fn gutter_lines<'a>(
                         .enumerate()
                         .find(|(_, (_, loc))| covers(loc))
                 });
-            let (marker, style) = match hit {
+            // A comment-covered line gets a full-line background band (stronger
+            // for the selected comment) so the anchored line reads at a glance; a
+            // promoted comment's marker is a filled diamond, an ephemeral one a dot.
+            let (marker, marker_style, line_bg) = match hit {
                 Some((idx, (c, loc))) => {
-                    let mut st = state_style(loc.state);
-                    if idx == selected {
-                        st = st.add_modifier(Modifier::REVERSED);
-                    }
-                    // A promoted (kan-snapshotted) comment gets a filled diamond
-                    // instead of the dot, so the durable ones stand out at a glance.
                     let glyph = if promoted.contains(&c.id) {
                         "◆"
                     } else {
                         "●"
                     };
-                    (glyph, st)
+                    let bg = if idx == selected {
+                        Color::Indexed(240)
+                    } else {
+                        Color::Indexed(237)
+                    };
+                    (glyph, state_style(loc.state), Some(bg))
                 }
-                None => (" ", Style::new()),
+                None => (" ", Style::new(), None),
             };
             let mut spans = vec![
-                Span::styled(marker.to_string(), style),
+                Span::styled(marker.to_string(), marker_style),
                 Span::styled(
                     format!(" {:>num_w$} ", i + 1),
                     Style::new().add_modifier(Modifier::DIM),
@@ -1841,6 +1843,12 @@ pub fn gutter_lines<'a>(
             // The syntax-highlighted text of the line, run by run.
             for (st, text) in runs {
                 spans.push(Span::styled(text.clone(), *st));
+            }
+            // Paint the background across the whole line (marker, number, code).
+            if let Some(bg) = line_bg {
+                for sp in &mut spans {
+                    sp.style = sp.style.bg(bg);
+                }
             }
             Line::from(spans)
         })
@@ -6924,9 +6932,11 @@ mod tests {
     }
 
     #[test]
-    fn highlighted_gutter_keeps_marker_and_selection() {
+    fn highlighted_gutter_marks_marker_and_backgrounds_the_covered_line() {
         // (AC-13) with a real grammar the code text is highlighted (>1 style across
-        // the pane) while the gutter marker and the selected-line reverse survive.
+        // the pane); the covered line carries a full-line background band and the
+        // marker cell, and an uncommented line carries neither.
+        use ratatui::style::Color;
         let content = "fn main() {\n    let x = 1;\n}\n";
         let c = mk_comment(content, 1, "note");
         let loc = Localization {
@@ -6936,21 +6946,19 @@ mod tests {
         };
         let localized = vec![(c, loc)];
         let (lines, _u) = gutter_lines(content, "rs", usize::MAX, &localized, 0, &HashSet::new());
-        // Every line still begins with the marker cell.
-        assert!(lines.iter().all(|l| {
-            let m = l.spans[0].content.as_ref();
-            m == "●" || m == " "
-        }));
-        // The commented, selected line carries a reversed ● marker.
-        let marker = &lines[1].spans[0];
-        assert_eq!(marker.content.as_ref(), "●");
+        // The commented line begins with a ● marker; an uncommented line does not.
+        assert_eq!(lines[1].spans[0].content.as_ref(), "●");
+        assert_eq!(lines[0].spans[0].content.as_ref(), " ");
+        // The selected covered line has the stronger background on every span…
         assert!(
-            marker
-                .style
-                .add_modifier
-                .contains(ratatui::style::Modifier::REVERSED),
-            "selected marker must be reversed"
+            lines[1]
+                .spans
+                .iter()
+                .all(|s| s.style.bg == Some(Color::Indexed(240))),
+            "the whole covered line is backgrounded"
         );
+        // …and an uncommented line has no background band.
+        assert!(lines[0].spans.iter().all(|s| s.style.bg.is_none()));
         // Highlighting produced more than one distinct text color across the pane.
         let styles: std::collections::HashSet<String> = lines
             .iter()
