@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "cospan-comments": {
+      "type": "stdio",
+      "command": "cospan",
+      "args": ["mcp"],
+      "env": { "KAN_AGENT": "claude-code" }
+    }
+  }
+}

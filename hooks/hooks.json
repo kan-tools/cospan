@@ -1,0 +1,16 @@
+{
+  "_comment": "Advisory only. The cospan plugin ships the MCP-server config and this checkout; the cospan binary is a separate `cargo install`. This SessionStart hook tells the human, once per session, when it isn't on PATH, and never blocks or gates an action.",
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/bootstrap-check.sh\"",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}
