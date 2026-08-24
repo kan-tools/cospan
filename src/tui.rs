@@ -3829,7 +3829,17 @@ fn draw_comments(
                 sp.style = sp.style.add_modifier(Modifier::REVERSED);
             }
         }
-        let scroll = cursor.saturating_sub(3).min(lines.len().saturating_sub(1));
+        // Follow the pick cursor stickily too: scroll only when it leaves the
+        // viewport, so choosing a line does not re-scroll the text on every step.
+        let max_top = lines.len().saturating_sub(1);
+        let view_h = content_area.height.saturating_sub(2) as usize;
+        let scroll = sticky_top(
+            state.note_scroll.get().min(max_top),
+            *cursor,
+            view_h,
+            max_top,
+        );
+        state.note_scroll.set(scroll);
         frame.render_widget(
             Paragraph::new(lines.split_off(scroll)).block(Block::bordered().title(format!(
                 " pick line {} · ↑/↓ · Enter here · Esc ",
@@ -7454,6 +7464,38 @@ mod tests {
         assert!(
             open.contains("comment thread"),
             "the popup still opens in narrow"
+        );
+    }
+
+    #[test]
+    fn pick_line_scrolls_stickily() {
+        // Adding a comment: the line picker follows the cursor stickily instead of
+        // re-centering it on every step.
+        let content = (0..40)
+            .map(|i| format!("line {i}"))
+            .collect::<Vec<_>>()
+            .join("\n")
+            + "\n";
+        let (mut a, _r) = authoring_state("pick", &content, &[]);
+        with_file_tree(&mut a);
+        a.begin_new_comment();
+        if let Some(Editing::PickLine { cursor }) = &mut a.editing {
+            *cursor = 0;
+        }
+        a.note_scroll.set(0);
+        // Cursor near the top stays visible -> no scroll.
+        let _ = render_view(&a, 120, 12);
+        assert_eq!(a.note_scroll.get(), 0, "cursor visible -> no scroll");
+        // Move it well past the viewport bottom -> scroll just enough, not snap.
+        if let Some(Editing::PickLine { cursor }) = &mut a.editing {
+            *cursor = 20;
+        }
+        let _ = render_view(&a, 120, 12);
+        let top = a.note_scroll.get();
+        assert!(top > 0, "cursor below the viewport -> scrolled");
+        assert!(
+            top <= 20,
+            "scrolled just far enough, not snapped to cursor-at-top"
         );
     }
 

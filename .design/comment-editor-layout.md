@@ -79,6 +79,10 @@ and a cleaner read path without changing what the round trip is.
   comment leaves the visible window — up to it when above, just far enough when
   below — instead of snapping it to the top every keypress. The viewport top is a
   render-space cache reset when the open file changes.
+- REQ-11: The **line picker** for a new comment (`Editing::PickLine`,
+  `src/tui.rs:398`) uses the same sticky scroll: it followed the pick cursor by
+  re-centering it every step (`cursor.saturating_sub(3)`); it now scrolls only when
+  the cursor leaves the viewport, sharing the code-pane viewport-top cache.
 
 ## Acceptance Criteria
 - [ ] AC-1: (covers REQ-1, REQ-2) A unit test on the tray-visibility helper asserts
@@ -115,6 +119,9 @@ and a cleaner read path without changing what the round trip is.
   viewport top does not move while the selection is within `[top, top+view_h)`,
   scrolls up to the selection when above, scrolls just far enough when below, and
   clamps to `max_top`.
+- [ ] AC-11: (covers REQ-11) A render test enters `PickLine`, asserts the viewport
+  top stays put while the cursor is visible, and scrolls just far enough (not to the
+  top) once the cursor moves past the viewport bottom.
 
 ## Architecture
 The change is confined to the Comments view in `src/tui.rs` and its render helpers;
