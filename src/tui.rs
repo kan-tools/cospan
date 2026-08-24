@@ -263,6 +263,12 @@ pub struct AppState {
     /// Whether the thread popup overlay is open over the selected comment. It
     /// reads the full untruncated thread and still accepts r/e/d/x on it.
     pub popup_open: bool,
+    /// The wide note/code viewport top (in reflowed-row space), followed
+    /// stickily: it moves only when the selected comment scrolls out of view, so
+    /// stepping between visible comments does not snap the selection to the top.
+    /// A render cache updated in `draw`, hence `Cell` behind the `&AppState` draw
+    /// takes; reset to 0 when the open file changes.
+    note_scroll: std::cell::Cell<usize>,
 
     // --- Chat view: cross-harness session buffers from transcripts (read-only). ---
     /// The repo's discovered sessions across all harnesses, newest-active first.
@@ -571,6 +577,7 @@ impl AppState {
             comment_msg: None,
             tray_open: false,
             popup_open: false,
+            note_scroll: std::cell::Cell::new(0),
             chat_sessions: Vec::new(),
             chat_selected: 0,
             chat_session: None,
@@ -871,6 +878,7 @@ impl AppState {
         self.open_file = Some(rel);
         self.comment_selected = 0;
         self.comment_scroll = 0;
+        self.note_scroll.set(0);
         self.comment_msg = None;
         self.reload_after_write(); // comment_loaded now differs -> forces the read
     }
@@ -892,9 +900,12 @@ impl AppState {
     }
 
     /// Open a repo-relative file into the gutter and give it focus for commenting.
+    /// Opening collapses the tray so the code + notes take the full width; press
+    /// `t` to bring the tree back (REQ-1: closed by default while reading).
     pub fn open_path(&mut self, rel: PathBuf) {
         self.set_preview(rel);
         self.comment_focus = CommentFocus::Comments;
+        self.tray_open = false;
     }
 
     /// Toggle the file tray held open while reading a file. In Tree focus the rail
@@ -3899,14 +3910,30 @@ fn draw_comments(
             } else {
                 side_by_side_rows(code_lines, &notes)
             };
-            // Scroll so the selected comment's note is in view.
+            // Follow the selected note stickily: scroll only when it leaves the
+            // viewport, so stepping between visible comments does not snap to top.
             let sel_row = note_rows
                 .iter()
                 .find(|(idx, _)| *idx == state.comment_selected)
                 .map(|(_, r)| *r)
                 .unwrap_or(0);
-            let scroll = sel_row.min(rows.len().saturating_sub(1));
-            let left: Vec<Line> = rows.iter().skip(scroll).map(|(l, _)| l.clone()).collect();
+            let max_top = rows.len().saturating_sub(1);
+            let view_h = code_area.height.saturating_sub(2) as usize;
+            let scroll = sticky_top(
+                state.note_scroll.get().min(max_top),
+                sel_row,
+                view_h,
+                max_top,
+            );
+            state.note_scroll.set(scroll);
+            // Fill each comment-banded code line to the pane width so the highlight
+            // spans the whole row, not just the characters.
+            let inner_w = code_area.width.saturating_sub(2) as usize;
+            let left: Vec<Line> = rows
+                .iter()
+                .skip(scroll)
+                .map(|(l, _)| fill_line_bg(l.clone(), inner_w))
+                .collect();
             let right: Vec<Line> = rows.iter().skip(scroll).map(|(_, r)| r.clone()).collect();
             frame.render_widget(
                 Paragraph::new(left).block(pane_block(
@@ -3921,14 +3948,45 @@ fn draw_comments(
             );
         }
         Fit::Narrow => {
+            // No room for a note column, but the Unresolvable comments must still
+            // be visible (honest-ambiguity) — pin them in a band below the code.
+            let sel_id = state
+                .comment_localized
+                .get(state.comment_selected)
+                .map(|(c, _)| c.id.as_str());
+            let band_w = content_area.width.saturating_sub(2) as usize;
+            let group = unresolvable_group(&unresolved, band_w, sel_id);
+            let g = if group.is_empty() {
+                0
+            } else {
+                (group.len() as u16 + 2).min(content_area.height.saturating_sub(3))
+            };
+            let [code_area, band_area] =
+                Layout::vertical([Constraint::Min(3), Constraint::Length(g)]).areas(content_area);
             let scroll = state.comment_scroll.min(code_lines.len().saturating_sub(1));
+            let inner_w = code_area.width.saturating_sub(2) as usize;
+            let lines: Vec<Line> = code_lines[scroll..]
+                .iter()
+                .map(|l| fill_line_bg(l.clone(), inner_w))
+                .collect();
             frame.render_widget(
-                Paragraph::new(code_lines[scroll..].to_vec()).block(pane_block(
+                Paragraph::new(lines).block(pane_block(
                     format!(" {file_title} · Esc → tree "),
                     gutter_focused,
                 )),
-                content_area,
+                code_area,
             );
+            if g > 0 {
+                frame.render_widget(
+                    Paragraph::new(group)
+                        .block(
+                            Block::bordered()
+                                .title(format!(" unresolvable ({}) ", unresolved.len())),
+                        )
+                        .wrap(Wrap { trim: false }),
+                    band_area,
+                );
+            }
         }
     }
 
@@ -3955,16 +4013,53 @@ fn draw_comments(
 }
 
 /// A rectangle centered in `area` at the given width/height percentages — the
-/// frame for a modal overlay like the thread popup.
+/// frame for a modal overlay like the thread popup. The percentage math goes
+/// through u32 so a very wide terminal cannot overflow the u16 multiply.
 fn centered_rect(area: ratatui::layout::Rect, pct_w: u16, pct_h: u16) -> ratatui::layout::Rect {
-    let w = area.width * pct_w / 100;
-    let h = area.height * pct_h / 100;
+    let w = (area.width as u32 * pct_w as u32 / 100) as u16;
+    let h = (area.height as u32 * pct_h as u32 / 100) as u16;
     ratatui::layout::Rect {
         x: area.x + area.width.saturating_sub(w) / 2,
         y: area.y + area.height.saturating_sub(h) / 2,
         width: w,
         height: h,
     }
+}
+
+/// Follow `sel_row` with the viewport top: move only when the selection leaves
+/// the visible `[top, top+view_h)` window — up to it when above, just far enough
+/// down when below — so stepping between visible comments never snaps the
+/// selection to the top. Pure, so the sticky rule is testable.
+fn sticky_top(prev_top: usize, sel_row: usize, view_h: usize, max_top: usize) -> usize {
+    let view_h = view_h.max(1);
+    let top = if sel_row < prev_top {
+        sel_row
+    } else if sel_row >= prev_top + view_h {
+        sel_row + 1 - view_h
+    } else {
+        prev_top
+    };
+    top.min(max_top)
+}
+
+/// If `line` carries a background band (its leading span sets a bg), pad it with
+/// a trailing space span in that colour out to `width` cells, so a comment's
+/// highlight fills the whole row rather than stopping at the end of the text.
+fn fill_line_bg(
+    mut line: ratatui::text::Line<'static>,
+    width: usize,
+) -> ratatui::text::Line<'static> {
+    use ratatui::style::Style;
+    use ratatui::text::Span;
+    let bg = line.spans.first().and_then(|s| s.style.bg);
+    if let Some(bg) = bg {
+        let used: usize = line.spans.iter().map(|s| s.content.chars().count()).sum();
+        if used < width {
+            line.spans
+                .push(Span::styled(" ".repeat(width - used), Style::new().bg(bg)));
+        }
+    }
+    line
 }
 
 /// The pinned "unresolvable" note-column band: one styled row per comment with no
@@ -3979,8 +4074,20 @@ fn unresolvable_group(
     use ratatui::style::Modifier;
     use ratatui::text::{Line, Span};
     const CAP: usize = 4;
+    // Show the first CAP, but if the selected comment is one of the unresolvable
+    // ones past the cap, swap it into the last slot so it stays visible and marked
+    // — "each is selectable" (REQ-4) must not hide behind "+N more".
+    let mut shown: Vec<usize> = (0..unresolved.len().min(CAP)).collect();
+    if let Some(si) = selected_id.and_then(|id| unresolved.iter().position(|c| c.id == id)) {
+        if !shown.contains(&si) {
+            if let Some(last) = shown.last_mut() {
+                *last = si;
+            }
+        }
+    }
     let mut rows: Vec<Line> = Vec::new();
-    for c in unresolved.iter().take(CAP) {
+    for &i in &shown {
+        let c = unresolved[i];
         let head = c.body.lines().next().unwrap_or("");
         let mut text = format!("● {head}");
         if text.chars().count() > width {
@@ -3996,8 +4103,9 @@ fn unresolvable_group(
         }
         rows.push(Line::from(Span::styled(text, style)));
     }
-    if unresolved.len() > CAP {
-        rows.push(Line::from(format!("  +{} more", unresolved.len() - CAP)));
+    let hidden = unresolved.len().saturating_sub(shown.len());
+    if hidden > 0 {
+        rows.push(Line::from(format!("  +{hidden} more")));
     }
     rows
 }
@@ -7174,6 +7282,10 @@ mod tests {
             CommentFocus::Comments,
             "toggling the tray leaves focus"
         );
+        // Opening another file re-collapses the tray (REQ-1) even after a toggle —
+        // it must not stay stuck open across files.
+        a.open_path(PathBuf::from("src/a.rs"));
+        assert!(!a.tray_open, "opening a file re-collapses the tray");
     }
 
     #[test]
@@ -7343,5 +7455,91 @@ mod tests {
             open.contains("comment thread"),
             "the popup still opens in narrow"
         );
+    }
+
+    #[test]
+    fn sticky_top_follows_only_off_screen() {
+        // The viewport (5 rows: [top, top+5)) stays put while the selection is
+        // visible, scrolls up to it when above, scrolls just enough when below, and
+        // clamps to max_top.
+        assert_eq!(sticky_top(0, 3, 5, 100), 0, "visible -> no move");
+        assert_eq!(sticky_top(0, 4, 5, 100), 0, "last visible row -> no move");
+        assert_eq!(sticky_top(2, 1, 5, 100), 1, "above top -> up to it");
+        assert_eq!(sticky_top(0, 6, 5, 100), 2, "past bottom -> 6+1-5");
+        assert_eq!(sticky_top(50, 8, 5, 4), 4, "clamped to max_top");
+    }
+
+    #[test]
+    fn fill_line_bg_pads_banded_lines_only() {
+        use ratatui::style::{Color, Style};
+        use ratatui::text::{Line, Span};
+        // A banded line (leading span carries a bg) is padded to width with that bg.
+        let banded = Line::from(vec![Span::styled(
+            "ab",
+            Style::new().bg(Color::Indexed(240)),
+        )]);
+        let out = fill_line_bg(banded, 6);
+        let width: usize = out.spans.iter().map(|s| s.content.chars().count()).sum();
+        assert_eq!(width, 6, "padded to the full width");
+        assert_eq!(
+            out.spans.last().unwrap().style.bg,
+            Some(Color::Indexed(240)),
+            "the pad carries the band colour"
+        );
+        // A plain line (no bg) is left untouched.
+        let plain = Line::from(vec![Span::raw("ab")]);
+        assert_eq!(
+            fill_line_bg(plain, 6).spans.len(),
+            1,
+            "no pad on an unbanded line"
+        );
+    }
+
+    #[test]
+    fn narrow_pins_unresolvable_band() {
+        // (honest-ambiguity) an Unresolvable comment stays visible in narrow too,
+        // where there is no note column or strip.
+        let content = "l0\nl1\n";
+        let (mut a, _r) = authoring_state("narrow-un", content, &[]);
+        a.comment_localized = vec![(
+            mk_comment("zzz\n", 0, "lost note"),
+            Localization {
+                state: State::Unresolvable,
+                span: None,
+                confidence: 0.0,
+            },
+        )];
+        with_file_tree(&mut a);
+        let rows = render_view(&a, 80, 20).join("\n");
+        assert!(
+            rows.contains("unresolvable (1)"),
+            "narrow pins the band: {rows:?}"
+        );
+        assert!(
+            rows.contains("lost note"),
+            "the unresolvable comment is shown"
+        );
+    }
+
+    #[test]
+    fn unresolvable_group_keeps_selected_visible_past_cap() {
+        // (REQ-4) selecting the 6th unresolvable still shows it, reversed, rather
+        // than hiding it behind "+N more".
+        let content = "x\n";
+        let many: Vec<Comment> = (0..6)
+            .map(|i| mk_comment(content, 0, &format!("u{i}")))
+            .collect();
+        let refs: Vec<&Comment> = many.iter().collect();
+        let rows = unresolvable_group(&refs, 40, Some("c_u5"));
+        assert_eq!(rows.len(), 5, "4 shown rows + a tail");
+        let last_shown: String = rows[3].spans.iter().map(|s| s.content.as_ref()).collect();
+        assert!(
+            last_shown.contains("u5"),
+            "the selected one is swapped in: {last_shown:?}"
+        );
+        assert!(rows[3].spans[0]
+            .style
+            .add_modifier
+            .contains(ratatui::style::Modifier::REVERSED));
     }
 }

@@ -65,7 +65,20 @@ and a cleaner read path without changing what the round trip is.
 - REQ-8: **Narrow** layout (`Fit::Narrow`, no rail and no note column,
   `src/tui.rs:3674`, `src/tui.rs:3815`) drops the strip too: it shows the code pane
   with gutter markers, and the Enter popup (REQ-5) is the read path for a comment's
-  thread. `comment_scroll` (`src/tui.rs:252`) still scrolls the code pane.
+  thread. `comment_scroll` (`src/tui.rs:252`) still scrolls the code pane. Because
+  narrow has neither note column nor strip, the pinned **unresolvable band** (REQ-4)
+  is rendered below the code pane there too — `telos/honest-ambiguity` requires the
+  resolve-by-hand list to stay visible at every width, not only wide.
+- REQ-9: A comment-covered code line gets a **full-row background band**: the band
+  colour (`gutter_lines`, `src/tui.rs:1871`) is filled across the whole pane width,
+  not just the character cells, so the anchored line reads as a solid bar. A helper
+  pads each banded line with a trailing coloured space span to the pane's inner
+  width at render time (the width is only known in `draw_comments`).
+- REQ-10: Stepping the comment cursor (`select_comment`, `src/tui.rs:1309`) follows
+  the selection **stickily**: the note/code viewport scrolls only when the selected
+  comment leaves the visible window — up to it when above, just far enough when
+  below — instead of snapping it to the top every keypress. The viewport top is a
+  render-space cache reset when the open file changes.
 
 ## Acceptance Criteria
 - [ ] AC-1: (covers REQ-1, REQ-2) A unit test on the tray-visibility helper asserts
@@ -87,10 +100,21 @@ and a cleaner read path without changing what the round trip is.
 - [ ] AC-5: (covers REQ-7) A test asserts that when `comment_msg` is set it appears
   in the footer render output (not in any strip), and is cleared as it is today.
 - [ ] AC-6: (covers REQ-8) A test on the narrow-layout path asserts no note column and
-  no strip are produced and the Enter popup still opens over the code pane.
+  no strip are produced, the Enter popup still opens over the code pane, and an
+  `Unresolvable` comment still renders in a pinned "unresolvable (N)" band.
 - [ ] AC-7: (covers REQ-5) A key-handler test asserts that with the popup overlay
   open, `r` enters reply-compose for the popup's comment, `x` toggles its resolved
   state, and `Esc` closes the overlay without mutating the comment.
+- [ ] AC-8: (covers REQ-1) A test asserts that after the tray is toggled open,
+  opening a file re-collapses it (`tray_open` back to false), so it does not stay
+  stuck open across files.
+- [ ] AC-9: (covers REQ-9) A unit test on the line-fill helper asserts a banded line
+  (leading span carries a background) is padded with a trailing same-colour span to
+  the full width, and an unbanded line is returned unchanged.
+- [ ] AC-10: (covers REQ-10) A unit test on the sticky-scroll helper asserts the
+  viewport top does not move while the selection is within `[top, top+view_h)`,
+  scrolls up to the selection when above, scrolls just far enough when below, and
+  clamps to `max_top`.
 
 ## Architecture
 The change is confined to the Comments view in `src/tui.rs` and its render helpers;
