@@ -5,8 +5,8 @@
 | phase | ships | notes |
 |-------|-------|-------|
 | **P0** | ✅ *first slice shipped*: `cospan watch-repo <path>` — poll `.kan/log/HEAD`, fold `kan status --json` + `day status` into a dashboard (process position · agents/handoff sessions · claims-by-subject). Shells to the binaries; plain-text render. | proves the L1→L2→render spine against a real `.kan/log`. TODO next: per-subject claim drill-in, then move to ratatui + link kan as a library. |
-| **P1** | editor view (live, tree-sitter) + comment view + sidecar store + `cospan mcp` **read** | the core doc-comment round trip |
-| **P2** | multi-worktree session picker + harness view + **constructed** agent hierarchy; `cospan mcp` **write** + agent-to-agent comments | flat `stream_list` fallback if hierarchy held |
+| **P1** | ✅ *shipped* (2026-08): the Comments tab — a collapsible file tree + syntax-highlighted (syntect/onig, ~150 langs incl. Lean) code pane, interactive authoring (add/reply/edit/delete/resolve), the sidecar store + re-localizer, promote-to-kan (`p`/`P` → `comment/<file>` claim), and `cospan mcp` **read** (`list_comments`/`get_thread`). Editor uses syntect, not tree-sitter. | the core doc-comment round trip — DONE |
+| **P2** | ✅ `cospan mcp` **write** shipped (S5: `add_comment`/`reply`/`resolve`, agent identity from `KAN_AGENT`) + agent-to-agent comments. ⬜ still ahead: multi-worktree session picker + harness view + **constructed** agent hierarchy. | flat `stream_list` fallback if hierarchy held |
 | **P3** | control plane over the command bus (spawn/kill/redirect); kan-mirrored comments; swap constructed hierarchy for ADR-75 vouching claims when kan ships them | the "control later" half |
 
 ### Recommended immediate next step
