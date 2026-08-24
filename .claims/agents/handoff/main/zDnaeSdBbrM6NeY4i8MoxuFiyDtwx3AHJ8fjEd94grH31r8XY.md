@@ -11,7 +11,7 @@
   "cites": [],
   "rev": "223mthj7cplyi",
   "seq": 0,
-  "of": 5,
+  "of": 6,
   "text_len": 4271,
   "content": "p2Rib2R5oWtPYnNlcnZhdGlvbqFkdGV4dGBlY2l0ZXOAZmF1dGhvcqJjZGlkeDlkaWQ6a2V5OnpEbmFlU2RCYnJNNk5lWTRpOE1veHVGaXlEdHd4M0FISjhmakVkOTRnckgzMXI4WFllYWdlbnT2Z3N1YmplY3ShZUxvY2Fsc2FnZW50cy9oYW5kb2ZmL21haW5pYXJ0aWZhY3RzgaFmQ29tbWl0eChkNWY3YTY0YWUzMWE1Y2FlOGY3YmU1MjExZjgzODNkNWZhZWI3NzFlaXdvcmtzcGFjZaFpV29ya3NwYWNleEA4MzVmODdhZGU0MGJkYzhkZjIyYzNiYmQyNzhkNTdlMDQwZmFhMDhjYzZlNDE1ZDZiZDAzODRlYjlhN2U1M2Nla3JlY29yZGVkX2F0GwAGWWvKisSn"
 }
@@ -62,7 +62,7 @@ DELIBERATELY NOT DOING (settled — do not relitigate):
   "cites": [],
   "rev": "223mthj7ocwai",
   "seq": 1,
-  "of": 5,
+  "of": 6,
   "content": "p2Rib2R5oWtQdWJsaWNhdGlvbqFlbGF5ZXJnR2l0VHJlZWVjaXRlc4BmYXV0aG9yomNkaWR4OWRpZDprZXk6ekRuYWVTZEJick02TmVZNGk4TW94dUZpeUR0d3gzQUhKOGZqRWQ5NGdySDMxcjhYWWVhZ2VudPZnc3ViamVjdKFlTG9jYWxzYWdlbnRzL2hhbmRvZmYvbWFpbmlhcnRpZmFjdHOBoWZDb21taXR4KGQ1ZjdhNjRhZTMxYTVjYWU4ZjdiZTUyMTFmODM4M2Q1ZmFlYjc3MWVpd29ya3NwYWNloWlXb3Jrc3BhY2V4QDgzNWY4N2FkZTQwYmRjOGRmMjJjM2JiZDI3OGQ1N2UwNDBmYWEwOGNjNmU0MTVkNmJkMDM4NGViOWE3ZTUzY2VrcmVjb3JkZWRfYXQbAAZZa8tEcGg="
 }
 ---
@@ -80,7 +80,7 @@ DELIBERATELY NOT DOING (settled — do not relitigate):
   "cites": [],
   "rev": "223mtklwzztxd",
   "seq": 2,
-  "of": 5,
+  "of": 6,
   "text_len": 4862,
   "content": "p2Rib2R5oWtPYnNlcnZhdGlvbqFkdGV4dGBlY2l0ZXOAZmF1dGhvcqJjZGlkeDlkaWQ6a2V5OnpEbmFlU2RCYnJNNk5lWTRpOE1veHVGaXlEdHd4M0FISjhmakVkOTRnckgzMXI4WFllYWdlbnT2Z3N1YmplY3ShZUxvY2Fsc2FnZW50cy9oYW5kb2ZmL21haW5pYXJ0aWZhY3RzgaFmQ29tbWl0eCg0MDBlMjRhNGZkMmZiOGU0NWJkMTI2Y2QzYWU2ZjRmNGE4NGE2NDU4aXdvcmtzcGFjZaFpV29ya3NwYWNleEBhMjEzMjNmYzY5NzI2N2MyYzM2ODc4NTc1ODY4ZDQ4ZTM5MzJlNDM4ZDA3NzA5YjBhNmViY2YyNGQyYWRmOGVma3JlY29yZGVkX2F0GwAGWYR5/+c6"
 }
@@ -132,7 +132,7 @@ NOTHING ASSERTED FROM MEMORY: all state above was computed from git/gh/cargo/day
   "cites": [],
   "rev": "223mtklxemxuh",
   "seq": 3,
-  "of": 5,
+  "of": 6,
   "content": "p2Rib2R5oWtQdWJsaWNhdGlvbqFlbGF5ZXJnR2l0VHJlZWVjaXRlc4BmYXV0aG9yomNkaWR4OWRpZDprZXk6ekRuYWVTZEJick02TmVZNGk4TW94dUZpeUR0d3gzQUhKOGZqRWQ5NGdySDMxcjhYWWVhZ2VudPZnc3ViamVjdKFlTG9jYWxzYWdlbnRzL2hhbmRvZmYvbWFpbmlhcnRpZmFjdHOBoWZDb21taXR4KDQwMGUyNGE0ZmQyZmI4ZTQ1YmQxMjZjZDNhZTZmNGY0YTg0YTY0NThpd29ya3NwYWNloWlXb3Jrc3BhY2V4QGEyMTMyM2ZjNjk3MjY3YzJjMzY4Nzg1NzU4NjhkNDhlMzkzMmU0MzhkMDc3MDliMGE2ZWJjZjI0ZDJhZGY4ZWZrcmVjb3JkZWRfYXQbAAZZhHqpdt4="
 }
 ---
@@ -150,7 +150,7 @@ NOTHING ASSERTED FROM MEMORY: all state above was computed from git/gh/cargo/day
   "cites": [],
   "rev": "223mtoud7duoh",
   "seq": 4,
-  "of": 5,
+  "of": 6,
   "text_len": 5267,
   "content": "p2Rib2R5oWtPYnNlcnZhdGlvbqFkdGV4dGBlY2l0ZXOAZmF1dGhvcqJjZGlkeDlkaWQ6a2V5OnpEbmFlU2RCYnJNNk5lWTRpOE1veHVGaXlEdHd4M0FISjhmakVkOTRnckgzMXI4WFllYWdlbnT2Z3N1YmplY3ShZUxvY2Fsc2FnZW50cy9oYW5kb2ZmL21haW5pYXJ0aWZhY3RzgaFmQ29tbWl0eCg3MGZhYWNkZDU1MzM2ZmNmNWU4NTNhOWM2OTAzMmFlMTBlZThkYTY0aXdvcmtzcGFjZaFpV29ya3NwYWNleEBhMjEzMjNmYzY5NzI2N2MyYzM2ODc4NTc1ODY4ZDQ4ZTM5MzJlNDM4ZDA3NzA5YjBhNmViY2YyNGQyYWRmOGVma3JlY29yZGVkX2F0GwAGWaaSVOZq"
 }
@@ -188,3 +188,56 @@ DELIBERATELY NOT DOING (settled — do not relitigate):
 - The comment-view editor evolution (FS tree/diffs) and the Chat "participation" write path remain recorded vision, not started.
 
 NOT MACHINE-CHECKABLE BY /wakeup: the interactive renders (Chat conversation/rail/folds/timestamps, the telos two-column detail with hanging indents) were human-eyeballed by the operator this session — a fact, but not verifiable from git/gh/day.
+***8<***
+---
+{
+  "v": 3,
+  "cid": "bafyreie35llzrrfzioo4kg7jdvaisvfmkwzoopnduucn7vzfnvlutzy56q",
+  "sig": "0493b5fdba103d7853f6a21e442cb48e2c216cb8f2cf4a08e6a57d747a1f784268f14c800ae2a4c55d606e55771b0d3e91f7d46ee0fd29490037f490c8088025",
+  "author": "did:key:zDnaeSdBbrM6NeY4i8MoxuFiyDtwx3AHJ8fjEd94grH31r8XY",
+  "subject": {
+    "local": "agents/handoff/main"
+  },
+  "kind": "observation",
+  "cites": [],
+  "rev": "223mtsco6t5hy",
+  "seq": 5,
+  "of": 6,
+  "text_len": 6299,
+  "content": "p2Rib2R5oWtPYnNlcnZhdGlvbqFkdGV4dGBlY2l0ZXOAZmF1dGhvcqJjZGlkeDlkaWQ6a2V5OnpEbmFlU2RCYnJNNk5lWTRpOE1veHVGaXlEdHd4M0FISjhmakVkOTRnckgzMXI4WFllYWdlbnT2Z3N1YmplY3ShZUxvY2Fsc2FnZW50cy9oYW5kb2ZmL21haW5pYXJ0aWZhY3RzgaFmQ29tbWl0eCgwYmQwODM4N2ZhYWNhNWNlYjVlNTU1NjVjMTY1ZjJlNzUyY2UzNTJhaXdvcmtzcGFjZaFpV29ya3NwYWNleEBhMjEzMjNmYzY5NzI2N2MyYzM2ODc4NTc1ODY4ZDQ4ZTM5MzJlNDM4ZDA3NzA5YjBhNmViY2YyNGQyYWRmOGVma3JlY29yZGVkX2F0GwAGWcIoTI1F"
+}
+---
+
+HANDOFF (main) — cospan — 2026-08-23. Supersedes the 2026-08-22 handoff; its "next" is all done (alpha.16 cut; the comment-authoring milestone chosen and built out).
+
+STATE (verified this session via git/gh/day, not memory):
+- main at 85facbf (S4 promote-to-kan, #20 merged). I am on branch s5-comment-mcp: PR #21 OPEN, CI GREEN, +3 commits over main (78cde8b S5 comment MCP; c151675 path-traversal guard; 0bd0838 plugin packaging); tree clean; nothing unpushed. NOT a worktree.
+- Milestone comment-authoring-surface is COMPLETE through S5. Merged: S1 authoring, S2 file browser + git status, S3 syntect highlighting, perf (window+LRU cache + onig), S4 promote-to-kan (+ the ◆ promoted indicator). Only S5 (the comment MCP) is unmerged — it is PR #21.
+- telos/comment-roundtrip witness is now [MATERIAL]: code-change scoped to src/mcp.rs is satisfied (that file exists on the s5 branch). This is the milestone's honest completion signal; it was [MISSING] through S1–S4 by design.
+- day: atom `release`, inputs code-change+verdict satisfied, done-criterion published-artifact UNMET (no v* tag since v0.0.1-alpha.16). A release is due — main is two features (S4, and S5 once merged) past alpha.16.
+
+DECISIONS A READER NEEDS (not derivable from the log):
+- Highlighting uses ONIG (C regex via onig_sys 69.9.3, pre-generated bindings, NO bindgen/libclang), NOT fancy-regex — this REVERSES the earlier "fancy-regex so CI needs no C toolchain" choice. CI's ubuntu has gcc and builds it (green). Reason: fancy-regex compiled a grammar's regexes on first use — ~600ms–2s per new file type in debug (measured); onig is tens of ms. The highlight window is also tightened to ~viewport (bucket 64, margin 8) and LRU-cached (8 entries) — file switching is fast now; the remaining cost is a one-time per-language grammar compile, and release is ~10-50x faster than `cargo run`.
+- S5 MCP transport is rmcp (official SDK, async/tokio, +~59 pure-Rust crates, MSRV 1.88) — the operator's EXPLICIT choice over a hand-rolled JSON-RPC loop, made with the cost info in hand. The tool logic is a transport-agnostic core (mcp::call_tool + per-tool fns returning serde_json::Value + tool_definitions), unit-tested; the rmcp layer is thin and reusable by the future mobile server.
+- Promote-to-kan NEVER mutates the sidecar (immutable snapshot; re-promote appends + --cites prior). "Promoted" is read back from the in-memory fold (a comment/<file> claim carrying the comment id) and shown as ◆ — no sidecar state, reactive on refold.
+- cospan is now a Claude Code PLUGIN: the repo ROOT is the plugin (.claude-plugin/plugin.json + .mcp.json declaring the `cospan-comments` stdio server `cospan mcp` + hooks/bootstrap-check.sh advising `cargo install --path` when the binary is absent), mirroring the day plugin.
+
+NEXT, in order:
+1. Merge PR #21 (S5 comment MCP + plugin packaging) -> completes the milestone on main. Reviewed SHIP (an independent Opus reviewer wrote a 50-way concurrent add stress test and empirically proved the write mutex serializes with no lost updates); CI green; NO live-TTY eyeball needed (it is a backend MCP server — its "eyeball" is a real harness connecting via `cospan mcp`).
+2. Cut a release covering S4+S5 (bump Cargo.toml+lock, `release: vX` commit, ANNOTATED signed tag, kan result release, kan publish + --all, `day: publish` commit, push main then tag — the recorded release rhythm). This satisfies day's published-artifact and gives the marketplace a tag to pin.
+3. List cospan in the kan-tools marketplace: it is a SEPARATE repo github.com/kan-tools/plugins (its marketplace.json pins kan/day to tag+sha). The cospan entry (drafted in this session's conversation) has source.url = github.com/maxinelevesque/cospan.git and must be pinned to the release tag+sha from step 2. Prep a PR against kan-tools/plugins once the tag exists.
+Then the roadmap: the bottom-tray / symbolic-metadata comment-view redesign (recorded vision in .dropbox/05-views-ux.md, NOT started — the operator's first file-browser ask); and the mobile-frontend initiative (kan subject `mobile-frontend`, .dropbox/08-mobile-frontend.md, PR #17 merged as recorded vision, deferred behind this milestone).
+
+OPEN ELSEWHERE:
+- PR #21 is the one to merge. PR #17 (mobile vision) already merged.
+- Marketplace listing waits on (a) the step-2 release tag and (b) an undecided repo-home question: keep cospan PRIVATE under maxinelevesque (marketplace source works only for the operator's auth) OR move it to the kan-tools org (public sibling of kan/day, matching the kan->day->cospan naming). Do NOT move the repo without the operator.
+- day-repo issues #237–240 (day-witness fence shapes; schema two fence names; block envelope; `day status` no --json): carried from the prior handoff, NOT re-checked this session. kan subject day-summary-in-cospan stays Settled(Blocked) on #240.
+- S5 deferred REQ-28: promote-an-MCP-write-to-kan when a setting is enabled — a follow-up; default stays sidecar-only.
+- S5 review non-blocking notes (follow-ups, not bugs): MCP tool errors ride back as {"error":...} with isError:false; the lexical path-traversal guard does not catch an in-repo symlink pointing out; an out-of-range add_comment line clamps to the last line.
+
+DELIBERATELY NOT DOING (settled — do not relitigate):
+- No hand-rolled MCP transport (operator chose rmcp). No promote-on-write yet. No WriteChannel/command-bus writes — MCP writes touch cospan's OWNED sidecar state only, which does NOT cross telos/observe-now-control-later (that telos is about agent spawn/kill/redirect, clarified by the operator). command_bus.rs is untouched.
+- No repo move and no marketplace pin to a branch — the marketplace pins a RELEASED tag+sha, so listing waits on the release.
+- fancy-regex is not coming back; the onig C dep is the deliberate trade for fast first-read highlighting.
+
+NOT MACHINE-CHECKABLE / FROM MEMORY: the day-repo issue states (#237–240) were carried from the prior handoff and not re-verified this session. The interactive comment-view renders (authoring compose, file tree + preview + guides, syntax colors, the ◆ promoted indicator, the anchored-line background band) were human-eyeballed by the operator across this session — a fact, but not verifiable from git/gh/day.
