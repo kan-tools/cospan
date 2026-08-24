@@ -32,15 +32,29 @@ fn main() {
         Some("subject") => subject_cmd(&args[1..]),
         Some("comment") => comment_cmd(&args[1..]),
         Some("comments") => comments_cmd(&args[1..]),
+        Some("mcp") => mcp_cmd(&args[1..]),
         _ => {
             eprintln!(
                 "usage:\n  cospan demo\n  cospan watch <file> --line <N> [--ctx <N>]\n  \
                  cospan watch-repo <path> [--once]\n  cospan subject <repo> <subject>\n  \
                  cospan comment add <file> --line <N> [--ctx <C>] <body>\n  \
-                 cospan comments <file>"
+                 cospan comments <file>\n  cospan mcp [repo]"
             );
             std::process::exit(2);
         }
+    }
+}
+
+/// `cospan mcp [repo]` — serve the comment MCP over stdio (repo defaults to cwd),
+/// so a harness can read and write anchored comments as MCP tools.
+fn mcp_cmd(args: &[String]) {
+    let repo = args
+        .first()
+        .map(PathBuf::from)
+        .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
+    if let Err(e) = cospan::mcp::run(repo) {
+        eprintln!("cospan mcp: {e}");
+        std::process::exit(1);
     }
 }
 
