@@ -12,10 +12,11 @@ pulldown-cmark = "0.13.4"
 ratatui = "0.30"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1"
-# Pure-Rust regex (fancy-regex, not the onig C library) so CI needs no C toolchain.
-syntect = { version = "5.2", default-features = false, features = ["default-fancy"] }
+# onig (the C regex engine syntect/bat default to): far faster grammar compile
+# and matching than fancy-regex. Needs a C compiler, which CI's ubuntu runner has.
+syntect = { version = "5.2", default-features = false, features = ["default-onig"] }
 # A much larger syntax set (bat's ~150 languages, incl. Lean) layered onto syntect.
-two-face = { version = "0.4", default-features = false, features = ["syntect-fancy"] }
+two-face = { version = "0.4", default-features = false, features = ["syntect-onig"] }
 
 [[bin]]
 name = "cospan"

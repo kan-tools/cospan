@@ -1274,7 +1274,7 @@ impl AppState {
             .get(self.comment_selected)
             .and_then(|(_, loc)| loc.span.map(|(s, _)| s))
             .unwrap_or(0);
-        self.comment_scroll.max(sel_line) + view_h as usize + 32
+        self.comment_scroll.max(sel_line) + view_h as usize + 8
     }
 
     /// Move within the active Process sub-pane: select an atom box (atoms graph),
@@ -1487,6 +1487,135 @@ impl AppState {
         }
     }
 
+    // --- Promote-to-kan (S4): the explicit human action ---
+
+    /// `p`: promote the selected comment into a durable kan claim, never touching
+    /// the sidecar (the snapshot is immutable; the sidecar keeps re-localizing).
+    pub fn promote_selected(&mut self) {
+        self.comment_msg = None;
+        let Some(rel) = self.open_file.clone() else {
+            return;
+        };
+        let Some((c, loc)) = self.comment_localized.get(self.comment_selected) else {
+            return;
+        };
+        let (c, span) = (c.clone(), loc.span);
+        let rel = rel.to_string_lossy().to_string();
+        self.comment_msg = Some(match self.promote_one(&rel, &c, span) {
+            Ok(cid) => format!("promoted → {}", short_cid(&cid)),
+            Err(e) => format!("promote failed: {e}"),
+        });
+    }
+
+    /// `P`: promote the open file's whole comment set — one claim per comment.
+    pub fn promote_file(&mut self) {
+        self.comment_msg = None;
+        let Some(rel) = self.open_file.clone() else {
+            return;
+        };
+        let rel = rel.to_string_lossy().to_string();
+        let items: Vec<(Comment, Option<(usize, usize)>)> = self
+            .comment_localized
+            .iter()
+            .map(|(c, l)| (c.clone(), l.span))
+            .collect();
+        if items.is_empty() {
+            self.comment_msg = Some("no comments to promote".into());
+            return;
+        }
+        let mut ok = 0usize;
+        let mut failed = None;
+        for (c, span) in &items {
+            match self.promote_one(&rel, c, *span) {
+                Ok(_) => ok += 1,
+                Err(e) => {
+                    failed = Some(e);
+                    break;
+                }
+            }
+        }
+        self.comment_msg = Some(match failed {
+            Some(e) => format!("promoted {ok}, then failed: {e}"),
+            None => format!("promoted {ok} comment(s) → kan"),
+        });
+    }
+
+    /// Shell `kan observe` to snapshot one comment onto `comment/<file>`, citing
+    /// the prior promoted claim on a re-promote. Returns the new claim's CID.
+    fn promote_one(
+        &self,
+        rel: &str,
+        c: &Comment,
+        span: Option<(usize, usize)>,
+    ) -> Result<String, String> {
+        let subject = comments::comment_subject(rel);
+        let prior = self.prior_promoted_cid(&subject, &c.id);
+        let argv = comments::promote_argv(rel, c, span, prior.as_deref());
+        let out = std::process::Command::new("kan")
+            .current_dir(&self.repo)
+            .args(&argv)
+            .output()
+            .map_err(|e| e.to_string())?;
+        if !out.status.success() {
+            return Err(String::from_utf8_lossy(&out.stderr)
+                .lines()
+                .next()
+                .unwrap_or("kan failed")
+                .to_string());
+        }
+        Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
+    }
+
+    /// The CID of the newest claim on `subject` that already carries this comment
+    /// id in its `cospan-comment` block, so a re-promote cites its own prior
+    /// snapshot rather than writing an unlinked duplicate. `None` on first promote.
+    fn prior_promoted_cid(&self, subject: &str, comment_id: &str) -> Option<String> {
+        let out = std::process::Command::new("kan")
+            .current_dir(&self.repo)
+            .args(["show", subject, "--json"])
+            .output()
+            .ok()?;
+        if !out.status.success() {
+            return None;
+        }
+        let v: serde_json::Value = serde_json::from_slice(&out.stdout).ok()?;
+        let claims = v.get("claims")?.as_array()?;
+        let needle = format!("\"id\":\"{comment_id}\"");
+        claims.iter().rev().find_map(|claim| {
+            let text = claim.get("text").and_then(|t| t.as_str())?;
+            if text.contains(&needle) {
+                claim.get("cid").and_then(|c| c.as_str()).map(String::from)
+            } else {
+                None
+            }
+        })
+    }
+
+    /// The ids of the open file's comments that have been promoted to kan — read
+    /// from the in-memory fold (a projection of the log, `telos/kan-is-truth`), so
+    /// the indicator appears once a promote's claim lands in the next re-fold and
+    /// reflects promotions from any session, not just this one. No subprocess.
+    pub fn promoted_ids(&self) -> HashSet<String> {
+        let mut set = HashSet::new();
+        let Some(rel) = self.open_file.as_ref() else {
+            return set;
+        };
+        let subject = comments::comment_subject(&rel.to_string_lossy());
+        let Some(claims) = self.fold.claims.get(&subject) else {
+            return set;
+        };
+        for (c, _) in &self.comment_localized {
+            let needle = format!("\"id\":\"{}\"", c.id);
+            if claims
+                .iter()
+                .any(|cl| cl.text.as_deref().is_some_and(|t| t.contains(&needle)))
+            {
+                set.insert(c.id.clone());
+            }
+        }
+        set
+    }
+
     /// Commit the active compose: create the comment / append the reply / rewrite
     /// the body, persist, and re-read. A no-op unless a `Compose` is active — so
     /// `Ctrl-S` in pick-line mode does nothing.
@@ -1655,8 +1784,9 @@ pub fn gutter_lines<'a>(
     upto: usize,
     localized: &'a [(Comment, Localization)],
     selected: usize,
+    promoted: &HashSet<String>,
 ) -> (Vec<ratatui::text::Line<'static>>, Vec<&'a Comment>) {
-    use ratatui::style::{Modifier, Style};
+    use ratatui::style::{Color, Modifier, Style};
     use ratatui::text::{Line, Span};
     let unresolved: Vec<&Comment> = localized
         .iter()
@@ -1684,18 +1814,27 @@ pub fn gutter_lines<'a>(
                         .enumerate()
                         .find(|(_, (_, loc))| covers(loc))
                 });
-            let (marker, style) = match hit {
-                Some((idx, (_, loc))) => {
-                    let mut st = state_style(loc.state);
-                    if idx == selected {
-                        st = st.add_modifier(Modifier::REVERSED);
-                    }
-                    ("●", st)
+            // A comment-covered line gets a full-line background band (stronger
+            // for the selected comment) so the anchored line reads at a glance; a
+            // promoted comment's marker is a filled diamond, an ephemeral one a dot.
+            let (marker, marker_style, line_bg) = match hit {
+                Some((idx, (c, loc))) => {
+                    let glyph = if promoted.contains(&c.id) {
+                        "◆"
+                    } else {
+                        "●"
+                    };
+                    let bg = if idx == selected {
+                        Color::Indexed(240)
+                    } else {
+                        Color::Indexed(237)
+                    };
+                    (glyph, state_style(loc.state), Some(bg))
                 }
-                None => (" ", Style::new()),
+                None => (" ", Style::new(), None),
             };
             let mut spans = vec![
-                Span::styled(marker.to_string(), style),
+                Span::styled(marker.to_string(), marker_style),
                 Span::styled(
                     format!(" {:>num_w$} ", i + 1),
                     Style::new().add_modifier(Modifier::DIM),
@@ -1704,6 +1843,12 @@ pub fn gutter_lines<'a>(
             // The syntax-highlighted text of the line, run by run.
             for (st, text) in runs {
                 spans.push(Span::styled(text.clone(), *st));
+            }
+            // Paint the background across the whole line (marker, number, code).
+            if let Some(bg) = line_bg {
+                for sp in &mut spans {
+                    sp.style = sp.style.bg(bg);
+                }
             }
             Line::from(spans)
         })
@@ -1714,8 +1859,12 @@ pub fn gutter_lines<'a>(
 /// The detail-strip lines for one comment: a header (state · where · confidence ·
 /// author), the body, each reply indented and attributed, and a `[resolved]`
 /// marker when resolved. Pure, so the thread render is unit-testable.
-pub fn thread_lines(c: &Comment, loc: &Localization) -> Vec<ratatui::text::Line<'static>> {
-    use ratatui::style::{Modifier, Style};
+pub fn thread_lines(
+    c: &Comment,
+    loc: &Localization,
+    promoted: bool,
+) -> Vec<ratatui::text::Line<'static>> {
+    use ratatui::style::{Color, Modifier, Style};
     use ratatui::text::{Line, Span};
     let at = loc
         .span
@@ -1728,6 +1877,12 @@ pub fn thread_lines(c: &Comment, loc: &Localization) -> Vec<ratatui::text::Line<
             loc.confidence, c.author.id
         )),
     ];
+    if promoted {
+        header.push(Span::styled(
+            "  ◆ kan",
+            Style::new().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+        ));
+    }
     if c.resolved {
         header.push(Span::styled(
             "  [resolved]",
@@ -2921,6 +3076,20 @@ pub fn run(repo: PathBuf) -> std::io::Result<()> {
                         {
                             state.toggle_resolve_selected()
                         }
+                        // Promote to a durable kan claim: `p` the selected comment,
+                        // `P` the whole file's set.
+                        KeyCode::Char('p')
+                            if state.view == View::Comments
+                                && state.comment_focus == CommentFocus::Comments =>
+                        {
+                            state.promote_selected()
+                        }
+                        KeyCode::Char('P')
+                            if state.view == View::Comments
+                                && state.comment_focus == CommentFocus::Comments =>
+                        {
+                            state.promote_file()
+                        }
                         KeyCode::Char('[') | KeyCode::Left if state.view == View::Chat => {
                             state.select_chat_session(-1)
                         }
@@ -3040,7 +3209,7 @@ fn view_header(view: View) -> String {
     let keys = match view {
         View::Chat => "· ←→ session · z fold · j/k scroll · ⇧↑↓ msg · ↵ expand ",
         View::Comments => {
-            "· j/k browse · ↵ fold/comment · Esc tree · a add · r reply · e/d edit/del · x resolve "
+            "· j/k browse · ↵ fold/comment · Esc tree · a add · r reply · e/d edit/del · x resolve · p promote "
         }
         View::Process => "· ←→ atoms/telos · j/k scroll ",
         View::Ledger => "",
@@ -3100,11 +3269,15 @@ pub fn note_block(
     loc: &Localization,
     w: usize,
     selected: bool,
+    promoted: bool,
 ) -> Vec<ratatui::text::Line<'static>> {
     use ratatui::style::{Modifier, Style};
     use ratatui::text::{Line, Span};
     const BODY_CAP: usize = 3;
     let mut label = format!("@{} · {:?}", c.author.id, loc.state);
+    if promoted {
+        label.push_str(" · kan");
+    }
     if c.resolved {
         label.push_str(" [resolved]");
     }
@@ -3113,8 +3286,11 @@ pub fn note_block(
     } else {
         Style::new()
     };
+    // A filled diamond (◆) marks a promoted comment; a hollow dot (●) an
+    // ephemeral one — same signal as the code gutter.
+    let bullet = if promoted { "◆ " } else { "● " };
     let mut lines = vec![Line::from(vec![
-        Span::styled("● ", state_style(loc.state)),
+        Span::styled(bullet, state_style(loc.state)),
         Span::styled(label, header_style),
     ])];
 
@@ -3188,6 +3364,57 @@ pub fn reflow_rows(
             }
         }
         ni += 1;
+    }
+    (rows, note_rows)
+}
+
+/// Whether the notes need reflow — i.e. any note (sorted by `start`) would either
+/// run past the last code line or overlap the next note's start. When false, every
+/// note fits beside the code without pushing it down, so the cheaper, less-jumpy
+/// [`side_by_side_rows`] can be used instead of [`reflow_rows`].
+pub fn notes_need_reflow(
+    notes: &[(usize, usize, Vec<ratatui::text::Line<'static>>)],
+    code_len: usize,
+) -> bool {
+    for (i, (_, start, lines)) in notes.iter().enumerate() {
+        let end = start + lines.len(); // exclusive
+        if end > code_len {
+            return true; // note spills past the file — needs appended rows
+        }
+        if let Some((_, next_start, _)) = notes.get(i + 1) {
+            if *next_start < end {
+                return true; // this note's lines collide with the next note
+            }
+        }
+    }
+    false
+}
+
+/// Place each note's lines into the right column beside the code — no reflow, so
+/// the code column does not shift. Safe only when [`notes_need_reflow`] is false
+/// (every note fits within the code without colliding). Same return shape as
+/// [`reflow_rows`]: `(left,right)` rows and `(localized_index, first_row)` per note.
+#[allow(clippy::type_complexity)]
+pub fn side_by_side_rows(
+    code_lines: Vec<ratatui::text::Line<'static>>,
+    notes: &[(usize, usize, Vec<ratatui::text::Line<'static>>)],
+) -> (
+    Vec<(ratatui::text::Line<'static>, ratatui::text::Line<'static>)>,
+    Vec<(usize, usize)>,
+) {
+    use ratatui::text::Line;
+    let mut rows: Vec<(Line, Line)> = code_lines
+        .into_iter()
+        .map(|c| (c, Line::from("")))
+        .collect();
+    let mut note_rows: Vec<(usize, usize)> = Vec::new();
+    for (loc_idx, start, note_lines) in notes {
+        note_rows.push((*loc_idx, *start)); // the note's first row is its code line
+        for (j, nl) in note_lines.iter().enumerate() {
+            if let Some(row) = rows.get_mut(start + j) {
+                row.1 = nl.clone();
+            }
+        }
     }
     (rows, note_rows)
 }
@@ -3485,12 +3712,14 @@ fn draw_comments(
         return;
     }
 
+    let promoted = state.promoted_ids();
     let (code_lines, unresolved) = gutter_lines(
         &state.comment_content,
         &state.selected_ext(),
         state.highlight_upto(content_area.height),
         &state.comment_localized,
         state.comment_selected,
+        &promoted,
     );
     let file_title = state
         .open_file
@@ -3544,12 +3773,24 @@ fn draw_comments(
                         (
                             idx,
                             s,
-                            note_block(c, loc, note_w, idx == state.comment_selected),
+                            note_block(
+                                c,
+                                loc,
+                                note_w,
+                                idx == state.comment_selected,
+                                promoted.contains(&c.id),
+                            ),
                         )
                     })
                 })
                 .collect();
-            let (rows, note_rows) = reflow_rows(code_lines, &notes);
+            // Only push the code down (reflow) when notes actually collide; when
+            // they fit beside the code, render side-by-side so the code stays put.
+            let (rows, note_rows) = if notes_need_reflow(&notes, code_lines.len()) {
+                reflow_rows(code_lines, &notes)
+            } else {
+                side_by_side_rows(code_lines, &notes)
+            };
             // Scroll so the selected comment's note is in view.
             let sel_row = note_rows
                 .iter()
@@ -3586,7 +3827,7 @@ fn draw_comments(
     // Strip: the selected comment's full thread, then the unresolvable list.
     let mut strip: Vec<Line> = Vec::new();
     if let Some((c, loc)) = state.comment_localized.get(state.comment_selected) {
-        strip.extend(thread_lines(c, loc));
+        strip.extend(thread_lines(c, loc, promoted.contains(&c.id)));
     }
     if !unresolved.is_empty() {
         strip.push(Line::from(Span::styled(
@@ -3668,6 +3909,7 @@ fn draw_compose(
         upto,
         &state.comment_localized,
         state.comment_selected,
+        &state.promoted_ids(),
     );
     if let Some(t) = target {
         if let Some(l) = code_lines.get_mut(t) {
@@ -5822,7 +6064,8 @@ mod tests {
                 },
             ),
         ];
-        let (lines, unresolved) = gutter_lines(content, "", usize::MAX, &localized, 0);
+        let (lines, unresolved) =
+            gutter_lines(content, "", usize::MAX, &localized, 0, &HashSet::new());
         assert_eq!(lines.len(), 3);
         // Line index 1 (the anchored one) carries the ● marker; the others a space.
         let marker = |i: usize| lines[i].spans[0].content.to_string();
@@ -5868,7 +6111,7 @@ mod tests {
             span: Some((0, 0)),
             confidence: 0.8,
         };
-        let lines = note_block(&c, &loc, 12, false);
+        let lines = note_block(&c, &loc, 12, false, false);
         let joined = lines.iter().map(line_text).collect::<Vec<_>>().join("\n");
         assert!(joined.contains("@tester"), "{joined}");
         assert!(joined.contains("Drifted"), "{joined}");
@@ -5901,6 +6144,33 @@ mod tests {
     }
 
     #[test]
+    fn reflow_only_when_notes_collide() {
+        use ratatui::text::Line;
+        let code: Vec<Line> = (0..10).map(|i| Line::from(format!("l{i}"))).collect();
+        let two = |s: &str| vec![Line::from(format!("{s}0")), Line::from(format!("{s}1"))];
+        // Two 2-line notes at lines 1 and 5 — no collision (1..3 and 5..7 disjoint),
+        // and neither runs past the 10 code lines: no reflow needed.
+        let spaced = [(0usize, 1usize, two("a")), (1usize, 5usize, two("b"))];
+        assert!(!notes_need_reflow(&spaced, code.len()));
+        let (rows, note_rows) = side_by_side_rows(code.clone(), &spaced);
+        assert_eq!(rows.len(), 10, "code is NOT pushed down");
+        assert_eq!(line_text(&rows[1].0), "l1"); // code stays put
+        assert_eq!(line_text(&rows[1].1), "a0"); // note beside its line
+        assert_eq!(line_text(&rows[2].1), "a1"); // continuation beside the next code
+        assert_eq!(line_text(&rows[2].0), "l2"); // …which is unchanged
+        assert_eq!(note_rows, vec![(0, 1), (1, 5)]);
+
+        // Notes at lines 1 and 2 — the first (2 lines) spills onto line 2 where the
+        // second starts: they collide, so reflow IS needed.
+        let colliding = [(0usize, 1usize, two("a")), (1usize, 2usize, two("b"))];
+        assert!(notes_need_reflow(&colliding, code.len()));
+
+        // A note running past the last code line needs reflow (appended rows).
+        let past_eof = [(0usize, 9usize, two("a"))]; // 9..11 > 10
+        assert!(notes_need_reflow(&past_eof, code.len()));
+    }
+
+    #[test]
     fn unresolvable_comment_makes_no_note_but_stays_listed() {
         // (AC-4) span None -> no note in the column; still in the unresolvable list.
         let content = "one\ntwo\n";
@@ -5928,7 +6198,8 @@ mod tests {
             .filter_map(|(i, (_, loc))| loc.span.map(|(s, _)| (i, s)))
             .collect();
         assert_eq!(notes, vec![(0, 0)]); // only the anchored one
-        let (_lines, unresolved) = gutter_lines(content, "", usize::MAX, &localized, 0);
+        let (_lines, unresolved) =
+            gutter_lines(content, "", usize::MAX, &localized, 0, &HashSet::new());
         assert_eq!(unresolved.len(), 1);
         assert_eq!(unresolved[0].body, "lost");
     }
@@ -5972,7 +6243,7 @@ mod tests {
             span: Some((0, 0)),
             confidence: 1.0,
         };
-        let texts: Vec<String> = thread_lines(&c, &loc)
+        let texts: Vec<String> = thread_lines(&c, &loc, false)
             .iter()
             .map(|l| {
                 l.spans
@@ -5989,6 +6260,71 @@ mod tests {
             "reply not attributed/indented: {texts:?}"
         );
         assert!(texts.iter().any(|t| t.contains("[resolved]")), "{texts:?}");
+    }
+
+    #[test]
+    fn promoted_comment_gets_a_diamond_marker_and_kan_tag() {
+        let content = "l0\nl1\n";
+        let c = mk_comment(content, 0, "note"); // id "c_note"
+        let loc = Localization {
+            state: State::Anchored,
+            span: Some((0, 0)),
+            confidence: 1.0,
+        };
+        let localized = vec![(c.clone(), loc.clone())];
+
+        // Not promoted: the hollow dot, and no kan tag in the strip.
+        let empty = HashSet::new();
+        let (lines, _) = gutter_lines(content, "", usize::MAX, &localized, 0, &empty);
+        assert_eq!(lines[0].spans[0].content.as_ref(), "●");
+        let strip = thread_lines(&c, &loc, false);
+        assert!(!strip
+            .iter()
+            .flat_map(|l| l.spans.iter())
+            .any(|s| s.content.contains("kan")));
+
+        // Promoted: a filled diamond, and a `◆ kan` tag in the strip header.
+        let mut promoted = HashSet::new();
+        promoted.insert("c_note".to_string());
+        let (lines, _) = gutter_lines(content, "", usize::MAX, &localized, 0, &promoted);
+        assert_eq!(lines[0].spans[0].content.as_ref(), "◆");
+        let strip = thread_lines(&c, &loc, true);
+        assert!(strip
+            .iter()
+            .flat_map(|l| l.spans.iter())
+            .any(|s| s.content.contains("kan")));
+    }
+
+    #[test]
+    fn promoted_ids_reads_promotions_from_the_fold() {
+        // A comment is "promoted" when a claim on comment/<file> carries its id.
+        let mut a = app(&[]);
+        a.open_file = Some(PathBuf::from("src/a.rs"));
+        let content = "l0\n";
+        a.comment_localized = vec![(
+            mk_comment(content, 0, "note"), // id "c_note"
+            Localization {
+                state: State::Anchored,
+                span: Some((0, 0)),
+                confidence: 1.0,
+            },
+        )];
+        // A promoted claim on the file's subject, carrying the comment id.
+        a.fold.claims.insert(
+            "comment/src/a.rs".into(),
+            vec![mk_claim(
+                "Observation",
+                "note\n\n```cospan-comment\n{\"id\":\"c_note\"}\n```",
+            )],
+        );
+        assert!(a.promoted_ids().contains("c_note"));
+
+        // A claim for a different id does not mark this comment promoted.
+        a.fold.claims.insert(
+            "comment/src/a.rs".into(),
+            vec![mk_claim("Observation", "x\n\n{\"id\":\"c_other\"}")],
+        );
+        assert!(a.promoted_ids().is_empty());
     }
 
     #[test]
@@ -6103,6 +6439,7 @@ mod tests {
             usize::MAX,
             &a.comment_localized,
             a.comment_selected,
+            &HashSet::new(),
         );
         assert!(lines.is_empty());
         assert_eq!(unresolved.len(), 2);
@@ -6595,9 +6932,11 @@ mod tests {
     }
 
     #[test]
-    fn highlighted_gutter_keeps_marker_and_selection() {
+    fn highlighted_gutter_marks_marker_and_backgrounds_the_covered_line() {
         // (AC-13) with a real grammar the code text is highlighted (>1 style across
-        // the pane) while the gutter marker and the selected-line reverse survive.
+        // the pane); the covered line carries a full-line background band and the
+        // marker cell, and an uncommented line carries neither.
+        use ratatui::style::Color;
         let content = "fn main() {\n    let x = 1;\n}\n";
         let c = mk_comment(content, 1, "note");
         let loc = Localization {
@@ -6606,22 +6945,20 @@ mod tests {
             confidence: 1.0,
         };
         let localized = vec![(c, loc)];
-        let (lines, _u) = gutter_lines(content, "rs", usize::MAX, &localized, 0);
-        // Every line still begins with the marker cell.
-        assert!(lines.iter().all(|l| {
-            let m = l.spans[0].content.as_ref();
-            m == "●" || m == " "
-        }));
-        // The commented, selected line carries a reversed ● marker.
-        let marker = &lines[1].spans[0];
-        assert_eq!(marker.content.as_ref(), "●");
+        let (lines, _u) = gutter_lines(content, "rs", usize::MAX, &localized, 0, &HashSet::new());
+        // The commented line begins with a ● marker; an uncommented line does not.
+        assert_eq!(lines[1].spans[0].content.as_ref(), "●");
+        assert_eq!(lines[0].spans[0].content.as_ref(), " ");
+        // The selected covered line has the stronger background on every span…
         assert!(
-            marker
-                .style
-                .add_modifier
-                .contains(ratatui::style::Modifier::REVERSED),
-            "selected marker must be reversed"
+            lines[1]
+                .spans
+                .iter()
+                .all(|s| s.style.bg == Some(Color::Indexed(240))),
+            "the whole covered line is backgrounded"
         );
+        // …and an uncommented line has no background band.
+        assert!(lines[0].spans.iter().all(|s| s.style.bg.is_none()));
         // Highlighting produced more than one distinct text color across the pane.
         let styles: std::collections::HashSet<String> = lines
             .iter()

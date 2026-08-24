@@ -92,14 +92,16 @@ pub fn styled_upto(content: &str, ext: &str, upto: usize) -> Vec<StyledLine> {
     lines
 }
 
-/// Round `upto` up to a 128-line boundary (plus a lookahead bucket) so small
-/// scrolls reuse a cached window rather than re-highlighting each tick. A
-/// full-file request (`usize::MAX`) maps to its own stable key.
+/// Round `upto` up to a 64-line boundary so small scrolls reuse a cached window
+/// rather than re-highlighting each tick, while keeping the window close to the
+/// visible viewport — highlighting is O(lines) and slow (fancy-regex, debug), so
+/// over-reaching the window is the dominant per-file-switch cost. A full-file
+/// request (`usize::MAX`) maps to its own stable key.
 fn bucket(upto: usize) -> usize {
     if upto >= 1_000_000 {
         usize::MAX
     } else {
-        (upto / 128 + 2) * 128
+        upto.max(1).div_ceil(64) * 64
     }
 }
 
@@ -302,7 +304,7 @@ mod tests {
         for _ in 0..500 {
             src.push_str("let z = 1;\n");
         }
-        let out = styled_upto(&src, "rs", 10); // bucket -> first 256 lines
+        let out = styled_upto(&src, "rs", 10); // bucket -> first 64 lines
         assert_eq!(out.len(), 501, "line count is preserved");
         assert_eq!(out[500].len(), 1, "a beyond-window line is one plain run");
         assert_eq!(
