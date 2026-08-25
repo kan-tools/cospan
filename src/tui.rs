@@ -263,6 +263,11 @@ pub struct AppState {
     /// Whether the thread popup overlay is open over the selected comment. It
     /// reads the full untruncated thread and still accepts r/e/d/x on it.
     pub popup_open: bool,
+    /// The open file's working-tree diff (vs HEAD), recomputed with the content on
+    /// the same mtime gate — drives the editor pane's change highlighting.
+    pub file_diff: crate::diff::FileDiff,
+    /// Whether the diff highlighting is shown (toggled with `D`, default on).
+    pub diff_on: bool,
     /// The wide note/code viewport top (in reflowed-row space), followed
     /// stickily: it moves only when the selected comment scrolls out of view, so
     /// stepping between visible comments does not snap the selection to the top.
@@ -577,6 +582,8 @@ impl AppState {
             comment_msg: None,
             tray_open: false,
             popup_open: false,
+            file_diff: crate::diff::FileDiff::empty(),
+            diff_on: true,
             note_scroll: std::cell::Cell::new(0),
             chat_sessions: Vec::new(),
             chat_selected: 0,
@@ -914,6 +921,11 @@ impl AppState {
         self.tray_open = !self.tray_open;
     }
 
+    /// Toggle the working-tree diff highlighting in the code pane.
+    pub fn toggle_diff(&mut self) {
+        self.diff_on = !self.diff_on;
+    }
+
     /// Open the thread popup over the selected comment, if there is one to read.
     pub fn open_thread_popup(&mut self) {
         if self.comment_localized.get(self.comment_selected).is_some() {
@@ -957,6 +969,7 @@ impl AppState {
             self.comment_localized.clear();
             self.comment_loaded = None;
             self.comment_mtime = None;
+            self.file_diff = crate::diff::FileDiff::empty();
             return;
         };
         let src = self.repo.join(&rel);
@@ -994,6 +1007,20 @@ impl AppState {
             let _ = comments::save(&sidecar, &cs);
         }
         self.comment_content = content;
+        // Recompute the working-tree diff on the same gate that reloaded the
+        // content, so the two never drift and git runs only on a real change.
+        let status = self
+            .file_entries
+            .iter()
+            .find(|e| e.path == rel)
+            .map(|e| e.status)
+            .unwrap_or(filetree::GitStatus::Modified);
+        self.file_diff = crate::diff::FileDiff::compute(
+            &self.repo,
+            &rel,
+            status,
+            self.comment_content.lines().count(),
+        );
         self.comment_localized = localized;
         self.comment_loaded = Some(rel);
         self.comment_mtime = mtime;
@@ -1849,6 +1876,7 @@ fn state_style(state: State) -> ratatui::style::Style {
 /// for any comment anchored on it (styled by state; the selected comment
 /// highlighted), and the `Unresolvable` comments (span `None`) returned
 /// separately since they cannot be placed on a line (`telos/honest-ambiguity`).
+#[allow(clippy::too_many_arguments)]
 pub fn gutter_lines<'a>(
     content: &str,
     ext: &str,
@@ -1856,6 +1884,8 @@ pub fn gutter_lines<'a>(
     localized: &'a [(Comment, Localization)],
     selected: usize,
     promoted: &HashSet<String>,
+    diff: &crate::diff::FileDiff,
+    diff_on: bool,
 ) -> (Vec<ratatui::text::Line<'static>>, Vec<&'a Comment>) {
     use ratatui::style::{Color, Modifier, Style};
     use ratatui::text::{Line, Span};
@@ -1904,19 +1934,65 @@ pub fn gutter_lines<'a>(
                 }
                 None => (" ", Style::new(), None),
             };
-            let mut spans = vec![
-                Span::styled(marker.to_string(), marker_style),
-                Span::styled(
-                    format!(" {:>num_w$} ", i + 1),
-                    Style::new().add_modifier(Modifier::DIM),
-                ),
-            ];
+            // A deletion is framed on BOTH sides: the line just above the removed
+            // block (`del_above`, the gap is below it) and the line just below it
+            // (`del_below`, the gap is above it). Each gets a red row highlight and a
+            // bar in the sign column pointing at the gap.
+            let del_above = diff.deletions.contains_key(&(i + 1));
+            let del_below = diff.deletions.contains_key(&i);
+            // Working-tree diff sign: `+` added, `~` changed, `▁`/`▔` framing a
+            // deletion, blank otherwise. The column is present only when the diff
+            // toggle is on, at a fixed one cell.
+            let (sign, sign_style) = if diff.added.contains(&i) {
+                ("+", Style::new().fg(Color::Green))
+            } else if diff.changed.contains(&i) {
+                ("~", Style::new().fg(Color::Yellow))
+            } else if del_below {
+                ("▔", Style::new().fg(Color::Red).bg(Color::Indexed(52)))
+            } else if del_above {
+                ("▁", Style::new().fg(Color::Red).bg(Color::Indexed(52)))
+            } else {
+                (" ", Style::new())
+            };
+            // A subtle change tint on added/changed lines, only when the line has no
+            // comment band (the band always wins the row background). Deletions are
+            // NOT row-tinted — their red lives only in the gutter (the `▁`/`▔` bars).
+            let diff_tint = if diff_on && line_bg.is_none() {
+                if diff.added.contains(&i) {
+                    Some(Color::Indexed(22))
+                } else if diff.changed.contains(&i) {
+                    Some(Color::Indexed(58))
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
+            let bg = line_bg.or(diff_tint);
+            // The deletion red extends across the gutter (sign + line-number cells)
+            // but not the marker, so it reads as a gutter highlight without
+            // fill_line_bg spreading it across the whole row (that keys on the
+            // marker span). A comment band, if present, overrides it below.
+            let del_gutter = diff_on
+                && line_bg.is_none()
+                && !diff.added.contains(&i)
+                && !diff.changed.contains(&i)
+                && (del_above || del_below);
+            let mut num_style = Style::new().add_modifier(Modifier::DIM);
+            if del_gutter {
+                num_style = num_style.bg(Color::Indexed(52));
+            }
+            let mut spans = vec![Span::styled(marker.to_string(), marker_style)];
+            if diff_on {
+                spans.push(Span::styled(sign.to_string(), sign_style));
+            }
+            spans.push(Span::styled(format!(" {:>num_w$} ", i + 1), num_style));
             // The syntax-highlighted text of the line, run by run.
             for (st, text) in runs {
                 spans.push(Span::styled(text.clone(), *st));
             }
-            // Paint the background across the whole line (marker, number, code).
-            if let Some(bg) = line_bg {
+            // Paint the background across the whole line (marker, sign, number, code).
+            if let Some(bg) = bg {
                 for sp in &mut spans {
                     sp.style = sp.style.bg(bg);
                 }
@@ -3136,6 +3212,7 @@ pub fn run(repo: PathBuf) -> std::io::Result<()> {
                         // focus the rail always shows, so this only bites once a file
                         // is open (Comments focus).
                         KeyCode::Char('t') if state.view == View::Comments => state.toggle_tray(),
+                        KeyCode::Char('D') if state.view == View::Comments => state.toggle_diff(),
                         // Comment authoring (gutter focus): add / reply / edit / delete / resolve.
                         KeyCode::Char('a' | 'i')
                             if state.view == View::Comments
@@ -3307,7 +3384,7 @@ fn view_header(view: View) -> String {
     let keys = match view {
         View::Chat => "· ←→ session · z fold · j/k scroll · ⇧↑↓ msg · ↵ expand ",
         View::Comments => {
-            "· j/k browse · ↵ fold/thread · t tray · Esc tree · a add · r reply · e/d edit/del · x resolve · p promote "
+            "· j/k browse · ↵ fold/thread · t tray · D diff · Esc tree · a add · r reply · e/d edit/del · x resolve · p promote "
         }
         View::Process => "· ←→ atoms/telos · j/k scroll ",
         View::Ledger => "",
@@ -3820,6 +3897,8 @@ fn draw_comments(
         &state.comment_localized,
         state.comment_selected,
         &promoted,
+        &state.file_diff,
+        state.diff_on,
     );
     let file_title = state
         .open_file
@@ -3866,10 +3945,11 @@ fn draw_comments(
             const TEXT_MAX: u16 = 100;
             let code_w = content_area.width.saturating_sub(NOTE_MIN).min(TEXT_MAX);
             let note_w = content_area.width.saturating_sub(code_w).saturating_sub(2) as usize;
-            // Pinned "unresolvable" band at the top of the note column, for the
-            // comments with no line to anchor to (honest-ambiguity). It reserves an
-            // equal-height band across the code column too, so the line-anchored
-            // notes below still align row-for-row with the code.
+            // Pinned "unresolvable" band for the comments with no line to anchor to
+            // (honest-ambiguity). The code column keeps its FULL height — no blanked
+            // top — and only the note column is split: the line-anchored notes on
+            // top (so they still align row-for-row with the code, both starting at
+            // the content top) and the band pinned at the bottom.
             let sel_id = state
                 .comment_localized
                 .get(state.comment_selected)
@@ -3880,15 +3960,12 @@ fn draw_comments(
             } else {
                 (group.len() as u16 + 2).min(content_area.height.saturating_sub(3))
             };
-            let [band_area, aligned_area] =
-                Layout::vertical([Constraint::Length(g), Constraint::Min(0)]).areas(content_area);
-            let [code_area, note_area] =
+            let [code_area, note_col] =
                 Layout::horizontal([Constraint::Length(code_w), Constraint::Min(0)])
-                    .areas(aligned_area);
+                    .areas(content_area);
+            let [note_area, band_area] =
+                Layout::vertical([Constraint::Min(0), Constraint::Length(g)]).areas(note_col);
             if g > 0 {
-                let [_blank, group_area] =
-                    Layout::horizontal([Constraint::Length(code_w), Constraint::Min(0)])
-                        .areas(band_area);
                 frame.render_widget(
                     Paragraph::new(group)
                         .block(
@@ -3896,7 +3973,7 @@ fn draw_comments(
                                 .title(format!(" unresolvable ({}) ", unresolved.len())),
                         )
                         .wrap(Wrap { trim: false }),
-                    group_area,
+                    band_area,
                 );
             }
             let notes: Vec<(usize, usize, Vec<Line>)> = state
@@ -3934,13 +4011,27 @@ fn draw_comments(
                 .map(|(_, r)| *r)
                 .unwrap_or(0);
             let max_top = rows.len().saturating_sub(1);
-            let view_h = code_area.height.saturating_sub(2) as usize;
-            let scroll = sticky_top(
-                state.note_scroll.get().min(max_top),
-                sel_row,
-                view_h,
-                max_top,
-            );
+            // Scroll to keep the whole selected NOTE block in view. Measure the note
+            // pane (the pinned unresolvable band makes it shorter than the code
+            // pane; measuring the code pane would clip a bottom note into the band).
+            // A note spans several rows, so hold its start visible when scrolling up
+            // and its end when scrolling down — not just the anchor row.
+            let view_h = note_area.height.saturating_sub(2) as usize;
+            let block_h = notes
+                .iter()
+                .find(|(idx, _, _)| *idx == state.comment_selected)
+                .map(|(_, _, b)| b.len())
+                .unwrap_or(1);
+            let sel_end = sel_row + block_h.saturating_sub(1);
+            let prev_top = state.note_scroll.get().min(max_top);
+            let scroll = if sel_row < prev_top {
+                sel_row
+            } else if view_h > 0 && sel_end >= prev_top + view_h {
+                (sel_end + 1).saturating_sub(view_h)
+            } else {
+                prev_top
+            }
+            .min(max_top);
             state.note_scroll.set(scroll);
             // Fill each comment-banded code line to the pane width so the highlight
             // spans the whole row, not just the characters.
@@ -4197,6 +4288,8 @@ fn draw_compose(
         &state.comment_localized,
         state.comment_selected,
         &state.promoted_ids(),
+        &state.file_diff,
+        state.diff_on, // diff shows in the compose view too (all views consistent)
     );
     if let Some(t) = target {
         if let Some(l) = code_lines.get_mut(t) {
@@ -6349,8 +6442,16 @@ mod tests {
                 },
             ),
         ];
-        let (lines, unresolved) =
-            gutter_lines(content, "", usize::MAX, &localized, 0, &HashSet::new());
+        let (lines, unresolved) = gutter_lines(
+            content,
+            "",
+            usize::MAX,
+            &localized,
+            0,
+            &HashSet::new(),
+            &crate::diff::FileDiff::empty(),
+            false,
+        );
         assert_eq!(lines.len(), 3);
         // Line index 1 (the anchored one) carries the ● marker; the others a space.
         let marker = |i: usize| lines[i].spans[0].content.to_string();
@@ -6483,8 +6584,16 @@ mod tests {
             .filter_map(|(i, (_, loc))| loc.span.map(|(s, _)| (i, s)))
             .collect();
         assert_eq!(notes, vec![(0, 0)]); // only the anchored one
-        let (_lines, unresolved) =
-            gutter_lines(content, "", usize::MAX, &localized, 0, &HashSet::new());
+        let (_lines, unresolved) = gutter_lines(
+            content,
+            "",
+            usize::MAX,
+            &localized,
+            0,
+            &HashSet::new(),
+            &crate::diff::FileDiff::empty(),
+            false,
+        );
         assert_eq!(unresolved.len(), 1);
         assert_eq!(unresolved[0].body, "lost");
     }
@@ -6560,7 +6669,16 @@ mod tests {
 
         // Not promoted: the hollow dot, and no kan tag in the strip.
         let empty = HashSet::new();
-        let (lines, _) = gutter_lines(content, "", usize::MAX, &localized, 0, &empty);
+        let (lines, _) = gutter_lines(
+            content,
+            "",
+            usize::MAX,
+            &localized,
+            0,
+            &empty,
+            &crate::diff::FileDiff::empty(),
+            false,
+        );
         assert_eq!(lines[0].spans[0].content.as_ref(), "●");
         let strip = thread_lines(&c, &loc, false);
         assert!(!strip
@@ -6571,7 +6689,16 @@ mod tests {
         // Promoted: a filled diamond, and a `◆ kan` tag in the strip header.
         let mut promoted = HashSet::new();
         promoted.insert("c_note".to_string());
-        let (lines, _) = gutter_lines(content, "", usize::MAX, &localized, 0, &promoted);
+        let (lines, _) = gutter_lines(
+            content,
+            "",
+            usize::MAX,
+            &localized,
+            0,
+            &promoted,
+            &crate::diff::FileDiff::empty(),
+            false,
+        );
         assert_eq!(lines[0].spans[0].content.as_ref(), "◆");
         let strip = thread_lines(&c, &loc, true);
         assert!(strip
@@ -6725,6 +6852,8 @@ mod tests {
             &a.comment_localized,
             a.comment_selected,
             &HashSet::new(),
+            &crate::diff::FileDiff::empty(),
+            false,
         );
         assert!(lines.is_empty());
         assert_eq!(unresolved.len(), 2);
@@ -7230,7 +7359,16 @@ mod tests {
             confidence: 1.0,
         };
         let localized = vec![(c, loc)];
-        let (lines, _u) = gutter_lines(content, "rs", usize::MAX, &localized, 0, &HashSet::new());
+        let (lines, _u) = gutter_lines(
+            content,
+            "rs",
+            usize::MAX,
+            &localized,
+            0,
+            &HashSet::new(),
+            &crate::diff::FileDiff::empty(),
+            false,
+        );
         // The commented line begins with a ● marker; an uncommented line does not.
         assert_eq!(lines[1].spans[0].content.as_ref(), "●");
         assert_eq!(lines[0].spans[0].content.as_ref(), " ");
@@ -7640,6 +7778,208 @@ mod tests {
             Some(Editing::PickLine { cursor }) => assert_eq!(*cursor, 0, "PageUp jumps back"),
             _ => panic!("still picking a line"),
         }
+    }
+
+    #[test]
+    fn unresolvable_band_does_not_hole_the_code_pane() {
+        // Regression (operator eyeball): the pinned unresolvable band must not blank
+        // the top of the code column. The code pane spans the full height with the
+        // band pinned at the bottom of the note column instead.
+        let content = "a\nb\nc\n";
+        let (mut a, _r) = authoring_state("hole", content, &[]);
+        a.comment_localized = vec![(
+            mk_comment("zzz\n", 0, "lost note"),
+            Localization {
+                state: State::Unresolvable,
+                span: None,
+                confidence: 0.0,
+            },
+        )];
+        with_file_tree(&mut a);
+        let rows = render_view(&a, 120, 20);
+        // The code pane's titled top border is on the first body row (row 1; row 0
+        // is the tab header) — not pushed down by the band.
+        let title_row = rows
+            .iter()
+            .position(|r| r.contains("src/a.rs"))
+            .expect("code pane titled");
+        assert_eq!(title_row, 1, "code pane starts at the content top, no hole");
+        assert!(
+            rows.join("\n").contains("unresolvable (1)"),
+            "the band is still shown (at the bottom of the note column)"
+        );
+    }
+
+    #[test]
+    fn selected_note_stays_visible_below_the_unresolvable_band() {
+        // Regression (re-review): with an unresolvable comment present the note pane
+        // is shorter than the code pane; the sticky scroll must measure the NOTE
+        // pane so a bottom comment's note is not clipped into the band's rows.
+        let content = (0..40)
+            .map(|i| format!("line{i}"))
+            .collect::<Vec<_>>()
+            .join("\n")
+            + "\n";
+        let (mut a, _r) = authoring_state("deepnote", &content, &[]);
+        a.comment_localized = vec![
+            (
+                mk_comment(&content, 35, "DEEPNOTE"),
+                Localization {
+                    state: State::Anchored,
+                    span: Some((35, 35)),
+                    confidence: 1.0,
+                },
+            ),
+            (
+                mk_comment("zzz\n", 0, "lost"),
+                Localization {
+                    state: State::Unresolvable,
+                    span: None,
+                    confidence: 0.0,
+                },
+            ),
+        ];
+        a.comment_selected = 0;
+        with_file_tree(&mut a);
+        let out = render_view(&a, 120, 16).join("\n");
+        assert!(out.contains("unresolvable (1)"), "the band renders");
+        assert!(
+            out.contains("DEEPNOTE"),
+            "the selected note scrolls into the (shorter) note pane, not the band"
+        );
+    }
+
+    #[test]
+    fn gutter_shows_diff_signs_when_on() {
+        // (AC-4) +/~ and the two-sided deletion framing (`▁` above, `▔` below)
+        // appear in the sign column when diff is on, and the column is absent off.
+        use crate::diff::FileDiff;
+        let content = "a\nb\nc\nd\ne\nf\n";
+        let localized: Vec<(Comment, Localization)> = vec![];
+        let mut fd = FileDiff::empty();
+        fd.added.insert(1);
+        fd.changed.insert(2);
+        fd.deletions.insert(4, 2); // a removal between lines 3 and 4
+        let (on, _) = gutter_lines(
+            content,
+            "",
+            usize::MAX,
+            &localized,
+            0,
+            &HashSet::new(),
+            &fd,
+            true,
+        );
+        let sign = |i: usize| on[i].spans[1].content.to_string();
+        assert_eq!(sign(0), " ");
+        assert_eq!(sign(1), "+");
+        assert_eq!(sign(2), "~");
+        assert_eq!(sign(3), "▁", "line above the deletion");
+        assert_eq!(sign(4), "▔", "line below the deletion");
+        // The red is a gutter highlight (bg on the sign cell), never a row tint:
+        // the marker span carries no bg, the sign cell does.
+        assert_eq!(
+            on[3].spans[0].style.bg, None,
+            "no row highlight on a deletion line"
+        );
+        assert_eq!(on[4].spans[0].style.bg, None);
+        assert_eq!(
+            on[3].spans[1].style.bg,
+            Some(ratatui::style::Color::Indexed(52)),
+            "the deletion sign cell is red-highlighted"
+        );
+        assert_eq!(
+            on[3].spans[2].style.bg,
+            Some(ratatui::style::Color::Indexed(52)),
+            "the line-number cell is red-highlighted too"
+        );
+        assert_eq!(
+            on[4].spans[1].style.bg,
+            Some(ratatui::style::Color::Indexed(52))
+        );
+        // Off: no sign column, so span[1] is the line-number cell.
+        let (off, _) = gutter_lines(
+            content,
+            "",
+            usize::MAX,
+            &localized,
+            0,
+            &HashSet::new(),
+            &fd,
+            false,
+        );
+        assert!(
+            off[1].spans[1].content.contains('2'),
+            "no sign column when off; span[1] is the number: {:?}",
+            off[1].spans[1].content
+        );
+    }
+
+    #[test]
+    fn diff_tint_yields_to_comment_band() {
+        // (AC-5) a line both changed and comment-covered keeps its comment band as
+        // the row background while still showing the `~` sign.
+        use crate::diff::FileDiff;
+        let content = "a\nb\nc\n";
+        let localized = vec![(
+            mk_comment(content, 1, "note"),
+            Localization {
+                state: State::Anchored,
+                span: Some((1, 1)),
+                confidence: 1.0,
+            },
+        )];
+        let mut fd = FileDiff::empty();
+        fd.changed.insert(1);
+        let (lines, _) = gutter_lines(
+            content,
+            "",
+            usize::MAX,
+            &localized,
+            0,
+            &HashSet::new(),
+            &fd,
+            true,
+        );
+        assert_eq!(
+            lines[1].spans[0].style.bg,
+            Some(ratatui::style::Color::Indexed(240)),
+            "comment band wins the row background, not the diff tint"
+        );
+        assert_eq!(
+            lines[1].spans[1].content.to_string(),
+            "~",
+            "diff sign still shows"
+        );
+    }
+
+    #[test]
+    fn diff_toggles_with_d() {
+        // (AC-6) `D` flips diff_on without changing focus.
+        let (mut a, _r) = authoring_state("difftoggle", "x\n", &[]);
+        assert!(a.diff_on, "diff is on by default");
+        a.toggle_diff();
+        assert!(!a.diff_on);
+        assert_eq!(
+            a.comment_focus,
+            CommentFocus::Comments,
+            "toggle leaves focus"
+        );
+    }
+
+    #[test]
+    fn diff_render_respects_the_toggle() {
+        // (AC-3) the cached diff drives the render, and toggling it off clears the
+        // signs (no recompute needed).
+        let content = "a\nb\nc\n";
+        let (mut a, _r) = authoring_state("diffrender", content, &[]);
+        with_file_tree(&mut a);
+        a.file_diff.added.insert(1);
+        let on = render_view(&a, 120, 12).join("\n");
+        assert!(on.contains('+'), "diff sign rendered when on");
+        a.diff_on = false;
+        let off = render_view(&a, 120, 12).join("\n");
+        assert!(!off.contains('+'), "no diff sign when toggled off");
     }
 
     #[test]
