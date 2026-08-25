@@ -1948,9 +1948,9 @@ pub fn gutter_lines<'a>(
             } else if diff.changed.contains(&i) {
                 ("~", Style::new().fg(Color::Yellow))
             } else if del_below {
-                ("▔", Style::new().fg(Color::Red))
+                ("▔", Style::new().fg(Color::Red).bg(Color::Indexed(52)))
             } else if del_above {
-                ("▁", Style::new().fg(Color::Red))
+                ("▁", Style::new().fg(Color::Red).bg(Color::Indexed(52)))
             } else {
                 (" ", Style::new())
             };
@@ -4264,8 +4264,8 @@ fn draw_compose(
         &state.comment_localized,
         state.comment_selected,
         &state.promoted_ids(),
-        &crate::diff::FileDiff::empty(),
-        false, // the compose view stays clean — no diff signs while authoring
+        &state.file_diff,
+        state.diff_on, // diff shows in the compose view too (all views consistent)
     );
     if let Some(t) = target {
         if let Some(l) = code_lines.get_mut(t) {
@@ -7813,16 +7813,21 @@ mod tests {
         assert_eq!(sign(2), "~");
         assert_eq!(sign(3), "▁", "line above the deletion");
         assert_eq!(sign(4), "▔", "line below the deletion");
-        // The red lives only in the gutter bars — deletion lines carry no row tint.
+        // The red is a gutter highlight (bg on the sign cell), never a row tint:
+        // the marker span carries no bg, the sign cell does.
         assert_eq!(
             on[3].spans[0].style.bg, None,
             "no row highlight on a deletion line"
         );
         assert_eq!(on[4].spans[0].style.bg, None);
         assert_eq!(
-            on[3].spans[1].style.fg,
-            Some(ratatui::style::Color::Red),
-            "the deletion bar is red in the gutter"
+            on[3].spans[1].style.bg,
+            Some(ratatui::style::Color::Indexed(52)),
+            "the deletion sign cell is red-highlighted in the gutter"
+        );
+        assert_eq!(
+            on[4].spans[1].style.bg,
+            Some(ratatui::style::Color::Indexed(52))
         );
         // Off: no sign column, so span[1] is the line-number cell.
         let (off, _) = gutter_lines(

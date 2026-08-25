@@ -30,10 +30,12 @@ computed on the fold loop, mtime-gated, never per keystroke).
   (`src/tui.rs:188`) beside `comment_localized`.
 - REQ-4: `gutter_lines` (`src/tui.rs:1835`) gains a **diff sign column** after the
   `●`/`◆` comment marker: `+` (green) on an added line, `~` (yellow) on a changed
-  line, and a deletion **framed on both sides** — `▁` (red) on the line just above
-  a removed block and `▔` (red) on the line just below it, the two bars pointing at
-  the gap — blank otherwise. The column is present only when the diff toggle is on,
-  and its fixed one-cell width does not shift the existing marker/number/code layout.
+  line, and a deletion **framed on both sides** — a **red-highlighted gutter cell**
+  (`▁` on the line just above a removed block, `▔` on the line just below it), the
+  two adjacent red cells bracketing the gap — blank otherwise. The column is present
+  only when the diff toggle is on, and its fixed one-cell width does not shift the
+  existing marker/number/code layout. The diff shows in **all views** — the read
+  panes, the line picker, and the compose/authoring view.
 - REQ-5: **Added/changed lines** get a **subtle background tint that yields to the
   comment band**: the tint is applied only when the line carries no comment band
   (the `hit` is `None` in `gutter_lines`, `src/tui.rs:1874`), so a commented line
@@ -98,10 +100,10 @@ per-line loop, inserts one sign cell after the comment marker and applies the ti
 **only when `hit` is `None`** (`src/tui.rs:1874`) so the comment band always wins
 the row background. Because no row is inserted, `reflow_rows`/`side_by_side_rows`
 and the sticky `note_scroll` viewport keep aligning notes to code by line index
-exactly as in Slice A. The three call sites of `gutter_lines` (the wide/narrow read
-render, and `draw_compose`) pass the cached `file_diff`; the pick-line and compose
-overlays may pass `diff_on = false` to keep the authoring views clean. `D` in the
-Comments key match toggles `diff_on`; the legend string gains `· D diff`.
+exactly as in Slice A. All call sites of `gutter_lines` (the wide/narrow read
+render, the line picker, and `draw_compose`) pass the cached `file_diff` and
+`diff_on`, so the diff renders consistently across every view. `D` in the Comments
+key match toggles `diff_on`; the legend string gains `· D diff`.
 
 ## Resolved Questions
 - RQ-1: Deletions are shown by marking **changed/added current-file lines** (sign +
