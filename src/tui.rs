@@ -1803,9 +1803,15 @@ impl AppState {
         match &mut self.editing {
             Some(Editing::PickLine { cursor }) => {
                 let last = self.comment_content.lines().count().saturating_sub(1);
+                // A page is a screenful (same size as the read-view PgUp/PgDn),
+                // read from body_h by direct field access to avoid borrowing self
+                // while `cursor` is held.
+                let page = (self.body_h.saturating_sub(1)).max(1) as usize;
                 match key.code {
                     KeyCode::Up | KeyCode::Char('k') => *cursor = cursor.saturating_sub(1),
                     KeyCode::Down | KeyCode::Char('j') => *cursor = (*cursor + 1).min(last),
+                    KeyCode::PageUp => *cursor = cursor.saturating_sub(page),
+                    KeyCode::PageDown => *cursor = (*cursor + page).min(last),
                     _ => {}
                 }
                 self.comment_scroll = *cursor;
@@ -3842,7 +3848,7 @@ fn draw_comments(
         state.note_scroll.set(scroll);
         frame.render_widget(
             Paragraph::new(lines.split_off(scroll)).block(Block::bordered().title(format!(
-                " pick line {} · ↑/↓ · Enter here · Esc ",
+                " pick line {} · ↑/↓ · PgUp/PgDn · Enter here · Esc ",
                 cursor + 1
             ))),
             content_area,
@@ -4120,10 +4126,36 @@ fn unresolvable_group(
     rows
 }
 
+/// Where to place the compose popup vertically within `body`: just below the
+/// target line when the popup fits there, else just above it, else clamped into
+/// `body` — so the editor tracks the line being commented rather than snapping to
+/// a fixed half. With no anchor line (`target_row` None) it rests at the bottom.
+/// Pure, so the placement is testable.
+fn compose_popup_y(body: ratatui::layout::Rect, target_row: Option<u16>, want_h: u16) -> u16 {
+    let bottom = body.y + body.height;
+    let max_y = bottom.saturating_sub(want_h).max(body.y);
+    match target_row {
+        None => max_y,
+        Some(tr) => {
+            // The target line's screen row (code sits inside a 1-row top border).
+            let line_y = (body.y + 1)
+                .saturating_add(tr)
+                .min(bottom.saturating_sub(1));
+            let below = line_y.saturating_add(1);
+            let py = if bottom.saturating_sub(below) >= want_h {
+                below
+            } else {
+                line_y.saturating_sub(want_h).max(body.y)
+            };
+            py.min(max_y)
+        }
+    }
+}
+
 /// Compose view: the file body full-width (rail collapsed) with the commented
-/// line highlighted, and the editor popup placed in the half of the screen the
-/// line is *not* in — so you can see what you are commenting on while you type.
-/// The editor scrolls vertically to keep the caret in view and shows a
+/// line highlighted, and the editor popup placed adjacent to that line (below it
+/// when it fits, else above) — so you can see what you are commenting on while
+/// you type. The editor scrolls vertically to keep the caret in view and shows a
 /// `L<row>/<total>` position with `↑`/`↓` when there is more above or below.
 fn draw_compose(
     frame: &mut ratatui::Frame,
@@ -4184,21 +4216,19 @@ fn draw_compose(
         body,
     );
 
-    // Place the popup in the half the target line is NOT in.
-    let target_row = target.map(|t| t.saturating_sub(scroll)).unwrap_or(0) as u16;
+    // Place the popup adjacent to the target line (below it when it fits, else
+    // above), and cap its width at a comfortable reading measure.
+    let target_row = target.map(|t| t.saturating_sub(scroll) as u16);
     let lines: Vec<String> = buf.text.split('\n').map(str::to_string).collect();
     let want_h = ((lines.len() as u16).saturating_add(2))
         .clamp(5, body.height.saturating_sub(2).max(5))
         .min(16);
-    let target_in_top = target_row < body.height / 2;
-    let pw = ((body.width as u32 * 72 / 100) as u16).clamp(20.min(body.width), body.width);
+    const COMPOSE_MAX_W: u16 = 80;
+    let pw = ((body.width as u32 * 72 / 100) as u16)
+        .min(COMPOSE_MAX_W)
+        .clamp(20.min(body.width), body.width);
     let px = body.x + body.width.saturating_sub(pw) / 2;
-    let py = if target_in_top {
-        // line up top -> popup at the bottom
-        body.y + body.height.saturating_sub(want_h).saturating_sub(1)
-    } else {
-        body.y + 1
-    };
+    let py = compose_popup_y(body, target_row, want_h.min(body.height));
     let popup = Rect {
         x: px,
         y: py,
@@ -7583,5 +7613,62 @@ mod tests {
             .style
             .add_modifier
             .contains(ratatui::style::Modifier::REVERSED));
+    }
+
+    #[test]
+    fn pick_line_pages_by_a_screenful() {
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+        // PgUp/PgDn move the pick cursor by a screenful (body_h - 1), clamped.
+        let content = (0..60)
+            .map(|i| format!("l{i}"))
+            .collect::<Vec<_>>()
+            .join("\n")
+            + "\n";
+        let (mut a, _r) = authoring_state("pgpick", &content, &[]);
+        a.body_h = 12; // page = 11
+        a.begin_new_comment();
+        if let Some(Editing::PickLine { cursor }) = &mut a.editing {
+            *cursor = 0;
+        }
+        a.handle_editing_key(KeyEvent::new(KeyCode::PageDown, KeyModifiers::NONE));
+        match &a.editing {
+            Some(Editing::PickLine { cursor }) => assert_eq!(*cursor, 11, "PageDown jumps a page"),
+            _ => panic!("still picking a line"),
+        }
+        a.handle_editing_key(KeyEvent::new(KeyCode::PageUp, KeyModifiers::NONE));
+        match &a.editing {
+            Some(Editing::PickLine { cursor }) => assert_eq!(*cursor, 0, "PageUp jumps back"),
+            _ => panic!("still picking a line"),
+        }
+    }
+
+    #[test]
+    fn compose_popup_y_tracks_the_target_line() {
+        use ratatui::layout::Rect;
+        let body = Rect {
+            x: 0,
+            y: 1,
+            width: 100,
+            height: 20,
+        }; // rows 1..21
+        let want_h = 6;
+        // Room below the line -> popup sits just under it.
+        assert_eq!(
+            compose_popup_y(body, Some(2), want_h),
+            5,
+            "fits below -> just under the line"
+        );
+        // Near the bottom -> no room below -> goes just above.
+        assert_eq!(
+            compose_popup_y(body, Some(17), want_h),
+            13,
+            "no room below -> just above the line"
+        );
+        // No anchor line -> rests at the bottom.
+        assert_eq!(
+            compose_popup_y(body, None, want_h),
+            15,
+            "no target -> bottom"
+        );
     }
 }

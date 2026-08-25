@@ -83,6 +83,14 @@ and a cleaner read path without changing what the round trip is.
   `src/tui.rs:398`) uses the same sticky scroll: it followed the pick cursor by
   re-centering it every step (`cursor.saturating_sub(3)`); it now scrolls only when
   the cursor leaves the viewport, sharing the code-pane viewport-top cache.
+- REQ-12: The line picker supports **PageUp/PageDown**, moving the pick cursor by a
+  screenful (`body_h - 1`, the same page size as the read view), clamped — added to
+  the `PickLine` arm of `handle_editing_key` (`src/tui.rs:1804`).
+- REQ-13: The compose editor popup (`draw_compose`, `src/tui.rs:4128`) is positioned
+  **adjacent to the target line** — just below it when the popup fits there, else
+  just above, else clamped into the body (`compose_popup_y`) — rather than snapping
+  to a fixed top/bottom half. Its width **caps at 80 columns** (`COMPOSE_MAX_W`) so
+  it stays a comfortable reading measure on a wide terminal.
 
 ## Acceptance Criteria
 - [ ] AC-1: (covers REQ-1, REQ-2) A unit test on the tray-visibility helper asserts
@@ -122,6 +130,11 @@ and a cleaner read path without changing what the round trip is.
 - [ ] AC-11: (covers REQ-11) A render test enters `PickLine`, asserts the viewport
   top stays put while the cursor is visible, and scrolls just far enough (not to the
   top) once the cursor moves past the viewport bottom.
+- [ ] AC-12: (covers REQ-12) A `handle_editing_key` test asserts PageDown moves the
+  pick cursor by a screenful and PageUp moves it back, clamped to the file bounds.
+- [ ] AC-13: (covers REQ-13) A unit test on `compose_popup_y` asserts the popup sits
+  just below the target line when it fits, just above when there is no room below,
+  and at the bottom when there is no anchor line.
 
 ## Architecture
 The change is confined to the Comments view in `src/tui.rs` and its render helpers;
