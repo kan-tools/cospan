@@ -24,6 +24,7 @@
 
 pub mod command_bus;
 pub mod comments;
+pub mod diff;
 pub mod filetree;
 pub mod highlight;
 pub mod markdown;
