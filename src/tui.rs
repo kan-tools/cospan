@@ -1969,14 +1969,24 @@ pub fn gutter_lines<'a>(
                 None
             };
             let bg = line_bg.or(diff_tint);
+            // The deletion red extends across the gutter (sign + line-number cells)
+            // but not the marker, so it reads as a gutter highlight without
+            // fill_line_bg spreading it across the whole row (that keys on the
+            // marker span). A comment band, if present, overrides it below.
+            let del_gutter = diff_on
+                && line_bg.is_none()
+                && !diff.added.contains(&i)
+                && !diff.changed.contains(&i)
+                && (del_above || del_below);
+            let mut num_style = Style::new().add_modifier(Modifier::DIM);
+            if del_gutter {
+                num_style = num_style.bg(Color::Indexed(52));
+            }
             let mut spans = vec![Span::styled(marker.to_string(), marker_style)];
             if diff_on {
                 spans.push(Span::styled(sign.to_string(), sign_style));
             }
-            spans.push(Span::styled(
-                format!(" {:>num_w$} ", i + 1),
-                Style::new().add_modifier(Modifier::DIM),
-            ));
+            spans.push(Span::styled(format!(" {:>num_w$} ", i + 1), num_style));
             // The syntax-highlighted text of the line, run by run.
             for (st, text) in runs {
                 spans.push(Span::styled(text.clone(), *st));
@@ -7823,7 +7833,12 @@ mod tests {
         assert_eq!(
             on[3].spans[1].style.bg,
             Some(ratatui::style::Color::Indexed(52)),
-            "the deletion sign cell is red-highlighted in the gutter"
+            "the deletion sign cell is red-highlighted"
+        );
+        assert_eq!(
+            on[3].spans[2].style.bg,
+            Some(ratatui::style::Color::Indexed(52)),
+            "the line-number cell is red-highlighted too"
         );
         assert_eq!(
             on[4].spans[1].style.bg,

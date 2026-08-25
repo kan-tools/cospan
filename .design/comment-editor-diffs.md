@@ -30,9 +30,11 @@ computed on the fold loop, mtime-gated, never per keystroke).
   (`src/tui.rs:188`) beside `comment_localized`.
 - REQ-4: `gutter_lines` (`src/tui.rs:1835`) gains a **diff sign column** after the
   `●`/`◆` comment marker: `+` (green) on an added line, `~` (yellow) on a changed
-  line, and a deletion **framed on both sides** — a **red-highlighted gutter cell**
-  (`▁` on the line just above a removed block, `▔` on the line just below it), the
-  two adjacent red cells bracketing the gap — blank otherwise. The column is present
+  line, and a deletion **framed on both sides** — the **gutter cells (sign + line
+  number) red-highlighted** (`▁` on the line just above a removed block, `▔` on the
+  line just below it), the two adjacent red rows bracketing the gap, but not the
+  marker cell so it stays a gutter highlight and never fills the row — blank
+  otherwise. The column is present
   only when the diff toggle is on, and its fixed one-cell width does not shift the
   existing marker/number/code layout. The diff shows in **all views** — the read
   panes, the line picker, and the compose/authoring view.
