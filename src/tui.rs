@@ -3927,10 +3927,11 @@ fn draw_comments(
             const TEXT_MAX: u16 = 100;
             let code_w = content_area.width.saturating_sub(NOTE_MIN).min(TEXT_MAX);
             let note_w = content_area.width.saturating_sub(code_w).saturating_sub(2) as usize;
-            // Pinned "unresolvable" band at the top of the note column, for the
-            // comments with no line to anchor to (honest-ambiguity). It reserves an
-            // equal-height band across the code column too, so the line-anchored
-            // notes below still align row-for-row with the code.
+            // Pinned "unresolvable" band for the comments with no line to anchor to
+            // (honest-ambiguity). The code column keeps its FULL height — no blanked
+            // top — and only the note column is split: the line-anchored notes on
+            // top (so they still align row-for-row with the code, both starting at
+            // the content top) and the band pinned at the bottom.
             let sel_id = state
                 .comment_localized
                 .get(state.comment_selected)
@@ -3941,15 +3942,12 @@ fn draw_comments(
             } else {
                 (group.len() as u16 + 2).min(content_area.height.saturating_sub(3))
             };
-            let [band_area, aligned_area] =
-                Layout::vertical([Constraint::Length(g), Constraint::Min(0)]).areas(content_area);
-            let [code_area, note_area] =
+            let [code_area, note_col] =
                 Layout::horizontal([Constraint::Length(code_w), Constraint::Min(0)])
-                    .areas(aligned_area);
+                    .areas(content_area);
+            let [note_area, band_area] =
+                Layout::vertical([Constraint::Min(0), Constraint::Length(g)]).areas(note_col);
             if g > 0 {
-                let [_blank, group_area] =
-                    Layout::horizontal([Constraint::Length(code_w), Constraint::Min(0)])
-                        .areas(band_area);
                 frame.render_widget(
                     Paragraph::new(group)
                         .block(
@@ -3957,7 +3955,7 @@ fn draw_comments(
                                 .title(format!(" unresolvable ({}) ", unresolved.len())),
                         )
                         .wrap(Wrap { trim: false }),
-                    group_area,
+                    band_area,
                 );
             }
             let notes: Vec<(usize, usize, Vec<Line>)> = state
@@ -7748,6 +7746,36 @@ mod tests {
             Some(Editing::PickLine { cursor }) => assert_eq!(*cursor, 0, "PageUp jumps back"),
             _ => panic!("still picking a line"),
         }
+    }
+
+    #[test]
+    fn unresolvable_band_does_not_hole_the_code_pane() {
+        // Regression (operator eyeball): the pinned unresolvable band must not blank
+        // the top of the code column. The code pane spans the full height with the
+        // band pinned at the bottom of the note column instead.
+        let content = "a\nb\nc\n";
+        let (mut a, _r) = authoring_state("hole", content, &[]);
+        a.comment_localized = vec![(
+            mk_comment("zzz\n", 0, "lost note"),
+            Localization {
+                state: State::Unresolvable,
+                span: None,
+                confidence: 0.0,
+            },
+        )];
+        with_file_tree(&mut a);
+        let rows = render_view(&a, 120, 20);
+        // The code pane's titled top border is on the first body row (row 1; row 0
+        // is the tab header) — not pushed down by the band.
+        let title_row = rows
+            .iter()
+            .position(|r| r.contains("src/a.rs"))
+            .expect("code pane titled");
+        assert_eq!(title_row, 1, "code pane starts at the content top, no hole");
+        assert!(
+            rows.join("\n").contains("unresolvable (1)"),
+            "the band is still shown (at the bottom of the note column)"
+        );
     }
 
     #[test]
