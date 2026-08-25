@@ -1934,26 +1934,36 @@ pub fn gutter_lines<'a>(
                 }
                 None => (" ", Style::new(), None),
             };
-            // Working-tree diff sign for this line: `+` added, `~` changed, a
-            // boundary glyph on the line following a deletion, blank otherwise. The
-            // column is only present when the diff toggle is on, at a fixed one cell.
+            // A deletion is framed on BOTH sides: the line just above the removed
+            // block (`del_above`, the gap is below it) and the line just below it
+            // (`del_below`, the gap is above it). Each gets a red row highlight and a
+            // bar in the sign column pointing at the gap.
+            let del_above = diff.deletions.contains_key(&(i + 1));
+            let del_below = diff.deletions.contains_key(&i);
+            // Working-tree diff sign: `+` added, `~` changed, `▁`/`▔` framing a
+            // deletion, blank otherwise. The column is present only when the diff
+            // toggle is on, at a fixed one cell.
             let (sign, sign_style) = if diff.added.contains(&i) {
                 ("+", Style::new().fg(Color::Green))
             } else if diff.changed.contains(&i) {
                 ("~", Style::new().fg(Color::Yellow))
-            } else if diff.deletions.contains_key(&i) {
+            } else if del_below {
+                ("▔", Style::new().fg(Color::Red))
+            } else if del_above {
                 ("▁", Style::new().fg(Color::Red))
             } else {
                 (" ", Style::new())
             };
-            // A subtle change tint, but only when the line has no comment band —
-            // the comment band always wins the row background (the diff still shows
-            // via the sign). Deletion boundaries get a sign but no row tint.
+            // A subtle change tint, but only when the line has no comment band — the
+            // comment band always wins the row background (the diff still shows via
+            // the sign). The two lines bracketing a deletion get a red highlight.
             let diff_tint = if diff_on && line_bg.is_none() {
                 if diff.added.contains(&i) {
                     Some(Color::Indexed(22))
                 } else if diff.changed.contains(&i) {
                     Some(Color::Indexed(58))
+                } else if del_above || del_below {
+                    Some(Color::Indexed(52))
                 } else {
                     None
                 }
@@ -7780,15 +7790,15 @@ mod tests {
 
     #[test]
     fn gutter_shows_diff_signs_when_on() {
-        // (AC-4) +/~ and the deletion boundary glyph appear in the sign column when
-        // diff is on, and the column is absent when off.
+        // (AC-4) +/~ and the two-sided deletion framing (`▁` above, `▔` below)
+        // appear in the sign column when diff is on, and the column is absent off.
         use crate::diff::FileDiff;
-        let content = "a\nb\nc\nd\n";
+        let content = "a\nb\nc\nd\ne\nf\n";
         let localized: Vec<(Comment, Localization)> = vec![];
         let mut fd = FileDiff::empty();
         fd.added.insert(1);
         fd.changed.insert(2);
-        fd.deletions.insert(3, 1);
+        fd.deletions.insert(4, 2); // a removal between lines 3 and 4
         let (on, _) = gutter_lines(
             content,
             "",
@@ -7803,7 +7813,17 @@ mod tests {
         assert_eq!(sign(0), " ");
         assert_eq!(sign(1), "+");
         assert_eq!(sign(2), "~");
-        assert_eq!(sign(3), "▁");
+        assert_eq!(sign(3), "▁", "line above the deletion");
+        assert_eq!(sign(4), "▔", "line below the deletion");
+        // Both bracket lines carry the red highlight (bg on the marker span).
+        assert_eq!(
+            on[3].spans[0].style.bg,
+            Some(ratatui::style::Color::Indexed(52))
+        );
+        assert_eq!(
+            on[4].spans[0].style.bg,
+            Some(ratatui::style::Color::Indexed(52))
+        );
         // Off: no sign column, so span[1] is the line-number cell.
         let (off, _) = gutter_lines(
             content,
