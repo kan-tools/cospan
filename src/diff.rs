@@ -71,18 +71,29 @@ impl FileDiff {
             }
         };
 
+        // Only dispatch on the leading byte *inside* a hunk. The file headers
+        // (`diff --git`, `index`, `--- a/…`, `+++ b/…`) all precede the first `@@`;
+        // guarding on them by prefix would mis-handle a hunk-body line whose own
+        // content starts with `--` or `++` (a SQL comment, a YAML `---`, `++i`).
+        let mut in_hunk = false;
         for line in diff.lines() {
+            if line.starts_with("diff --git") {
+                // A new file section (only reachable if a caller diffs >1 file).
+                flush_deletion(&mut out, new_line, &mut pending_removed);
+                in_hunk = false;
+                continue;
+            }
             if let Some(rest) = line.strip_prefix("@@") {
                 // Any pending removals belonged to the previous hunk's tail.
                 flush_deletion(&mut out, new_line, &mut pending_removed);
                 if let Some(start) = parse_hunk_new_start(rest) {
                     new_line = start;
                 }
+                in_hunk = true;
                 continue;
             }
-            // File headers (`+++`, `---`) are not hunk body lines; skip them.
-            if line.starts_with("+++") || line.starts_with("---") {
-                continue;
+            if !in_hunk {
+                continue; // pre-hunk headers, including `--- a/…` / `+++ b/…`
             }
             match line.as_bytes().first() {
                 Some(b'+') => {
@@ -181,6 +192,68 @@ mod tests {
         );
         assert!(FileDiff::parse("").is_empty());
         assert!(FileDiff::empty().is_empty());
+    }
+
+    #[test]
+    fn hunk_body_content_starting_with_plus_or_minus_is_not_a_header() {
+        // Regression: a hunk-body line whose content starts with `++`/`--` (a SQL
+        // comment, a YAML `---`, `++i`) must not be swallowed by a +++/--- header
+        // guard, which would drop it and cascade an off-by-one down the hunk.
+        let fd = FileDiff::parse("@@ -1,1 +1,3 @@\n ctx\n+++b\n+x\n");
+        assert_eq!(
+            fd.added,
+            [1, 2].into_iter().collect(),
+            "`++`-content is an add"
+        );
+
+        let fd = FileDiff::parse("@@ -1,2 +1,2 @@\n--- drop table\n+kept\n ctx\n");
+        assert_eq!(
+            fd.changed,
+            [0].into_iter().collect(),
+            "`--`-content is a removal"
+        );
+        assert!(fd.added.is_empty());
+
+        let fd = FileDiff::parse("@@ -1,3 +1,2 @@\n ctx\n----\n ctx2\n");
+        assert_eq!(
+            fd.deletions.get(&1),
+            Some(&1),
+            "a deleted `----` line still marks"
+        );
+    }
+
+    #[test]
+    fn compute_reads_a_real_git_working_tree() {
+        use std::fs;
+        let dir = std::env::temp_dir().join(format!("cospan-diff-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let git = |args: &[&str]| {
+            Command::new("git")
+                .arg("-C")
+                .arg(&dir)
+                .args([
+                    "-c",
+                    "commit.gpgsign=false",
+                    "-c",
+                    "user.email=t@t",
+                    "-c",
+                    "user.name=t",
+                ])
+                .args(args)
+                .output()
+                .unwrap()
+        };
+        git(&["init", "-q"]);
+        fs::write(dir.join("f.txt"), "a\nb\nc\n").unwrap();
+        git(&["add", "f.txt"]);
+        git(&["commit", "-qm", "init"]);
+        // Modify line 1 (b -> B) and append a line.
+        fs::write(dir.join("f.txt"), "a\nB\nc\nd\n").unwrap();
+        let fd = FileDiff::compute(&dir, Path::new("f.txt"), GitStatus::Modified, 4);
+        assert!(fd.changed.contains(&1), "line 1 (b->B) is a change: {fd:?}");
+        assert!(fd.added.contains(&3), "appended line 3 is an add: {fd:?}");
+        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]
