@@ -4011,13 +4011,27 @@ fn draw_comments(
                 .map(|(_, r)| *r)
                 .unwrap_or(0);
             let max_top = rows.len().saturating_sub(1);
-            let view_h = code_area.height.saturating_sub(2) as usize;
-            let scroll = sticky_top(
-                state.note_scroll.get().min(max_top),
-                sel_row,
-                view_h,
-                max_top,
-            );
+            // Scroll to keep the whole selected NOTE block in view. Measure the note
+            // pane (the pinned unresolvable band makes it shorter than the code
+            // pane; measuring the code pane would clip a bottom note into the band).
+            // A note spans several rows, so hold its start visible when scrolling up
+            // and its end when scrolling down — not just the anchor row.
+            let view_h = note_area.height.saturating_sub(2) as usize;
+            let block_h = notes
+                .iter()
+                .find(|(idx, _, _)| *idx == state.comment_selected)
+                .map(|(_, _, b)| b.len())
+                .unwrap_or(1);
+            let sel_end = sel_row + block_h.saturating_sub(1);
+            let prev_top = state.note_scroll.get().min(max_top);
+            let scroll = if sel_row < prev_top {
+                sel_row
+            } else if view_h > 0 && sel_end >= prev_top + view_h {
+                (sel_end + 1).saturating_sub(view_h)
+            } else {
+                prev_top
+            }
+            .min(max_top);
             state.note_scroll.set(scroll);
             // Fill each comment-banded code line to the pane width so the highlight
             // spans the whole row, not just the characters.
@@ -7793,6 +7807,45 @@ mod tests {
         assert!(
             rows.join("\n").contains("unresolvable (1)"),
             "the band is still shown (at the bottom of the note column)"
+        );
+    }
+
+    #[test]
+    fn selected_note_stays_visible_below_the_unresolvable_band() {
+        // Regression (re-review): with an unresolvable comment present the note pane
+        // is shorter than the code pane; the sticky scroll must measure the NOTE
+        // pane so a bottom comment's note is not clipped into the band's rows.
+        let content = (0..40)
+            .map(|i| format!("line{i}"))
+            .collect::<Vec<_>>()
+            .join("\n")
+            + "\n";
+        let (mut a, _r) = authoring_state("deepnote", &content, &[]);
+        a.comment_localized = vec![
+            (
+                mk_comment(&content, 35, "DEEPNOTE"),
+                Localization {
+                    state: State::Anchored,
+                    span: Some((35, 35)),
+                    confidence: 1.0,
+                },
+            ),
+            (
+                mk_comment("zzz\n", 0, "lost"),
+                Localization {
+                    state: State::Unresolvable,
+                    span: None,
+                    confidence: 0.0,
+                },
+            ),
+        ];
+        a.comment_selected = 0;
+        with_file_tree(&mut a);
+        let out = render_view(&a, 120, 16).join("\n");
+        assert!(out.contains("unresolvable (1)"), "the band renders");
+        assert!(
+            out.contains("DEEPNOTE"),
+            "the selected note scrolls into the (shorter) note pane, not the band"
         );
     }
 
