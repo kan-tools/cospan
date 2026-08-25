@@ -254,8 +254,21 @@ pub struct AppState {
     /// compose / reply / edit), or `None` in read-navigate mode. See [`Editing`].
     pub editing: Option<Editing>,
     /// A transient one-line status for the Comments view (e.g. "not your
-    /// comment"), shown until the next authoring action clears it.
+    /// comment"), shown until the next authoring action clears it. Surfaced in
+    /// the footer now that the bottom strip is gone.
     pub comment_msg: Option<String>,
+    /// Whether the file tray is held open while reading a file (Comments focus).
+    /// In Tree focus the rail always shows (you are browsing); toggled with `t`.
+    pub tray_open: bool,
+    /// Whether the thread popup overlay is open over the selected comment. It
+    /// reads the full untruncated thread and still accepts r/e/d/x on it.
+    pub popup_open: bool,
+    /// The wide note/code viewport top (in reflowed-row space), followed
+    /// stickily: it moves only when the selected comment scrolls out of view, so
+    /// stepping between visible comments does not snap the selection to the top.
+    /// A render cache updated in `draw`, hence `Cell` behind the `&AppState` draw
+    /// takes; reset to 0 when the open file changes.
+    note_scroll: std::cell::Cell<usize>,
 
     // --- Chat view: cross-harness session buffers from transcripts (read-only). ---
     /// The repo's discovered sessions across all harnesses, newest-active first.
@@ -520,6 +533,14 @@ pub fn layout_mode(width: u16) -> Fit {
     }
 }
 
+/// Whether the file-tree rail is shown in the Comments view: always while
+/// browsing (Tree focus), and while reading a file (Comments focus) only if the
+/// tray was toggled open with `t` — and never in a narrow terminal, which has no
+/// room for it beside the code. Pure, so the tray rule is testable.
+pub fn rail_visible(focus: CommentFocus, tray_open: bool, wide: bool) -> bool {
+    wide && (focus == CommentFocus::Tree || tray_open)
+}
+
 impl AppState {
     pub fn new(repo: PathBuf, fold: Fold, last_mtime: Option<SystemTime>) -> Self {
         let mut s = AppState {
@@ -554,6 +575,9 @@ impl AppState {
             comment_scroll: 0,
             editing: None,
             comment_msg: None,
+            tray_open: false,
+            popup_open: false,
+            note_scroll: std::cell::Cell::new(0),
             chat_sessions: Vec::new(),
             chat_selected: 0,
             chat_session: None,
@@ -854,6 +878,7 @@ impl AppState {
         self.open_file = Some(rel);
         self.comment_selected = 0;
         self.comment_scroll = 0;
+        self.note_scroll.set(0);
         self.comment_msg = None;
         self.reload_after_write(); // comment_loaded now differs -> forces the read
     }
@@ -875,9 +900,49 @@ impl AppState {
     }
 
     /// Open a repo-relative file into the gutter and give it focus for commenting.
+    /// Opening collapses the tray so the code + notes take the full width; press
+    /// `t` to bring the tree back (REQ-1: closed by default while reading).
     pub fn open_path(&mut self, rel: PathBuf) {
         self.set_preview(rel);
         self.comment_focus = CommentFocus::Comments;
+        self.tray_open = false;
+    }
+
+    /// Toggle the file tray held open while reading a file. In Tree focus the rail
+    /// always shows; this only bites in Comments focus (see [`rail_visible`]).
+    pub fn toggle_tray(&mut self) {
+        self.tray_open = !self.tray_open;
+    }
+
+    /// Open the thread popup over the selected comment, if there is one to read.
+    pub fn open_thread_popup(&mut self) {
+        if self.comment_localized.get(self.comment_selected).is_some() {
+            self.popup_open = true;
+        }
+    }
+
+    /// Route a key while the thread popup is open. `r`/`e` hand off to the
+    /// full-screen composer (so the popup closes first), `d` deletes and closes,
+    /// `x` resolves in place and keeps it open, Esc/Enter close it.
+    pub fn handle_popup_key(&mut self, code: crossterm::event::KeyCode) {
+        use crossterm::event::KeyCode;
+        match code {
+            KeyCode::Esc | KeyCode::Enter => self.popup_open = false,
+            KeyCode::Char('r') => {
+                self.popup_open = false;
+                self.begin_reply();
+            }
+            KeyCode::Char('e') => {
+                self.popup_open = false;
+                self.begin_edit();
+            }
+            KeyCode::Char('d') => {
+                self.popup_open = false;
+                self.delete_selected();
+            }
+            KeyCode::Char('x') => self.toggle_resolve_selected(),
+            _ => {}
+        }
     }
 
     /// Refresh the open file's comment localizations. Re-reads when the open file
@@ -1738,9 +1803,15 @@ impl AppState {
         match &mut self.editing {
             Some(Editing::PickLine { cursor }) => {
                 let last = self.comment_content.lines().count().saturating_sub(1);
+                // A page is a screenful (same size as the read-view PgUp/PgDn),
+                // read from body_h by direct field access to avoid borrowing self
+                // while `cursor` is held.
+                let page = (self.body_h.saturating_sub(1)).max(1) as usize;
                 match key.code {
                     KeyCode::Up | KeyCode::Char('k') => *cursor = cursor.saturating_sub(1),
                     KeyCode::Down | KeyCode::Char('j') => *cursor = (*cursor + 1).min(last),
+                    KeyCode::PageUp => *cursor = cursor.saturating_sub(page),
+                    KeyCode::PageDown => *cursor = (*cursor + page).min(last),
                     _ => {}
                 }
                 self.comment_scroll = *cursor;
@@ -3008,6 +3079,14 @@ pub fn run(repo: PathBuf) -> std::io::Result<()> {
                         state.handle_editing_key(key);
                         continue;
                     }
+                    // The thread popup overlays the panes and takes keys ahead of
+                    // the normal arms: it reads the full thread and still acts on
+                    // that comment. r/e (which open the full-screen composer) and
+                    // d close it first; x resolves in place and keeps it open.
+                    if state.view == View::Comments && state.popup_open {
+                        state.handle_popup_key(key.code);
+                        continue;
+                    }
                     match key.code {
                         KeyCode::Char('q') => break Ok(()),
                         KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
@@ -3039,12 +3118,24 @@ pub fn run(repo: PathBuf) -> std::io::Result<()> {
                         {
                             state.file_activate()
                         }
+                        // Enter (gutter focus): open the selected comment's full
+                        // thread in the popup, if there is one to read.
+                        KeyCode::Enter
+                            if state.view == View::Comments
+                                && state.comment_focus == CommentFocus::Comments =>
+                        {
+                            state.open_thread_popup()
+                        }
                         KeyCode::Esc
                             if state.view == View::Comments
                                 && state.comment_focus == CommentFocus::Comments =>
                         {
                             state.comment_focus = CommentFocus::Tree
                         }
+                        // `t`: toggle the file tray held open while reading. In Tree
+                        // focus the rail always shows, so this only bites once a file
+                        // is open (Comments focus).
+                        KeyCode::Char('t') if state.view == View::Comments => state.toggle_tray(),
                         // Comment authoring (gutter focus): add / reply / edit / delete / resolve.
                         KeyCode::Char('a' | 'i')
                             if state.view == View::Comments
@@ -3170,6 +3261,13 @@ fn draw(frame: &mut ratatui::Frame, state: &AppState) {
     // (telos/honest-ambiguity).
     let mut footer_lines: Vec<String> =
         state.fold.errors.iter().map(|e| format!("! {e}")).collect();
+    // The Comments view's transient status (e.g. "not your comment") rides the
+    // footer now that the bottom strip is gone.
+    if state.view == View::Comments {
+        if let Some(m) = &state.comment_msg {
+            footer_lines.push(format!("· {m}"));
+        }
+    }
     if state.footer.is_empty() {
         footer_lines.push("(day status-line unavailable)".to_string());
     } else {
@@ -3209,7 +3307,7 @@ fn view_header(view: View) -> String {
     let keys = match view {
         View::Chat => "· ←→ session · z fold · j/k scroll · ⇧↑↓ msg · ↵ expand ",
         View::Comments => {
-            "· j/k browse · ↵ fold/comment · Esc tree · a add · r reply · e/d edit/del · x resolve · p promote "
+            "· j/k browse · ↵ fold/thread · t tray · Esc tree · a add · r reply · e/d edit/del · x resolve · p promote "
         }
         View::Process => "· ←→ atoms/telos · j/k scroll ",
         View::Ledger => "",
@@ -3641,8 +3739,8 @@ fn draw_comments(
 ) {
     use ratatui::layout::{Constraint, Layout};
     use ratatui::style::{Modifier, Style};
-    use ratatui::text::{Line, Span};
-    use ratatui::widgets::{Block, List, ListItem, ListState, Paragraph, Wrap};
+    use ratatui::text::Line;
+    use ratatui::widgets::{Block, Clear, List, ListItem, ListState, Paragraph, Wrap};
 
     if state.file_rows.is_empty() {
         frame.render_widget(
@@ -3660,18 +3758,19 @@ fn draw_comments(
         return;
     }
 
-    // Wide: the file tree rail beside the content pane; narrow: content only. The
-    // rail is 32% of the width but capped at RAIL_MAX, so on a wide terminal it
-    // stops growing instead of eating half the screen with mostly-empty gutter.
+    // The file-tree rail sits beside the content pane while browsing (Tree focus)
+    // and, while reading, only if the tray is toggled open (`rail_visible`); a
+    // narrow terminal never shows it. Width is 32% capped at RAIL_MAX, so a wide
+    // terminal gives reading width to the code instead of empty gutter.
     const RAIL_MAX: u16 = 40;
-    let (files_area, main_area) = match layout_mode(width) {
-        Fit::Wide => {
-            let rail_w = ((body.width as u32 * 32 / 100) as u16).min(RAIL_MAX);
-            let [l, r] =
-                Layout::horizontal([Constraint::Length(rail_w), Constraint::Min(0)]).areas(body);
-            (Some(l), r)
-        }
-        Fit::Narrow => (None, body),
+    let wide = matches!(layout_mode(width), Fit::Wide);
+    let (files_area, main_area) = if rail_visible(state.comment_focus, state.tray_open, wide) {
+        let rail_w = ((body.width as u32 * 32 / 100) as u16).min(RAIL_MAX);
+        let [l, r] =
+            Layout::horizontal([Constraint::Length(rail_w), Constraint::Min(0)]).areas(body);
+        (Some(l), r)
+    } else {
+        (None, body)
     };
 
     if let Some(area) = files_area {
@@ -3696,8 +3795,10 @@ fn draw_comments(
         );
     }
 
-    let [content_area, strip_area] =
-        Layout::vertical([Constraint::Min(3), Constraint::Length(6)]).areas(main_area);
+    // The bottom strip is gone: the content pane owns the full height. Its two
+    // jobs are rehomed — the full thread to the Enter popup, the unresolvable
+    // list to a pinned band atop the note column (both below).
+    let content_area = main_area;
 
     let gutter_focused = state.comment_focus == CommentFocus::Comments;
 
@@ -3708,7 +3809,6 @@ fn draw_comments(
                 .block(pane_block(" file ", gutter_focused)),
             content_area,
         );
-        frame.render_widget(Block::bordered().title(" comment "), strip_area);
         return;
     }
 
@@ -3735,18 +3835,23 @@ fn draw_comments(
                 sp.style = sp.style.add_modifier(Modifier::REVERSED);
             }
         }
-        let scroll = cursor.saturating_sub(3).min(lines.len().saturating_sub(1));
+        // Follow the pick cursor stickily too: scroll only when it leaves the
+        // viewport, so choosing a line does not re-scroll the text on every step.
+        let max_top = lines.len().saturating_sub(1);
+        let view_h = content_area.height.saturating_sub(2) as usize;
+        let scroll = sticky_top(
+            state.note_scroll.get().min(max_top),
+            *cursor,
+            view_h,
+            max_top,
+        );
+        state.note_scroll.set(scroll);
         frame.render_widget(
             Paragraph::new(lines.split_off(scroll)).block(Block::bordered().title(format!(
-                " pick line {} · ↑/↓ · Enter here · Esc ",
+                " pick line {} · ↑/↓ · PgUp/PgDn · Enter here · Esc ",
                 cursor + 1
             ))),
             content_area,
-        );
-        frame.render_widget(
-            Paragraph::new("choose the line to comment on, then Enter")
-                .block(Block::bordered().title(" new comment ")),
-            strip_area,
         );
         return;
     }
@@ -3760,10 +3865,40 @@ fn draw_comments(
             const NOTE_MIN: u16 = 30;
             const TEXT_MAX: u16 = 100;
             let code_w = content_area.width.saturating_sub(NOTE_MIN).min(TEXT_MAX);
+            let note_w = content_area.width.saturating_sub(code_w).saturating_sub(2) as usize;
+            // Pinned "unresolvable" band at the top of the note column, for the
+            // comments with no line to anchor to (honest-ambiguity). It reserves an
+            // equal-height band across the code column too, so the line-anchored
+            // notes below still align row-for-row with the code.
+            let sel_id = state
+                .comment_localized
+                .get(state.comment_selected)
+                .map(|(c, _)| c.id.as_str());
+            let group = unresolvable_group(&unresolved, note_w, sel_id);
+            let g = if group.is_empty() {
+                0
+            } else {
+                (group.len() as u16 + 2).min(content_area.height.saturating_sub(3))
+            };
+            let [band_area, aligned_area] =
+                Layout::vertical([Constraint::Length(g), Constraint::Min(0)]).areas(content_area);
             let [code_area, note_area] =
                 Layout::horizontal([Constraint::Length(code_w), Constraint::Min(0)])
-                    .areas(content_area);
-            let note_w = note_area.width.saturating_sub(2) as usize;
+                    .areas(aligned_area);
+            if g > 0 {
+                let [_blank, group_area] =
+                    Layout::horizontal([Constraint::Length(code_w), Constraint::Min(0)])
+                        .areas(band_area);
+                frame.render_widget(
+                    Paragraph::new(group)
+                        .block(
+                            Block::bordered()
+                                .title(format!(" unresolvable ({}) ", unresolved.len())),
+                        )
+                        .wrap(Wrap { trim: false }),
+                    group_area,
+                );
+            }
             let notes: Vec<(usize, usize, Vec<Line>)> = state
                 .comment_localized
                 .iter()
@@ -3791,14 +3926,30 @@ fn draw_comments(
             } else {
                 side_by_side_rows(code_lines, &notes)
             };
-            // Scroll so the selected comment's note is in view.
+            // Follow the selected note stickily: scroll only when it leaves the
+            // viewport, so stepping between visible comments does not snap to top.
             let sel_row = note_rows
                 .iter()
                 .find(|(idx, _)| *idx == state.comment_selected)
                 .map(|(_, r)| *r)
                 .unwrap_or(0);
-            let scroll = sel_row.min(rows.len().saturating_sub(1));
-            let left: Vec<Line> = rows.iter().skip(scroll).map(|(l, _)| l.clone()).collect();
+            let max_top = rows.len().saturating_sub(1);
+            let view_h = code_area.height.saturating_sub(2) as usize;
+            let scroll = sticky_top(
+                state.note_scroll.get().min(max_top),
+                sel_row,
+                view_h,
+                max_top,
+            );
+            state.note_scroll.set(scroll);
+            // Fill each comment-banded code line to the pane width so the highlight
+            // spans the whole row, not just the characters.
+            let inner_w = code_area.width.saturating_sub(2) as usize;
+            let left: Vec<Line> = rows
+                .iter()
+                .skip(scroll)
+                .map(|(l, _)| fill_line_bg(l.clone(), inner_w))
+                .collect();
             let right: Vec<Line> = rows.iter().skip(scroll).map(|(_, r)| r.clone()).collect();
             frame.render_widget(
                 Paragraph::new(left).block(pane_block(
@@ -3813,62 +3964,198 @@ fn draw_comments(
             );
         }
         Fit::Narrow => {
+            // No room for a note column, but the Unresolvable comments must still
+            // be visible (honest-ambiguity) — pin them in a band below the code.
+            let sel_id = state
+                .comment_localized
+                .get(state.comment_selected)
+                .map(|(c, _)| c.id.as_str());
+            let band_w = content_area.width.saturating_sub(2) as usize;
+            let group = unresolvable_group(&unresolved, band_w, sel_id);
+            let g = if group.is_empty() {
+                0
+            } else {
+                (group.len() as u16 + 2).min(content_area.height.saturating_sub(3))
+            };
+            let [code_area, band_area] =
+                Layout::vertical([Constraint::Min(3), Constraint::Length(g)]).areas(content_area);
             let scroll = state.comment_scroll.min(code_lines.len().saturating_sub(1));
+            let inner_w = code_area.width.saturating_sub(2) as usize;
+            let lines: Vec<Line> = code_lines[scroll..]
+                .iter()
+                .map(|l| fill_line_bg(l.clone(), inner_w))
+                .collect();
             frame.render_widget(
-                Paragraph::new(code_lines[scroll..].to_vec()).block(pane_block(
+                Paragraph::new(lines).block(pane_block(
                     format!(" {file_title} · Esc → tree "),
                     gutter_focused,
                 )),
-                content_area,
+                code_area,
+            );
+            if g > 0 {
+                frame.render_widget(
+                    Paragraph::new(group)
+                        .block(
+                            Block::bordered()
+                                .title(format!(" unresolvable ({}) ", unresolved.len())),
+                        )
+                        .wrap(Wrap { trim: false }),
+                    band_area,
+                );
+            }
+        }
+    }
+
+    // The thread popup: a centered overlay reading the selected comment's full
+    // untruncated thread — the strip's old read job, now on demand (Enter). It is
+    // drawn last so it sits atop the panes, and still acts on the comment (the key
+    // handler routes r/e/d/x into it).
+    if state.popup_open {
+        if let Some((c, loc)) = state.comment_localized.get(state.comment_selected) {
+            let lines = thread_lines(c, loc, promoted.contains(&c.id));
+            let area = centered_rect(body, 70, 60);
+            frame.render_widget(Clear, area);
+            frame.render_widget(
+                Paragraph::new(lines)
+                    .block(
+                        Block::bordered()
+                            .title(" comment thread · r reply · e/d edit/del · x resolve · Esc "),
+                    )
+                    .wrap(Wrap { trim: false }),
+                area,
             );
         }
     }
+}
 
-    // Strip: the selected comment's full thread, then the unresolvable list.
-    let mut strip: Vec<Line> = Vec::new();
-    if let Some((c, loc)) = state.comment_localized.get(state.comment_selected) {
-        strip.extend(thread_lines(c, loc, promoted.contains(&c.id)));
+/// A rectangle centered in `area` at the given width/height percentages — the
+/// frame for a modal overlay like the thread popup. The percentage math goes
+/// through u32 so a very wide terminal cannot overflow the u16 multiply.
+fn centered_rect(area: ratatui::layout::Rect, pct_w: u16, pct_h: u16) -> ratatui::layout::Rect {
+    let w = (area.width as u32 * pct_w as u32 / 100) as u16;
+    let h = (area.height as u32 * pct_h as u32 / 100) as u16;
+    ratatui::layout::Rect {
+        x: area.x + area.width.saturating_sub(w) / 2,
+        y: area.y + area.height.saturating_sub(h) / 2,
+        width: w,
+        height: h,
     }
-    if !unresolved.is_empty() {
-        strip.push(Line::from(Span::styled(
-            format!("unresolvable ({}) — replace by hand:", unresolved.len()),
-            state_style(State::Unresolvable),
-        )));
-        for c in unresolved.iter().take(3) {
-            strip.push(Line::from(format!(
-                "  · {}",
-                c.body.lines().next().unwrap_or("")
-            )));
+}
+
+/// Follow `sel_row` with the viewport top: move only when the selection leaves
+/// the visible `[top, top+view_h)` window — up to it when above, just far enough
+/// down when below — so stepping between visible comments never snaps the
+/// selection to the top. Pure, so the sticky rule is testable.
+fn sticky_top(prev_top: usize, sel_row: usize, view_h: usize, max_top: usize) -> usize {
+    let view_h = view_h.max(1);
+    let top = if sel_row < prev_top {
+        sel_row
+    } else if sel_row >= prev_top + view_h {
+        sel_row + 1 - view_h
+    } else {
+        prev_top
+    };
+    top.min(max_top)
+}
+
+/// If `line` carries a background band (its leading span sets a bg), pad it with
+/// a trailing space span in that colour out to `width` cells, so a comment's
+/// highlight fills the whole row rather than stopping at the end of the text.
+fn fill_line_bg(
+    mut line: ratatui::text::Line<'static>,
+    width: usize,
+) -> ratatui::text::Line<'static> {
+    use ratatui::style::Style;
+    use ratatui::text::Span;
+    let bg = line.spans.first().and_then(|s| s.style.bg);
+    if let Some(bg) = bg {
+        let used: usize = line.spans.iter().map(|s| s.content.chars().count()).sum();
+        if used < width {
+            line.spans
+                .push(Span::styled(" ".repeat(width - used), Style::new().bg(bg)));
         }
     }
-    let base_title = match state.comment_localized.get(state.comment_selected) {
-        Some((c, _)) => {
-            let s = comments::thread_summary(c);
-            if s.is_empty() {
-                " comment ".to_string()
-            } else {
-                format!(" comment · {s} ")
+    line
+}
+
+/// The pinned "unresolvable" note-column band: one styled row per comment with no
+/// line to anchor to, the selected one reversed, capped with a "+N more" tail.
+/// Kept visible rather than hidden so a lost anchor is never silent
+/// (telos/honest-ambiguity). Returns the inner rows; the caller frames them.
+fn unresolvable_group(
+    unresolved: &[&Comment],
+    width: usize,
+    selected_id: Option<&str>,
+) -> Vec<ratatui::text::Line<'static>> {
+    use ratatui::style::Modifier;
+    use ratatui::text::{Line, Span};
+    const CAP: usize = 4;
+    // Show the first CAP, but if the selected comment is one of the unresolvable
+    // ones past the cap, swap it into the last slot so it stays visible and marked
+    // — "each is selectable" (REQ-4) must not hide behind "+N more".
+    let mut shown: Vec<usize> = (0..unresolved.len().min(CAP)).collect();
+    if let Some(si) = selected_id.and_then(|id| unresolved.iter().position(|c| c.id == id)) {
+        if !shown.contains(&si) {
+            if let Some(last) = shown.last_mut() {
+                *last = si;
             }
         }
-        None => " comment ".to_string(),
-    };
-    // A transient status (e.g. "not your comment") takes over the strip title.
-    let strip_title = match &state.comment_msg {
-        Some(m) => format!(" {m} "),
-        None => base_title,
-    };
-    frame.render_widget(
-        Paragraph::new(strip)
-            .block(Block::bordered().title(strip_title))
-            .wrap(Wrap { trim: false }),
-        strip_area,
-    );
+    }
+    let mut rows: Vec<Line> = Vec::new();
+    for &i in &shown {
+        let c = unresolved[i];
+        let head = c.body.lines().next().unwrap_or("");
+        let mut text = format!("● {head}");
+        if text.chars().count() > width {
+            text = text
+                .chars()
+                .take(width.saturating_sub(1))
+                .collect::<String>()
+                + "…";
+        }
+        let mut style = state_style(State::Unresolvable);
+        if selected_id == Some(c.id.as_str()) {
+            style = style.add_modifier(Modifier::REVERSED);
+        }
+        rows.push(Line::from(Span::styled(text, style)));
+    }
+    let hidden = unresolved.len().saturating_sub(shown.len());
+    if hidden > 0 {
+        rows.push(Line::from(format!("  +{hidden} more")));
+    }
+    rows
+}
+
+/// Where to place the compose popup vertically within `body`: just below the
+/// target line when the popup fits there, else just above it, else clamped into
+/// `body` — so the editor tracks the line being commented rather than snapping to
+/// a fixed half. With no anchor line (`target_row` None) it rests at the bottom.
+/// Pure, so the placement is testable.
+fn compose_popup_y(body: ratatui::layout::Rect, target_row: Option<u16>, want_h: u16) -> u16 {
+    let bottom = body.y + body.height;
+    let max_y = bottom.saturating_sub(want_h).max(body.y);
+    match target_row {
+        None => max_y,
+        Some(tr) => {
+            // The target line's screen row (code sits inside a 1-row top border).
+            let line_y = (body.y + 1)
+                .saturating_add(tr)
+                .min(bottom.saturating_sub(1));
+            let below = line_y.saturating_add(1);
+            let py = if bottom.saturating_sub(below) >= want_h {
+                below
+            } else {
+                line_y.saturating_sub(want_h).max(body.y)
+            };
+            py.min(max_y)
+        }
+    }
 }
 
 /// Compose view: the file body full-width (rail collapsed) with the commented
-/// line highlighted, and the editor popup placed in the half of the screen the
-/// line is *not* in — so you can see what you are commenting on while you type.
-/// The editor scrolls vertically to keep the caret in view and shows a
+/// line highlighted, and the editor popup placed adjacent to that line (below it
+/// when it fits, else above) — so you can see what you are commenting on while
+/// you type. The editor scrolls vertically to keep the caret in view and shows a
 /// `L<row>/<total>` position with `↑`/`↓` when there is more above or below.
 fn draw_compose(
     frame: &mut ratatui::Frame,
@@ -3929,21 +4216,19 @@ fn draw_compose(
         body,
     );
 
-    // Place the popup in the half the target line is NOT in.
-    let target_row = target.map(|t| t.saturating_sub(scroll)).unwrap_or(0) as u16;
+    // Place the popup adjacent to the target line (below it when it fits, else
+    // above), and cap its width at a comfortable reading measure.
+    let target_row = target.map(|t| t.saturating_sub(scroll) as u16);
     let lines: Vec<String> = buf.text.split('\n').map(str::to_string).collect();
     let want_h = ((lines.len() as u16).saturating_add(2))
         .clamp(5, body.height.saturating_sub(2).max(5))
         .min(16);
-    let target_in_top = target_row < body.height / 2;
-    let pw = ((body.width as u32 * 72 / 100) as u16).clamp(20.min(body.width), body.width);
+    const COMPOSE_MAX_W: u16 = 80;
+    let pw = ((body.width as u32 * 72 / 100) as u16)
+        .min(COMPOSE_MAX_W)
+        .clamp(20.min(body.width), body.width);
     let px = body.x + body.width.saturating_sub(pw) / 2;
-    let py = if target_in_top {
-        // line up top -> popup at the bottom
-        body.y + body.height.saturating_sub(want_h).saturating_sub(1)
-    } else {
-        body.y + 1
-    };
+    let py = compose_popup_y(body, target_row, want_h.min(body.height));
     let popup = Rect {
         x: px,
         y: py,
@@ -5890,7 +6175,7 @@ mod tests {
     fn comments_header_shows_the_navigation_legend() {
         // The tree-nav, open, and authoring keys are visible in the header.
         let h = view_header(View::Comments);
-        assert!(h.contains("fold/comment"), "no tree hint: {h}");
+        assert!(h.contains("fold/thread"), "no tree hint: {h}");
         assert!(h.contains("a add"), "no authoring hint: {h}");
         // Other views do not carry the authoring hint.
         assert!(!view_header(View::Ledger).contains("a add"));
@@ -6983,5 +7268,407 @@ mod tests {
             Some(Editing::Compose { buf, .. }) => assert_eq!(buf.row_col().0, 0, "Up moved a row"),
             _ => panic!("compose ended unexpectedly"),
         }
+    }
+
+    // --- Comments-tab editor-view layout redesign (Slice A) ---
+
+    /// Render the whole TUI into a test backend and return the rows as strings.
+    fn render_view(a: &AppState, w: u16, h: u16) -> Vec<String> {
+        use ratatui::{backend::TestBackend, Terminal};
+        let mut term = Terminal::new(TestBackend::new(w, h)).unwrap();
+        term.draw(|f| draw(f, a)).unwrap();
+        let buf = term.backend().buffer().clone();
+        (0..h)
+            .map(|y| {
+                (0..w)
+                    .map(|x| buf[(x, y)].symbol().to_string())
+                    .collect::<String>()
+            })
+            .collect()
+    }
+
+    /// Give a test state a one-file tree, so `draw_comments` renders the panes
+    /// rather than the empty "no files to browse" prompt (the temp repo is not a
+    /// git checkout, so `reload_files` finds nothing).
+    fn with_file_tree(a: &mut AppState) {
+        a.file_entries = vec![filetree::FileEntry {
+            path: PathBuf::from("src/a.rs"),
+            status: filetree::GitStatus::Clean,
+        }];
+        a.rebuild_file_rows();
+    }
+
+    #[test]
+    fn rail_shows_while_browsing_and_toggles_while_reading() {
+        // (AC-1) Tree focus always shows the rail; Comments focus shows it only when
+        // the tray is toggled open; a narrow terminal never shows it; `t` flips the
+        // tray without changing focus.
+        assert!(rail_visible(CommentFocus::Tree, false, true));
+        assert!(!rail_visible(CommentFocus::Comments, false, true));
+        assert!(rail_visible(CommentFocus::Comments, true, true));
+        assert!(!rail_visible(CommentFocus::Tree, true, false)); // narrow
+
+        let (mut a, _repo) = authoring_state("tray", "a\nb\n", &[]);
+        assert_eq!(
+            a.comment_focus,
+            CommentFocus::Comments,
+            "opening a file reads it"
+        );
+        assert!(!a.tray_open, "the tray starts closed while reading");
+        a.toggle_tray();
+        assert!(a.tray_open);
+        assert_eq!(
+            a.comment_focus,
+            CommentFocus::Comments,
+            "toggling the tray leaves focus"
+        );
+        // Opening another file re-collapses the tray (REQ-1) even after a toggle —
+        // it must not stay stuck open across files.
+        a.open_path(PathBuf::from("src/a.rs"));
+        assert!(!a.tray_open, "opening a file re-collapses the tray");
+    }
+
+    #[test]
+    fn unresolvable_group_lists_marks_selected_and_caps() {
+        // (AC-3) one row per unplaceable comment, the selected one reversed, and a
+        // "+N more" tail once past the cap.
+        let content = "x\n";
+        let a = mk_comment(content, 0, "lost one");
+        let b = mk_comment(content, 0, "lost two");
+        let rows = unresolvable_group(&[&a, &b], 40, Some("c_lost two"));
+        assert_eq!(rows.len(), 2);
+        let txt0: String = rows[0].spans.iter().map(|s| s.content.as_ref()).collect();
+        assert!(txt0.contains("lost one"));
+        assert!(
+            rows[1].spans[0]
+                .style
+                .add_modifier
+                .contains(ratatui::style::Modifier::REVERSED),
+            "the selected unresolvable row is reversed"
+        );
+
+        let many: Vec<Comment> = (0..6)
+            .map(|i| mk_comment(content, 0, &format!("u{i}")))
+            .collect();
+        let refs: Vec<&Comment> = many.iter().collect();
+        let capped = unresolvable_group(&refs, 40, None);
+        assert_eq!(capped.len(), 5, "CAP=4 rows plus a tail");
+        let tail: String = capped[4].spans.iter().map(|s| s.content.as_ref()).collect();
+        assert!(
+            tail.contains("+2 more"),
+            "tail counts the hidden ones: {tail:?}"
+        );
+    }
+
+    #[test]
+    fn enter_opens_thread_popup_and_esc_closes() {
+        // (AC-4) Enter (gutter focus) opens the popup over the selected comment; Esc
+        // closes it; with no comment there is nothing to open.
+        let content = "l0\nl1\n";
+        let (mut a, _r) = authoring_state("popup", content, &[mk_comment(content, 0, "hi")]);
+        a.refresh_comments();
+        assert!(!a.comment_localized.is_empty());
+        a.comment_selected = 0;
+        a.open_thread_popup();
+        assert!(a.popup_open);
+        a.handle_popup_key(crossterm::event::KeyCode::Esc);
+        assert!(!a.popup_open);
+
+        let (mut b, _r2) = authoring_state("popup-empty", content, &[]);
+        b.refresh_comments();
+        b.open_thread_popup();
+        assert!(
+            !b.popup_open,
+            "no comment to read -> the popup stays closed"
+        );
+    }
+
+    #[test]
+    fn popup_actions_reply_resolve_and_close() {
+        // (AC-7) inside the popup: `r` closes it and opens reply-compose; `x` toggles
+        // resolved in place and keeps it open; Esc closes without mutating.
+        let content = "l0\n";
+        let mine = me_id();
+        let (mut a, repo) = authoring_state(
+            "popupact",
+            content,
+            &[mk_comment_by(content, 0, "seed", &mine)],
+        );
+        a.refresh_comments();
+        a.comment_selected = 0;
+
+        a.popup_open = true;
+        a.handle_popup_key(crossterm::event::KeyCode::Char('r'));
+        assert!(
+            !a.popup_open,
+            "r hands off to the composer, closing the popup"
+        );
+        assert!(
+            matches!(
+                a.editing,
+                Some(Editing::Compose {
+                    kind: ComposeKind::Reply { .. },
+                    ..
+                })
+            ),
+            "r began a reply"
+        );
+        a.editing = None;
+
+        a.popup_open = true;
+        a.handle_popup_key(crossterm::event::KeyCode::Char('x'));
+        assert!(a.popup_open, "x keeps the popup open");
+        assert!(
+            sidecar_of(&repo)[0].resolved,
+            "x resolved the comment in place"
+        );
+
+        a.handle_popup_key(crossterm::event::KeyCode::Esc);
+        assert!(!a.popup_open);
+    }
+
+    #[test]
+    fn comments_view_has_no_bottom_strip() {
+        // (AC-2) with the strip gone, the code pane runs to the body bottom rather
+        // than stopping 6 rows short for a strip beneath it.
+        let content = "l0\nl1\nl2\n";
+        let (mut a, _r) = authoring_state("nostrip", content, &[mk_comment(content, 0, "hi")]);
+        a.refresh_comments();
+        with_file_tree(&mut a);
+        let rows = render_view(&a, 120, 24);
+        let title = rows
+            .iter()
+            .position(|r| r.contains("src/a.rs"))
+            .expect("code pane titled");
+        // The focused code pane draws a thick border ('┗'); a plain one would be '└'.
+        let bottom = (title + 1..rows.len())
+            .find(|&y| rows[y].starts_with('┗') || rows[y].starts_with('└'))
+            .expect("code pane has a bottom border");
+        assert!(
+            bottom >= rows.len() - 3,
+            "code pane bottom border at row {bottom} of {} — no 6-row strip below it",
+            rows.len()
+        );
+    }
+
+    #[test]
+    fn thread_popup_renders_only_when_open() {
+        // (AC-4) the full thread lives in the popup, not an always-on strip: its
+        // title appears only once the popup is open.
+        let content = "l0\nl1\n";
+        let (mut a, _r) = authoring_state("popuprender", content, &[mk_comment(content, 0, "hi")]);
+        a.refresh_comments();
+        with_file_tree(&mut a);
+        a.comment_selected = 0;
+
+        let closed = render_view(&a, 120, 24).join("\n");
+        assert!(!closed.contains("comment thread"), "no popup while closed");
+
+        a.popup_open = true;
+        let open = render_view(&a, 120, 24).join("\n");
+        assert!(
+            open.contains("comment thread"),
+            "the popup titles itself when open"
+        );
+    }
+
+    #[test]
+    fn narrow_layout_drops_note_column_and_strip() {
+        // (AC-6) narrow shows only the code pane (no note column, no strip); the
+        // popup still opens over it.
+        let content = "l0\nl1\n";
+        let (mut a, _r) = authoring_state("narrow", content, &[mk_comment(content, 0, "hi")]);
+        a.refresh_comments();
+        with_file_tree(&mut a);
+        // Wide has two bordered panes (code + note column); narrow (80 < WIDE_COLS)
+        // has only the code pane — no note column, no strip.
+        let wide = render_view(&a, 120, 20).join("\n");
+        let narrow = render_view(&a, 80, 20).join("\n");
+        // Count top-left corners of both border styles: the focused code pane is
+        // thick ('┏'), the note column plain ('┌').
+        let corners = |s: &str| s.matches('┌').count() + s.matches('┏').count();
+        assert_eq!(corners(&wide), 2, "wide: code + note boxes");
+        assert_eq!(corners(&narrow), 1, "narrow: code box only");
+        a.popup_open = true;
+        let open = render_view(&a, 80, 20).join("\n");
+        assert!(
+            open.contains("comment thread"),
+            "the popup still opens in narrow"
+        );
+    }
+
+    #[test]
+    fn pick_line_scrolls_stickily() {
+        // Adding a comment: the line picker follows the cursor stickily instead of
+        // re-centering it on every step.
+        let content = (0..40)
+            .map(|i| format!("line {i}"))
+            .collect::<Vec<_>>()
+            .join("\n")
+            + "\n";
+        let (mut a, _r) = authoring_state("pick", &content, &[]);
+        with_file_tree(&mut a);
+        a.begin_new_comment();
+        if let Some(Editing::PickLine { cursor }) = &mut a.editing {
+            *cursor = 0;
+        }
+        a.note_scroll.set(0);
+        // Cursor near the top stays visible -> no scroll.
+        let _ = render_view(&a, 120, 12);
+        assert_eq!(a.note_scroll.get(), 0, "cursor visible -> no scroll");
+        // Move it well past the viewport bottom -> scroll just enough, not snap.
+        if let Some(Editing::PickLine { cursor }) = &mut a.editing {
+            *cursor = 20;
+        }
+        let _ = render_view(&a, 120, 12);
+        let top = a.note_scroll.get();
+        assert!(top > 0, "cursor below the viewport -> scrolled");
+        assert!(
+            top <= 20,
+            "scrolled just far enough, not snapped to cursor-at-top"
+        );
+    }
+
+    #[test]
+    fn sticky_top_follows_only_off_screen() {
+        // The viewport (5 rows: [top, top+5)) stays put while the selection is
+        // visible, scrolls up to it when above, scrolls just enough when below, and
+        // clamps to max_top.
+        assert_eq!(sticky_top(0, 3, 5, 100), 0, "visible -> no move");
+        assert_eq!(sticky_top(0, 4, 5, 100), 0, "last visible row -> no move");
+        assert_eq!(sticky_top(2, 1, 5, 100), 1, "above top -> up to it");
+        assert_eq!(sticky_top(0, 6, 5, 100), 2, "past bottom -> 6+1-5");
+        assert_eq!(sticky_top(50, 8, 5, 4), 4, "clamped to max_top");
+    }
+
+    #[test]
+    fn fill_line_bg_pads_banded_lines_only() {
+        use ratatui::style::{Color, Style};
+        use ratatui::text::{Line, Span};
+        // A banded line (leading span carries a bg) is padded to width with that bg.
+        let banded = Line::from(vec![Span::styled(
+            "ab",
+            Style::new().bg(Color::Indexed(240)),
+        )]);
+        let out = fill_line_bg(banded, 6);
+        let width: usize = out.spans.iter().map(|s| s.content.chars().count()).sum();
+        assert_eq!(width, 6, "padded to the full width");
+        assert_eq!(
+            out.spans.last().unwrap().style.bg,
+            Some(Color::Indexed(240)),
+            "the pad carries the band colour"
+        );
+        // A plain line (no bg) is left untouched.
+        let plain = Line::from(vec![Span::raw("ab")]);
+        assert_eq!(
+            fill_line_bg(plain, 6).spans.len(),
+            1,
+            "no pad on an unbanded line"
+        );
+    }
+
+    #[test]
+    fn narrow_pins_unresolvable_band() {
+        // (honest-ambiguity) an Unresolvable comment stays visible in narrow too,
+        // where there is no note column or strip.
+        let content = "l0\nl1\n";
+        let (mut a, _r) = authoring_state("narrow-un", content, &[]);
+        a.comment_localized = vec![(
+            mk_comment("zzz\n", 0, "lost note"),
+            Localization {
+                state: State::Unresolvable,
+                span: None,
+                confidence: 0.0,
+            },
+        )];
+        with_file_tree(&mut a);
+        let rows = render_view(&a, 80, 20).join("\n");
+        assert!(
+            rows.contains("unresolvable (1)"),
+            "narrow pins the band: {rows:?}"
+        );
+        assert!(
+            rows.contains("lost note"),
+            "the unresolvable comment is shown"
+        );
+    }
+
+    #[test]
+    fn unresolvable_group_keeps_selected_visible_past_cap() {
+        // (REQ-4) selecting the 6th unresolvable still shows it, reversed, rather
+        // than hiding it behind "+N more".
+        let content = "x\n";
+        let many: Vec<Comment> = (0..6)
+            .map(|i| mk_comment(content, 0, &format!("u{i}")))
+            .collect();
+        let refs: Vec<&Comment> = many.iter().collect();
+        let rows = unresolvable_group(&refs, 40, Some("c_u5"));
+        assert_eq!(rows.len(), 5, "4 shown rows + a tail");
+        let last_shown: String = rows[3].spans.iter().map(|s| s.content.as_ref()).collect();
+        assert!(
+            last_shown.contains("u5"),
+            "the selected one is swapped in: {last_shown:?}"
+        );
+        assert!(rows[3].spans[0]
+            .style
+            .add_modifier
+            .contains(ratatui::style::Modifier::REVERSED));
+    }
+
+    #[test]
+    fn pick_line_pages_by_a_screenful() {
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+        // PgUp/PgDn move the pick cursor by a screenful (body_h - 1), clamped.
+        let content = (0..60)
+            .map(|i| format!("l{i}"))
+            .collect::<Vec<_>>()
+            .join("\n")
+            + "\n";
+        let (mut a, _r) = authoring_state("pgpick", &content, &[]);
+        a.body_h = 12; // page = 11
+        a.begin_new_comment();
+        if let Some(Editing::PickLine { cursor }) = &mut a.editing {
+            *cursor = 0;
+        }
+        a.handle_editing_key(KeyEvent::new(KeyCode::PageDown, KeyModifiers::NONE));
+        match &a.editing {
+            Some(Editing::PickLine { cursor }) => assert_eq!(*cursor, 11, "PageDown jumps a page"),
+            _ => panic!("still picking a line"),
+        }
+        a.handle_editing_key(KeyEvent::new(KeyCode::PageUp, KeyModifiers::NONE));
+        match &a.editing {
+            Some(Editing::PickLine { cursor }) => assert_eq!(*cursor, 0, "PageUp jumps back"),
+            _ => panic!("still picking a line"),
+        }
+    }
+
+    #[test]
+    fn compose_popup_y_tracks_the_target_line() {
+        use ratatui::layout::Rect;
+        let body = Rect {
+            x: 0,
+            y: 1,
+            width: 100,
+            height: 20,
+        }; // rows 1..21
+        let want_h = 6;
+        // Room below the line -> popup sits just under it.
+        assert_eq!(
+            compose_popup_y(body, Some(2), want_h),
+            5,
+            "fits below -> just under the line"
+        );
+        // Near the bottom -> no room below -> goes just above.
+        assert_eq!(
+            compose_popup_y(body, Some(17), want_h),
+            13,
+            "no room below -> just above the line"
+        );
+        // No anchor line -> rests at the bottom.
+        assert_eq!(
+            compose_popup_y(body, None, want_h),
+            15,
+            "no target -> bottom"
+        );
     }
 }
