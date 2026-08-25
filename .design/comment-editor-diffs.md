@@ -34,16 +34,16 @@ computed on the fold loop, mtime-gated, never per keystroke).
   a removed block and `▔` (red) on the line just below it, the two bars pointing at
   the gap — blank otherwise. The column is present only when the diff toggle is on,
   and its fixed one-cell width does not shift the existing marker/number/code layout.
-- REQ-5: Added/changed lines, and the two lines **bracketing a deletion**, get a
-  **subtle background tint that yields to the comment band**: the tint is applied
-  only when the line carries no comment band (the `hit` is `None` in `gutter_lines`,
-  `src/tui.rs:1874`), so a commented line keeps its comment band as the row
-  background while the diff still shows via the sign column. Added/changed lines
-  tint green/yellow; the lines above and below a deletion tint **red**, so a removal
-  is highlighted on both sides of the gap. No rows are inserted — a deletion is
-  marked on the bracketing lines, never a separate row — so the current-line-index
-  model (comment anchoring, `reflow_rows` at `src/tui.rs:3324`, sticky scroll, the
-  pinned unresolvable band) is untouched.
+- REQ-5: **Added/changed lines** get a **subtle background tint that yields to the
+  comment band**: the tint is applied only when the line carries no comment band
+  (the `hit` is `None` in `gutter_lines`, `src/tui.rs:1874`), so a commented line
+  keeps its comment band as the row background while the diff still shows via the
+  sign column. **Deletions are not row-tinted** — their red lives only in the
+  gutter (the `▁`/`▔` bars), so a removal is marked without washing the bracketing
+  lines in colour. No rows are inserted — a deletion is marked on the bracketing
+  lines' gutter, never a separate row — so the current-line-index model (comment
+  anchoring, `reflow_rows` at `src/tui.rs:3324`, sticky scroll, the pinned
+  unresolvable band) is untouched.
 - REQ-6: A **toggle** shows/hides the diff, **default on**, backed by a
   `diff_on: bool` on `AppState`. It is bound to `D` in the Comments read-navigate
   key match (`src/tui.rs`, beside the `t` tray toggle), and the Comments legend

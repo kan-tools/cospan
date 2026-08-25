@@ -1954,16 +1954,14 @@ pub fn gutter_lines<'a>(
             } else {
                 (" ", Style::new())
             };
-            // A subtle change tint, but only when the line has no comment band — the
-            // comment band always wins the row background (the diff still shows via
-            // the sign). The two lines bracketing a deletion get a red highlight.
+            // A subtle change tint on added/changed lines, only when the line has no
+            // comment band (the band always wins the row background). Deletions are
+            // NOT row-tinted — their red lives only in the gutter (the `▁`/`▔` bars).
             let diff_tint = if diff_on && line_bg.is_none() {
                 if diff.added.contains(&i) {
                     Some(Color::Indexed(22))
                 } else if diff.changed.contains(&i) {
                     Some(Color::Indexed(58))
-                } else if del_above || del_below {
-                    Some(Color::Indexed(52))
                 } else {
                     None
                 }
@@ -7815,14 +7813,16 @@ mod tests {
         assert_eq!(sign(2), "~");
         assert_eq!(sign(3), "▁", "line above the deletion");
         assert_eq!(sign(4), "▔", "line below the deletion");
-        // Both bracket lines carry the red highlight (bg on the marker span).
+        // The red lives only in the gutter bars — deletion lines carry no row tint.
         assert_eq!(
-            on[3].spans[0].style.bg,
-            Some(ratatui::style::Color::Indexed(52))
+            on[3].spans[0].style.bg, None,
+            "no row highlight on a deletion line"
         );
+        assert_eq!(on[4].spans[0].style.bg, None);
         assert_eq!(
-            on[4].spans[0].style.bg,
-            Some(ratatui::style::Color::Indexed(52))
+            on[3].spans[1].style.fg,
+            Some(ratatui::style::Color::Red),
+            "the deletion bar is red in the gutter"
         );
         // Off: no sign column, so span[1] is the line-number cell.
         let (off, _) = gutter_lines(
