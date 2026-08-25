@@ -13,7 +13,7 @@
   ],
   "rev": "223mtffbedd2h",
   "seq": 0,
-  "of": 32,
+  "of": 33,
   "text_len": 236,
   "content": "p2Rib2R5oWZSZXN1bHShZHRleHRgZWNpdGVzgdgqWCUAAXESIKuVWY8LaRhMsfrgFHujE7Ojd2yyBOflibyWUuJsOqAKZmF1dGhvcqJjZGlkeDlkaWQ6a2V5OnpEbmFlU2RCYnJNNk5lWTRpOE1veHVGaXlEdHd4M0FISjhmakVkOTRnckgzMXI4WFllYWdlbnT2Z3N1YmplY3ShZUxvY2FsZ3JlbGVhc2VpYXJ0aWZhY3RzgaFmQ29tbWl0eChlODUwNGRlM2IwMWU1ZjRhMWQ5YjYxNGUzYjg2NDE5MzI5MjNiOGEyaXdvcmtzcGFjZaFpV29ya3NwYWNleEA4MzVmODdhZGU0MGJkYzhkZjIyYzNiYmQyNzhkNTdlMDQwZmFhMDhjYzZlNDE1ZDZiZDAzODRlYjlhN2U1M2Nla3JlY29yZGVkX2F0GwAGWVrOpKOf"
 }
@@ -34,7 +34,7 @@ Cut v0.0.1-alpha.1: first tagged prerelease — the P0 watch-and-fold spine plus
   "cites": [],
   "rev": "223mtffbeidl2",
   "seq": 1,
-  "of": 32,
+  "of": 33,
   "content": "p2Rib2R5oWtQdWJsaWNhdGlvbqFlbGF5ZXJnR2l0VHJlZWVjaXRlc4BmYXV0aG9yomNkaWR4OWRpZDprZXk6ekRuYWVTZEJick02TmVZNGk4TW94dUZpeUR0d3gzQUhKOGZqRWQ5NGdySDMxcjhYWWVhZ2VudPZnc3ViamVjdKFlTG9jYWxncmVsZWFzZWlhcnRpZmFjdHOBoWZDb21taXR4KGU4NTA0ZGUzYjAxZTVmNGExZDliNjE0ZTNiODY0MTkzMjkyM2I4YTJpd29ya3NwYWNloWlXb3Jrc3BhY2V4QDgzNWY4N2FkZTQwYmRjOGRmMjJjM2JiZDI3OGQ1N2UwNDBmYWEwOGNjNmU0MTVkNmJkMDM4NGViOWE3ZTUzY2VrcmVjb3JkZWRfYXQbAAZZWs6nJbw="
 }
 ---
@@ -54,7 +54,7 @@ Cut v0.0.1-alpha.1: first tagged prerelease — the P0 watch-and-fold spine plus
   ],
   "rev": "223mtfl5p6zct",
   "seq": 2,
-  "of": 32,
+  "of": 33,
   "text_len": 208,
   "content": "p2Rib2R5oWZSZXN1bHShZHRleHRgZWNpdGVzgdgqWCUAAXESIHDaEiOqdol2QDb6UqC7XcbNc12HMCqwqEGY/uycz8P/ZmF1dGhvcqJjZGlkeDlkaWQ6a2V5OnpEbmFlU2RCYnJNNk5lWTRpOE1veHVGaXlEdHd4M0FISjhmakVkOTRnckgzMXI4WFllYWdlbnT2Z3N1YmplY3ShZUxvY2FsZ3JlbGVhc2VpYXJ0aWZhY3RzgaFmQ29tbWl0eCgwNWJiZmMwOTc5NzJkNmMwYmFiNjhhZmI4NmQ3MDM2MGY2NmNlMTg5aXdvcmtzcGFjZaFpV29ya3NwYWNleEA4MzVmODdhZGU0MGJkYzhkZjIyYzNiYmQyNzhkNTdlMDQwZmFhMDhjYzZlNDE1ZDZiZDAzODRlYjlhN2U1M2Nla3JlY29yZGVkX2F0GwAGWVxHUnyz"
 }
@@ -75,7 +75,7 @@ Cut v0.0.1-alpha.2: Step 2, the interactive ratatui TUI for watch-repo, reviewed
   "cites": [],
   "rev": "223mtfl5pcrtp",
   "seq": 3,
-  "of": 32,
+  "of": 33,
   "content": "p2Rib2R5oWtQdWJsaWNhdGlvbqFlbGF5ZXJnR2l0VHJlZWVjaXRlc4BmYXV0aG9yomNkaWR4OWRpZDprZXk6ekRuYWVTZEJick02TmVZNGk4TW94dUZpeUR0d3gzQUhKOGZqRWQ5NGdySDMxcjhYWWVhZ2VudPZnc3ViamVjdKFlTG9jYWxncmVsZWFzZWlhcnRpZmFjdHOBoWZDb21taXR4KDA1YmJmYzA5Nzk3MmQ2YzBiYWI2OGFmYjg2ZDcwMzYwZjY2Y2UxODlpd29ya3NwYWNloWlXb3Jrc3BhY2V4QDgzNWY4N2FkZTQwYmRjOGRmMjJjM2JiZDI3OGQ1N2UwNDBmYWEwOGNjNmU0MTVkNmJkMDM4NGViOWE3ZTUzY2VrcmVjb3JkZWRfYXQbAAZZXEdUXtA="
 }
 ---
@@ -95,7 +95,7 @@ Cut v0.0.1-alpha.2: Step 2, the interactive ratatui TUI for watch-repo, reviewed
   ],
   "rev": "223mtgu5nrox6",
   "seq": 4,
-  "of": 32,
+  "of": 33,
   "text_len": 258,
   "content": "p2Rib2R5oWZSZXN1bHShZHRleHRgZWNpdGVzgdgqWCUAAXESIPX+f5Qj6KfTJWt/oeEdKdGXz8oCpgXCQVqzXeLmnn+jZmF1dGhvcqJjZGlkeDlkaWQ6a2V5OnpEbmFlU2RCYnJNNk5lWTRpOE1veHVGaXlEdHd4M0FISjhmakVkOTRnckgzMXI4WFllYWdlbnT2Z3N1YmplY3ShZUxvY2FsZ3JlbGVhc2VpYXJ0aWZhY3RzgaFmQ29tbWl0eCg1YmY1ODQ2ZGYyODFhMDhlNDA5NTQzNGI1MDNhOGRkODI3MGY0ZThiaXdvcmtzcGFjZaFpV29ya3NwYWNleEA4MzVmODdhZGU0MGJkYzhkZjIyYzNiYmQyNzhkNTdlMDQwZmFhMDhjYzZlNDE1ZDZiZDAzODRlYjlhN2U1M2Nla3JlY29yZGVkX2F0GwAGWWaHO9Mo"
 }
@@ -116,7 +116,7 @@ Cut v0.0.1-alpha.3: Step 3, the two-pane subject list + claim detail browser, re
   "cites": [],
   "rev": "223mtgu5nvycl",
   "seq": 5,
-  "of": 32,
+  "of": 33,
   "content": "p2Rib2R5oWtQdWJsaWNhdGlvbqFlbGF5ZXJnR2l0VHJlZWVjaXRlc4BmYXV0aG9yomNkaWR4OWRpZDprZXk6ekRuYWVTZEJick02TmVZNGk4TW94dUZpeUR0d3gzQUhKOGZqRWQ5NGdySDMxcjhYWWVhZ2VudPZnc3ViamVjdKFlTG9jYWxncmVsZWFzZWlhcnRpZmFjdHOBoWZDb21taXR4KDViZjU4NDZkZjI4MWEwOGU0MDk1NDM0YjUwM2E4ZGQ4MjcwZjRlOGJpd29ya3NwYWNloWlXb3Jrc3BhY2V4QDgzNWY4N2FkZTQwYmRjOGRmMjJjM2JiZDI3OGQ1N2UwNDBmYWEwOGNjNmU0MTVkNmJkMDM4NGViOWE3ZTUzY2VrcmVjb3JkZWRfYXQbAAZZZoc9+Kw="
 }
 ---
@@ -136,7 +136,7 @@ Cut v0.0.1-alpha.3: Step 3, the two-pane subject list + claim detail browser, re
   ],
   "rev": "223mtgvm6jwj5",
   "seq": 6,
-  "of": 32,
+  "of": 33,
   "text_len": 301,
   "content": "p2Rib2R5oWZSZXN1bHShZHRleHRgZWNpdGVzgdgqWCUAAXESICEouvWGEza2xUlM2VItDCOwbKQFahWtL7YL4GFWAJvTZmF1dGhvcqJjZGlkeDlkaWQ6a2V5OnpEbmFlU2RCYnJNNk5lWTRpOE1veHVGaXlEdHd4M0FISjhmakVkOTRnckgzMXI4WFllYWdlbnT2Z3N1YmplY3ShZUxvY2FsZ3JlbGVhc2VpYXJ0aWZhY3RzgaFmQ29tbWl0eChhNjg0MmRjNGIxZjJiZjExNTEyZTE4NjdlMjI3YWU5ZjMyNmQyMzhjaXdvcmtzcGFjZaFpV29ya3NwYWNleEA4MzVmODdhZGU0MGJkYzhkZjIyYzNiYmQyNzhkNTdlMDQwZmFhMDhjYzZlNDE1ZDZiZDAzODRlYjlhN2U1M2Nla3JlY29yZGVkX2F0GwAGWWbkR/F4"
 }
@@ -157,7 +157,7 @@ Cut v0.0.1-alpha.4: Step 4, the ephemeral comment sidecar with live re-localizat
   "cites": [],
   "rev": "223mtgvm6owl7",
   "seq": 7,
-  "of": 32,
+  "of": 33,
   "content": "p2Rib2R5oWtQdWJsaWNhdGlvbqFlbGF5ZXJnR2l0VHJlZWVjaXRlc4BmYXV0aG9yomNkaWR4OWRpZDprZXk6ekRuYWVTZEJick02TmVZNGk4TW94dUZpeUR0d3gzQUhKOGZqRWQ5NGdySDMxcjhYWWVhZ2VudPZnc3ViamVjdKFlTG9jYWxncmVsZWFzZWlhcnRpZmFjdHOBoWZDb21taXR4KGE2ODQyZGM0YjFmMmJmMTE1MTJlMTg2N2UyMjdhZTlmMzI2ZDIzOGNpd29ya3NwYWNloWlXb3Jrc3BhY2V4QDgzNWY4N2FkZTQwYmRjOGRmMjJjM2JiZDI3OGQ1N2UwNDBmYWEwOGNjNmU0MTVkNmJkMDM4NGViOWE3ZTUzY2VrcmVjb3JkZWRfYXQbAAZZZuRKcbo="
 }
 ---
@@ -177,7 +177,7 @@ Cut v0.0.1-alpha.4: Step 4, the ephemeral comment sidecar with live re-localizat
   ],
   "rev": "223mtgyskpgnf",
   "seq": 8,
-  "of": 32,
+  "of": 33,
   "text_len": 466,
   "content": "p2Rib2R5oWZSZXN1bHShZHRleHRgZWNpdGVzgdgqWCUAAXESID9d4SIgVHvd4ZmQi1RxSvoBPFq7enE+yoeuzOOcObbUZmF1dGhvcqJjZGlkeDlkaWQ6a2V5OnpEbmFlU2RCYnJNNk5lWTRpOE1veHVGaXlEdHd4M0FISjhmakVkOTRnckgzMXI4WFllYWdlbnT2Z3N1YmplY3ShZUxvY2FsZ3JlbGVhc2VpYXJ0aWZhY3RzgaFmQ29tbWl0eChmMmI2YjI5ZGNhZDk1ZGM5MTc1MWQwN2NhMmU1NzdlNGZiN2M0ZDVmaXdvcmtzcGFjZaFpV29ya3NwYWNleEA4MzVmODdhZGU0MGJkYzhkZjIyYzNiYmQyNzhkNTdlMDQwZmFhMDhjYzZlNDE1ZDZiZDAzODRlYjlhN2U1M2Nla3JlY29yZGVkX2F0GwAGWWexCrIJ"
 }
@@ -198,7 +198,7 @@ Cut v0.0.1-alpha.5: the UX bundle — claim detail view (three-level focus, scro
   "cites": [],
   "rev": "223mtgyskvmgn",
   "seq": 9,
-  "of": 32,
+  "of": 33,
   "content": "p2Rib2R5oWtQdWJsaWNhdGlvbqFlbGF5ZXJnR2l0VHJlZWVjaXRlc4BmYXV0aG9yomNkaWR4OWRpZDprZXk6ekRuYWVTZEJick02TmVZNGk4TW94dUZpeUR0d3gzQUhKOGZqRWQ5NGdySDMxcjhYWWVhZ2VudPZnc3ViamVjdKFlTG9jYWxncmVsZWFzZWlhcnRpZmFjdHOBoWZDb21taXR4KGYyYjZiMjlkY2FkOTVkYzkxNzUxZDA3Y2EyZTU3N2U0ZmI3YzRkNWZpd29ya3NwYWNloWlXb3Jrc3BhY2V4QDgzNWY4N2FkZTQwYmRjOGRmMjJjM2JiZDI3OGQ1N2UwNDBmYWEwOGNjNmU0MTVkNmJkMDM4NGViOWE3ZTUzY2VrcmVjb3JkZWRfYXQbAAZZZ7ENySs="
 }
 ---
@@ -218,7 +218,7 @@ Cut v0.0.1-alpha.5: the UX bundle — claim detail view (three-level focus, scro
   ],
   "rev": "223mth3s2liye",
   "seq": 10,
-  "of": 32,
+  "of": 33,
   "text_len": 396,
   "content": "p2Rib2R5oWZSZXN1bHShZHRleHRgZWNpdGVzgdgqWCUAAXESIPE+rX/F/MznSHDmcFkTL24tEzTTUYgl2ym9j5oc+D0JZmF1dGhvcqJjZGlkeDlkaWQ6a2V5OnpEbmFlU2RCYnJNNk5lWTRpOE1veHVGaXlEdHd4M0FISjhmakVkOTRnckgzMXI4WFllYWdlbnT2Z3N1YmplY3ShZUxvY2FsZ3JlbGVhc2VpYXJ0aWZhY3RzgaFmQ29tbWl0eCgyZDMwYzU0NDQ0M2M4NGRiZTk2M2NkYWEyYTA2Zjg2ZWMwZTgzOThjaXdvcmtzcGFjZaFpV29ya3NwYWNleEA4MzVmODdhZGU0MGJkYzhkZjIyYzNiYmQyNzhkNTdlMDQwZmFhMDhjYzZlNDE1ZDZiZDAzODRlYjlhN2U1M2Nla3JlY29yZGVkX2F0GwAGWWhwCLtb"
 }
@@ -239,7 +239,7 @@ Cut v0.0.1-alpha.6: the unified-fold performance refactor — the whole TUI deri
   "cites": [],
   "rev": "223mth3s2rryh",
   "seq": 11,
-  "of": 32,
+  "of": 33,
   "content": "p2Rib2R5oWtQdWJsaWNhdGlvbqFlbGF5ZXJnR2l0VHJlZWVjaXRlc4BmYXV0aG9yomNkaWR4OWRpZDprZXk6ekRuYWVTZEJick02TmVZNGk4TW94dUZpeUR0d3gzQUhKOGZqRWQ5NGdySDMxcjhYWWVhZ2VudPZnc3ViamVjdKFlTG9jYWxncmVsZWFzZWlhcnRpZmFjdHOBoWZDb21taXR4KDJkMzBjNTQ0NDQzYzg0ZGJlOTYzY2RhYTJhMDZmODZlYzBlODM5OGNpd29ya3NwYWNloWlXb3Jrc3BhY2V4QDgzNWY4N2FkZTQwYmRjOGRmMjJjM2JiZDI3OGQ1N2UwNDBmYWEwOGNjNmU0MTVkNmJkMDM4NGViOWE3ZTUzY2VrcmVjb3JkZWRfYXQbAAZZaHAL318="
 }
 ---
@@ -259,7 +259,7 @@ Cut v0.0.1-alpha.6: the unified-fold performance refactor — the whole TUI deri
   ],
   "rev": "223mthbcuzizn",
   "seq": 12,
-  "of": 32,
+  "of": 33,
   "text_len": 502,
   "content": "p2Rib2R5oWZSZXN1bHShZHRleHRgZWNpdGVzgdgqWCUAAXESILvqAmte+LWrA4OsL+znozNvSZdaxf8M2lvtLTtWOAhdZmF1dGhvcqJjZGlkeDlkaWQ6a2V5OnpEbmFlU2RCYnJNNk5lWTRpOE1veHVGaXlEdHd4M0FISjhmakVkOTRnckgzMXI4WFllYWdlbnT2Z3N1YmplY3ShZUxvY2FsZ3JlbGVhc2VpYXJ0aWZhY3RzgaFmQ29tbWl0eChmYmFkZTMwYzI0OTU2OTczZTdlMGMyZTRlOGUxNzUwNDJjZjlkZjMxaXdvcmtzcGFjZaFpV29ya3NwYWNleEA4MzVmODdhZGU0MGJkYzhkZjIyYzNiYmQyNzhkNTdlMDQwZmFhMDhjYzZlNDE1ZDZiZDAzODRlYjlhN2U1M2Nla3JlY29yZGVkX2F0GwAGWWnRr7uJ"
 }
@@ -280,7 +280,7 @@ Cut v0.0.1-alpha.7: the collapsible tree left pane ([my work] / [day] sections),
   "cites": [],
   "rev": "223mthbcvadh2",
   "seq": 13,
-  "of": 32,
+  "of": 33,
   "content": "p2Rib2R5oWtQdWJsaWNhdGlvbqFlbGF5ZXJnR2l0VHJlZWVjaXRlc4BmYXV0aG9yomNkaWR4OWRpZDprZXk6ekRuYWVTZEJick02TmVZNGk4TW94dUZpeUR0d3gzQUhKOGZqRWQ5NGdySDMxcjhYWWVhZ2VudPZnc3ViamVjdKFlTG9jYWxncmVsZWFzZWlhcnRpZmFjdHOBoWZDb21taXR4KGZiYWRlMzBjMjQ5NTY5NzNlN2UwYzJlNGU4ZTE3NTA0MmNmOWRmMzFpd29ya3NwYWNloWlXb3Jrc3BhY2V4QDgzNWY4N2FkZTQwYmRjOGRmMjJjM2JiZDI3OGQ1N2UwNDBmYWEwOGNjNmU0MTVkNmJkMDM4NGViOWE3ZTUzY2VrcmVjb3JkZWRfYXQbAAZZadGzJTI="
 }
 ---
@@ -298,7 +298,7 @@ Cut v0.0.1-alpha.7: the collapsible tree left pane ([my work] / [day] sections),
   "cites": [],
   "rev": "223mthywhz5dl",
   "seq": 14,
-  "of": 32,
+  "of": 33,
   "text_len": 841,
   "content": "p2Rib2R5oWZSZXN1bHShZHRleHRgZWNpdGVzgGZhdXRob3KiY2RpZHg5ZGlkOmtleTp6RG5hZVNkQmJyTTZOZVk0aThNb3h1Rml5RHR3eDNBSEo4ZmpFZDk0Z3JIMzFyOFhZZWFnZW509mdzdWJqZWN0oWVMb2NhbGdyZWxlYXNlaWFydGlmYWN0c4GhZkNvbW1pdHgoZjUwYjAxZTdjODkwYTYzOGFkZGE3NzUwMGUyMjYxZDA5MjAxOWQ3MWl3b3Jrc3BhY2WhaVdvcmtzcGFjZXhAODM1Zjg3YWRlNDBiZGM4ZGYyMmMzYmJkMjc4ZDU3ZTA0MGZhYTA4Y2M2ZTQxNWQ2YmQwMzg0ZWI5YTdlNTNjZWtyZWNvcmRlZF9hdBsABllvuN+MyQ=="
 }
@@ -319,7 +319,7 @@ Cut v0.0.1-alpha.8: the path-aggregated left-pane tree. Subjects now render as a
   "cites": [],
   "rev": "223mthyyme6v4",
   "seq": 15,
-  "of": 32,
+  "of": 33,
   "content": "p2Rib2R5oWtQdWJsaWNhdGlvbqFlbGF5ZXJnR2l0VHJlZWVjaXRlc4BmYXV0aG9yomNkaWR4OWRpZDprZXk6ekRuYWVTZEJick02TmVZNGk4TW94dUZpeUR0d3gzQUhKOGZqRWQ5NGdySDMxcjhYWWVhZ2VudPZnc3ViamVjdKFlTG9jYWxncmVsZWFzZWlhcnRpZmFjdHOBoWZDb21taXR4KGY1MGIwMWU3Yzg5MGE2MzhhZGRhNzc1MDBlMjI2MWQwOTIwMTlkNzFpd29ya3NwYWNloWlXb3Jrc3BhY2V4QDgzNWY4N2FkZTQwYmRjOGRmMjJjM2JiZDI3OGQ1N2UwNDBmYWEwOGNjNmU0MTVkNmJkMDM4NGViOWE3ZTUzY2VrcmVjb3JkZWRfYXQbAAZZb70lEvM="
 }
 ---
@@ -337,7 +337,7 @@ Cut v0.0.1-alpha.8: the path-aggregated left-pane tree. Subjects now render as a
   "cites": [],
   "rev": "223mtic2c4b5a",
   "seq": 16,
-  "of": 32,
+  "of": 33,
   "text_len": 1022,
   "content": "p2Rib2R5oWZSZXN1bHShZHRleHRgZWNpdGVzgGZhdXRob3KiY2RpZHg5ZGlkOmtleTp6RG5hZVNkQmJyTTZOZVk0aThNb3h1Rml5RHR3eDNBSEo4ZmpFZDk0Z3JIMzFyOFhZZWFnZW509mdzdWJqZWN0oWVMb2NhbGdyZWxlYXNlaWFydGlmYWN0c4GhZkNvbW1pdHgoMzAyYmEzZGI5MWY4YmVlMjNlOTIyYmQzMWZlNzk5NGY3YmNjZDlhNGl3b3Jrc3BhY2WhaVdvcmtzcGFjZXhAYTIxMzIzZmM2OTcyNjdjMmMzNjg3ODU3NTg2OGQ0OGUzOTMyZTQzOGQwNzcwOWIwYTZlYmNmMjRkMmFkZjhlZmtyZWNvcmRlZF9hdBsABllyAIEb+Q=="
 }
@@ -358,7 +358,7 @@ Cut v0.0.1-alpha.9: cospan now renders day's full block vocabulary, and the proj
   "cites": [],
   "rev": "223mtic2cdwim",
   "seq": 17,
-  "of": 32,
+  "of": 33,
   "content": "p2Rib2R5oWtQdWJsaWNhdGlvbqFlbGF5ZXJnR2l0VHJlZWVjaXRlc4BmYXV0aG9yomNkaWR4OWRpZDprZXk6ekRuYWVTZEJick02TmVZNGk4TW94dUZpeUR0d3gzQUhKOGZqRWQ5NGdySDMxcjhYWWVhZ2VudPZnc3ViamVjdKFlTG9jYWxncmVsZWFzZWlhcnRpZmFjdHOBoWZDb21taXR4KDMwMmJhM2RiOTFmOGJlZTIzZTkyMmJkMzFmZTc5OTRmN2JjY2Q5YTRpd29ya3NwYWNloWlXb3Jrc3BhY2V4QGEyMTMyM2ZjNjk3MjY3YzJjMzY4Nzg1NzU4NjhkNDhlMzkzMmU0MzhkMDc3MDliMGE2ZWJjZjI0ZDJhZGY4ZWZrcmVjb3JkZWRfYXQbAAZZcgCE8V8="
 }
 ---
@@ -376,7 +376,7 @@ Cut v0.0.1-alpha.9: cospan now renders day's full block vocabulary, and the proj
   "cites": [],
   "rev": "223mtigs76okb",
   "seq": 18,
-  "of": 32,
+  "of": 33,
   "text_len": 1153,
   "content": "p2Rib2R5oWZSZXN1bHShZHRleHRgZWNpdGVzgGZhdXRob3KiY2RpZHg5ZGlkOmtleTp6RG5hZVNkQmJyTTZOZVk0aThNb3h1Rml5RHR3eDNBSEo4ZmpFZDk0Z3JIMzFyOFhZZWFnZW509mdzdWJqZWN0oWVMb2NhbGdyZWxlYXNlaWFydGlmYWN0c4GhZkNvbW1pdHgoOGVkMTE0N2U4ZDlmZjJmMDY0YjQxZWQ2NzFkY2E2YjhmMzQwNThiMWl3b3Jrc3BhY2WhaVdvcmtzcGFjZXhAYTIxMzIzZmM2OTcyNjdjMmMzNjg3ODU3NTg2OGQ0OGUzOTMyZTQzOGQwNzcwOWIwYTZlYmNmMjRkMmFkZjhlZmtyZWNvcmRlZF9hdBsABllzMFJRng=="
 }
@@ -397,7 +397,7 @@ Cut v0.0.1-alpha.10: the comment gutter view (P1) — telos/comment-roundtrip ma
   "cites": [],
   "rev": "223mtigs7g3qx",
   "seq": 19,
-  "of": 32,
+  "of": 33,
   "content": "p2Rib2R5oWtQdWJsaWNhdGlvbqFlbGF5ZXJnR2l0VHJlZWVjaXRlc4BmYXV0aG9yomNkaWR4OWRpZDprZXk6ekRuYWVTZEJick02TmVZNGk4TW94dUZpeUR0d3gzQUhKOGZqRWQ5NGdySDMxcjhYWWVhZ2VudPZnc3ViamVjdKFlTG9jYWxncmVsZWFzZWlhcnRpZmFjdHOBoWZDb21taXR4KDhlZDExNDdlOGQ5ZmYyZjA2NGI0MWVkNjcxZGNhNmI4ZjM0MDU4YjFpd29ya3NwYWNloWlXb3Jrc3BhY2V4QGEyMTMyM2ZjNjk3MjY3YzJjMzY4Nzg1NzU4NjhkNDhlMzkzMmU0MzhkMDc3MDliMGE2ZWJjZjI0ZDJhZGY4ZWZrcmVjb3JkZWRfYXQbAAZZczBWBnM="
 }
 ---
@@ -415,7 +415,7 @@ Cut v0.0.1-alpha.10: the comment gutter view (P1) — telos/comment-roundtrip ma
   "cites": [],
   "rev": "223mtilvesu7i",
   "seq": 20,
-  "of": 32,
+  "of": 33,
   "text_len": 977,
   "content": "p2Rib2R5oWZSZXN1bHShZHRleHRgZWNpdGVzgGZhdXRob3KiY2RpZHg5ZGlkOmtleTp6RG5hZVNkQmJyTTZOZVk0aThNb3h1Rml5RHR3eDNBSEo4ZmpFZDk0Z3JIMzFyOFhZZWFnZW509mdzdWJqZWN0oWVMb2NhbGdyZWxlYXNlaWFydGlmYWN0c4GhZkNvbW1pdHgoZTIyZmUxMmZiMjU0ZmI0ZjI2MWIzNGY3ZTE0OWY0NWJhMzZlZGYyZWl3b3Jrc3BhY2WhaVdvcmtzcGFjZXhAYTIxMzIzZmM2OTcyNjdjMmMzNjg3ODU3NTg2OGQ0OGUzOTMyZTQzOGQwNzcwOWIwYTZlYmNmMjRkMmFkZjhlZmtyZWNvcmRlZF9hdBsABll0dqxoSA=="
 }
@@ -436,7 +436,7 @@ Cut v0.0.1-alpha.11: comment threads + two display cleanups, shipped as PR #5 an
   "cites": [],
   "rev": "223mtilvf3u4x",
   "seq": 21,
-  "of": 32,
+  "of": 33,
   "content": "p2Rib2R5oWtQdWJsaWNhdGlvbqFlbGF5ZXJnR2l0VHJlZWVjaXRlc4BmYXV0aG9yomNkaWR4OWRpZDprZXk6ekRuYWVTZEJick02TmVZNGk4TW94dUZpeUR0d3gzQUhKOGZqRWQ5NGdySDMxcjhYWWVhZ2VudPZnc3ViamVjdKFlTG9jYWxncmVsZWFzZWlhcnRpZmFjdHOBoWZDb21taXR4KGUyMmZlMTJmYjI1NGZiNGYyNjFiMzRmN2UxNDlmNDViYTM2ZWRmMmVpd29ya3NwYWNloWlXb3Jrc3BhY2V4QGEyMTMyM2ZjNjk3MjY3YzJjMzY4Nzg1NzU4NjhkNDhlMzkzMmU0MzhkMDc3MDliMGE2ZWJjZjI0ZDJhZGY4ZWZrcmVjb3JkZWRfYXQbAAZZdHaw5/E="
 }
 ---
@@ -454,7 +454,7 @@ Cut v0.0.1-alpha.11: comment threads + two display cleanups, shipped as PR #5 an
   "cites": [],
   "rev": "223mtjhtqtttv",
   "seq": 22,
-  "of": 32,
+  "of": 33,
   "text_len": 1177,
   "content": "p2Rib2R5oWZSZXN1bHShZHRleHRgZWNpdGVzgGZhdXRob3KiY2RpZHg5ZGlkOmtleTp6RG5hZVNkQmJyTTZOZVk0aThNb3h1Rml5RHR3eDNBSEo4ZmpFZDk0Z3JIMzFyOFhZZWFnZW509mdzdWJqZWN0oWVMb2NhbGdyZWxlYXNlaWFydGlmYWN0c4GhZkNvbW1pdHgoY2ExNTQ0M2I5MmJhYjdjMjc3NGRiOWYxYTIyOTA3Y2IzZTM1ODc4Nml3b3Jrc3BhY2WhaVdvcmtzcGFjZXhAYTIxMzIzZmM2OTcyNjdjMmMzNjg3ODU3NTg2OGQ0OGUzOTMyZTQzOGQwNzcwOWIwYTZlYmNmMjRkMmFkZjhlZmtyZWNvcmRlZF9hdBsABll7c2zkxw=="
 }
@@ -475,7 +475,7 @@ Cut v0.0.1-alpha.12: the comment view complete, banking the polish arc before th
   "cites": [],
   "rev": "223mtjhtr5hqc",
   "seq": 23,
-  "of": 32,
+  "of": 33,
   "content": "p2Rib2R5oWtQdWJsaWNhdGlvbqFlbGF5ZXJnR2l0VHJlZWVjaXRlc4BmYXV0aG9yomNkaWR4OWRpZDprZXk6ekRuYWVTZEJick02TmVZNGk4TW94dUZpeUR0d3gzQUhKOGZqRWQ5NGdySDMxcjhYWWVhZ2VudPZnc3ViamVjdKFlTG9jYWxncmVsZWFzZWlhcnRpZmFjdHOBoWZDb21taXR4KGNhMTU0NDNiOTJiYWI3YzI3NzRkYjlmMWEyMjkwN2NiM2UzNTg3ODZpd29ya3NwYWNloWlXb3Jrc3BhY2V4QGEyMTMyM2ZjNjk3MjY3YzJjMzY4Nzg1NzU4NjhkNDhlMzkzMmU0MzhkMDc3MDliMGE2ZWJjZjI0ZDJhZGY4ZWZrcmVjb3JkZWRfYXQbAAZZe3NxtlU="
 }
 ---
@@ -493,7 +493,7 @@ Cut v0.0.1-alpha.12: the comment view complete, banking the polish arc before th
   "cites": [],
   "rev": "223mtjxoxwudo",
   "seq": 24,
-  "of": 32,
+  "of": 33,
   "text_len": 1100,
   "content": "p2Rib2R5oWZSZXN1bHShZHRleHRgZWNpdGVzgGZhdXRob3KiY2RpZHg5ZGlkOmtleTp6RG5hZVNkQmJyTTZOZVk0aThNb3h1Rml5RHR3eDNBSEo4ZmpFZDk0Z3JIMzFyOFhZZWFnZW509mdzdWJqZWN0oWVMb2NhbGdyZWxlYXNlaWFydGlmYWN0c4GhZkNvbW1pdHgoMmM2MjI2OWI5NDk2N2Q4MTkyNGNiNmI2YWVlYWMzNzE5ZjM2OTUyNGl3b3Jrc3BhY2WhaVdvcmtzcGFjZXhAYTIxMzIzZmM2OTcyNjdjMmMzNjg3ODU3NTg2OGQ0OGUzOTMyZTQzOGQwNzcwOWIwYTZlYmNmMjRkMmFkZjhlZmtyZWNvcmRlZF9hdBsABll/ad5oPg=="
 }
@@ -514,7 +514,7 @@ Cut v0.0.1-alpha.13: the UI-v2 restructure begins, shipped via PR #8 and #9 -> g
   "cites": [],
   "rev": "223mtjxoyazvv",
   "seq": 25,
-  "of": 32,
+  "of": 33,
   "content": "p2Rib2R5oWtQdWJsaWNhdGlvbqFlbGF5ZXJnR2l0VHJlZWVjaXRlc4BmYXV0aG9yomNkaWR4OWRpZDprZXk6ekRuYWVTZEJick02TmVZNGk4TW94dUZpeUR0d3gzQUhKOGZqRWQ5NGdySDMxcjhYWWVhZ2VudPZnc3ViamVjdKFlTG9jYWxncmVsZWFzZWlhcnRpZmFjdHOBoWZDb21taXR4KDJjNjIyNjliOTQ5NjdkODE5MjRjYjZiNmFlZWFjMzcxOWYzNjk1MjRpd29ya3NwYWNloWlXb3Jrc3BhY2V4QGEyMTMyM2ZjNjk3MjY3YzJjMzY4Nzg1NzU4NjhkNDhlMzkzMmU0MzhkMDc3MDliMGE2ZWJjZjI0ZDJhZGY4ZWZrcmVjb3JkZWRfYXQbAAZZf2njfwc="
 }
 ---
@@ -532,7 +532,7 @@ Cut v0.0.1-alpha.13: the UI-v2 restructure begins, shipped via PR #8 and #9 -> g
   "cites": [],
   "rev": "223mtklrwhhdq",
   "seq": 26,
-  "of": 32,
+  "of": 33,
   "text_len": 1218,
   "content": "p2Rib2R5oWZSZXN1bHShZHRleHRgZWNpdGVzgGZhdXRob3KiY2RpZHg5ZGlkOmtleTp6RG5hZVNkQmJyTTZOZVk0aThNb3h1Rml5RHR3eDNBSEo4ZmpFZDk0Z3JIMzFyOFhZZWFnZW509mdzdWJqZWN0oWVMb2NhbGdyZWxlYXNlaWFydGlmYWN0c4GhZkNvbW1pdHgoODhkMGMyNDg2MDQ5MTFjZGI2ZTVmMWEyMWQ5ODJlNDIxZTYzZWU3OWl3b3Jrc3BhY2WhaVdvcmtzcGFjZXhAYTIxMzIzZmM2OTcyNjdjMmMzNjg3ODU3NTg2OGQ0OGUzOTMyZTQzOGQwNzcwOWIwYTZlYmNmMjRkMmFkZjhlZmtyZWNvcmRlZF9hdBsABlmEb8a0ww=="
 }
@@ -553,7 +553,7 @@ Cut v0.0.1-alpha.14: the atom flowchart, shipped via PR #10 -> green CI -> squas
   "cites": [],
   "rev": "223mtklrwrnrc",
   "seq": 27,
-  "of": 32,
+  "of": 33,
   "content": "p2Rib2R5oWtQdWJsaWNhdGlvbqFlbGF5ZXJnR2l0VHJlZWVjaXRlc4BmYXV0aG9yomNkaWR4OWRpZDprZXk6ekRuYWVTZEJick02TmVZNGk4TW94dUZpeUR0d3gzQUhKOGZqRWQ5NGdySDMxcjhYWWVhZ2VudPZnc3ViamVjdKFlTG9jYWxncmVsZWFzZWlhcnRpZmFjdHOBoWZDb21taXR4KDg4ZDBjMjQ4NjA0OTExY2RiNmU1ZjFhMjFkOTgyZTQyMWU2M2VlNzlpd29ya3NwYWNloWlXb3Jrc3BhY2V4QGEyMTMyM2ZjNjk3MjY3YzJjMzY4Nzg1NzU4NjhkNDhlMzkzMmU0MzhkMDc3MDliMGE2ZWJjZjI0ZDJhZGY4ZWZrcmVjb3JkZWRfYXQbAAZZhG/Lzno="
 }
 ---
@@ -571,7 +571,7 @@ Cut v0.0.1-alpha.14: the atom flowchart, shipped via PR #10 -> green CI -> squas
   "cites": [],
   "rev": "223mtmzf3dxhq",
   "seq": 28,
-  "of": 32,
+  "of": 33,
   "text_len": 847,
   "content": "p2Rib2R5oWZSZXN1bHShZHRleHRgZWNpdGVzgGZhdXRob3KiY2RpZHg5ZGlkOmtleTp6RG5hZVNkQmJyTTZOZVk0aThNb3h1Rml5RHR3eDNBSEo4ZmpFZDk0Z3JIMzFyOFhZZWFnZW509mdzdWJqZWN0oWVMb2NhbGdyZWxlYXNlaWFydGlmYWN0c4GhZkNvbW1pdHgoOTM2NWMzMzVlMDUwNWMxMWFhODViYjQyNTIyZDViYmFiOTY4M2E0ZWl3b3Jrc3BhY2WhaVdvcmtzcGFjZXhAYTIxMzIzZmM2OTcyNjdjMmMzNjg3ODU3NTg2OGQ0OGUzOTMyZTQzOGQwNzcwOWIwYTZlYmNmMjRkMmFkZjhlZmtyZWNvcmRlZF9hdBsABlmX1hTxtA=="
 }
@@ -592,7 +592,7 @@ Cut v0.0.1-alpha.15: the Chat tab, shipped via PR #11 -> green CI -> squash-merg
   "cites": [],
   "rev": "223mtmzf3nj3b",
   "seq": 29,
-  "of": 32,
+  "of": 33,
   "content": "p2Rib2R5oWtQdWJsaWNhdGlvbqFlbGF5ZXJnR2l0VHJlZWVjaXRlc4BmYXV0aG9yomNkaWR4OWRpZDprZXk6ekRuYWVTZEJick02TmVZNGk4TW94dUZpeUR0d3gzQUhKOGZqRWQ5NGdySDMxcjhYWWVhZ2VudPZnc3ViamVjdKFlTG9jYWxncmVsZWFzZWlhcnRpZmFjdHOBoWZDb21taXR4KDkzNjVjMzM1ZTA1MDVjMTFhYTg1YmI0MjUyMmQ1YmJhYjk2ODNhNGVpd29ya3NwYWNloWlXb3Jrc3BhY2V4QGEyMTMyM2ZjNjk3MjY3YzJjMzY4Nzg1NzU4NjhkNDhlMzkzMmU0MzhkMDc3MDliMGE2ZWJjZjI0ZDJhZGY4ZWZrcmVjb3JkZWRfYXQbAAZZl9YZu74="
 }
 ---
@@ -610,7 +610,7 @@ Cut v0.0.1-alpha.15: the Chat tab, shipped via PR #11 -> green CI -> squash-merg
   "cites": [],
   "rev": "223mtov62jlpg",
   "seq": 30,
-  "of": 32,
+  "of": 33,
   "text_len": 1194,
   "content": "p2Rib2R5oWZSZXN1bHShZHRleHRgZWNpdGVzgGZhdXRob3KiY2RpZHg5ZGlkOmtleTp6RG5hZVNkQmJyTTZOZVk0aThNb3h1Rml5RHR3eDNBSEo4ZmpFZDk0Z3JIMzFyOFhZZWFnZW509mdzdWJqZWN0oWVMb2NhbGdyZWxlYXNlaWFydGlmYWN0c4GhZkNvbW1pdHgoMDBjZWI5NTY3ZmIwNTcxODUwOGI5M2IyMTYxNjdiN2M5Nzk0NjVlYWl3b3Jrc3BhY2WhaVdvcmtzcGFjZXhAYTIxMzIzZmM2OTcyNjdjMmMzNjg3ODU3NTg2OGQ0OGUzOTMyZTQzOGQwNzcwOWIwYTZlYmNmMjRkMmFkZjhlZmtyZWNvcmRlZF9hdBsABlmmyAfGPw=="
 }
@@ -631,10 +631,31 @@ Cut v0.0.1-alpha.16: two Process/Chat refinements merged since alpha.15, each sh
   "cites": [],
   "rev": "223mtu5ynjid4",
   "seq": 31,
-  "of": 32,
+  "of": 33,
   "text_len": 911,
   "content": "p2Rib2R5oWZSZXN1bHShZHRleHRgZWNpdGVzgGZhdXRob3KiY2RpZHg5ZGlkOmtleTp6RG5hZVNkQmJyTTZOZVk0aThNb3h1Rml5RHR3eDNBSEo4ZmpFZDk0Z3JIMzFyOFhZZWFnZW509mdzdWJqZWN0oWVMb2NhbGdyZWxlYXNlaWFydGlmYWN0c4GhZkNvbW1pdHgoN2ZlY2ZiYWI2NGM4Nzc2ZGJmNzBkMzk4NzVjODMyYzk0ZmNhY2ZkNGl3b3Jrc3BhY2WhaVdvcmtzcGFjZXhAYTIxMzIzZmM2OTcyNjdjMmMzNjg3ODU3NTg2OGQ0OGUzOTMyZTQzOGQwNzcwOWIwYTZlYmNmMjRkMmFkZjhlZmtyZWNvcmRlZF9hdBsABlnQ/Te4rQ=="
 }
 ---
 
 Cut v0.0.1-alpha.17: the comment-authoring milestone, complete through the agent-reachable MCP round trip. Two features merged since alpha.16, each via PR -> green CI -> squash-merge. (1) S4 promote-a-comment-to-a-durable-kan-claim (PR #20, 85facbf): a sidecar comment can be promoted to an immutable comment/<file> kan claim carrying the comment id; the sidecar is never mutated (re-promote appends + --cites prior), and the promoted state is read back from the in-memory fold and shown as a diamond indicator. (2) S5 the comment MCP server (PR #21, 964416b): agents read and write the comment layer over an rmcp stdio transport (cospan mcp), backed by a transport-agnostic tool core; a path-traversal guard and plugin packaging (.claude-plugin + .mcp.json + bootstrap hook) landed alongside. telos/comment-roundtrip witness is now MATERIAL. Version bump only in this commit; features shipped on their own PRs.
+***8<***
+---
+{
+  "v": 3,
+  "cid": "bafyreicibhlsnb2capvjioaoklt5x3ajd6gbxseojrsclf4hfczcdiyabq",
+  "sig": "d0bdb86807d6828b96e6d3b2f101819da804cdc082e14eb6ce109a7e0f5333fb13cd9cf62201f8564653abbc216ed60ee17c4c7135bc3dc5573e4225dfd68afd",
+  "author": "did:key:zDnaeSdBbrM6NeY4i8MoxuFiyDtwx3AHJ8fjEd94grH31r8XY",
+  "subject": {
+    "local": "release"
+  },
+  "kind": "result",
+  "cites": [],
+  "rev": "223mtwooaayjs",
+  "seq": 32,
+  "of": 33,
+  "text_len": 1221,
+  "content": "p2Rib2R5oWZSZXN1bHShZHRleHRgZWNpdGVzgGZhdXRob3KiY2RpZHg5ZGlkOmtleTp6RG5hZVNkQmJyTTZOZVk0aThNb3h1Rml5RHR3eDNBSEo4ZmpFZDk0Z3JIMzFyOFhZZWFnZW509mdzdWJqZWN0oWVMb2NhbGdyZWxlYXNlaWFydGlmYWN0c4GhZkNvbW1pdHgoMGI0Mzk1NjZlYjY5OGU2OWU1ZDYzZTU2N2FmZjY4OTJkMDRiM2RkNWl3b3Jrc3BhY2WhaVdvcmtzcGFjZXhAYTIxMzIzZmM2OTcyNjdjMmMzNjg3ODU3NTg2OGQ0OGUzOTMyZTQzOGQwNzcwOWIwYTZlYmNmMjRkMmFkZjhlZmtyZWNvcmRlZF9hdBsABlnlKGN4hw=="
+}
+---
+
+Cut v0.0.1-alpha.18: the comment-view vision from .dropbox/05-views-ux.md section (2), shipped in two slices each via PR -> green CI -> squash-merge. Slice A (comment-editor-layout, PR #23, ed5649a): the Comments-tab editor-view redesign -- a toggleable file tray (t), the fixed bottom strip removed with its two jobs rehomed (a pinned unresolvable band that stays visible at every width, and the full thread moved to an actionable Enter popup), a full-row comment background band, sticky scrolling for the comment cursor and the new-comment line picker, PgUp/PgDn in the picker, and a dynamically-positioned width-capped compose popup. Slice B (comment-editor-diffs, PR #24, f7edc44): live git working-tree diffs in the code pane -- a new src/diff.rs parses git diff HEAD into current-file-line-indexed added/changed/deletions, rendered as a D-toggleable sign column (+/~) with tints that yield to the comment band and a red gutter-cell highlight framing deletions, shown in all views, recomputed on the poll-and-fold mtime gate. Both slices reviewed BLOCK->fixed->SHIP by independent hostile Opus reviewers and eyeballed by the operator. telos/comment-roundtrip advanced. 192 tests, clippy -D warnings clean, fmt clean.
