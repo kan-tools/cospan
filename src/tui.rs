@@ -3004,7 +3004,9 @@ pub fn claim_detail(
     out
 }
 
-fn head_mtime(repo: &Path) -> Option<SystemTime> {
+/// mtime of the kan log's `HEAD`, the poll signal both the TUI and the headless
+/// server (`crate::server`) gate refolds on. `None` when it can't be read.
+pub fn head_mtime(repo: &Path) -> Option<SystemTime> {
     std::fs::metadata(repo.join(".kan/log/HEAD"))
         .and_then(|m| m.modified())
         .ok()
