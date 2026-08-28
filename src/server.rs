@@ -2,6 +2,10 @@
 //! headless and exposed over a localhost HTTP/WebSocket API.
 //!
 //! Endpoints:
+//!   * `GET /`                — a self-contained mobile-first HTML view of the
+//!     fold (fetches `/fold`, live-updates over `/stream`). One embedded page, no
+//!     separate codebase or build step — the disposable way to give the read API
+//!     a human UX ahead of the full Phase-2 web client.
 //!   * `GET /fold`            — the current `substrate::Fold` as a JSON snapshot.
 //!   * `WS  /stream`          — the serialized `Fold` pushed on every refold; the
 //!     current snapshot arrives on connect.
@@ -21,7 +25,7 @@ use crate::substrate::{self, Fold};
 use crate::{mcp, tui};
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::extract::{Query, State};
-use axum::response::{IntoResponse, Json, Response};
+use axum::response::{Html, IntoResponse, Json, Response};
 use axum::routing::get;
 use axum::Router;
 use serde::Deserialize;
@@ -124,7 +128,19 @@ async fn fold_loop(shared: Shared) {
     }
 }
 
+/// The single-page human view, embedded in the binary at compile time so `serve`
+/// stays one self-contained, disposable process — no asset directory to ship, no
+/// build step. Served at `GET /`. It is a pure client of `/fold` + `/stream`;
+/// all CSS/JS is inline, so it loads under any CSP and behind a plain proxy
+/// (e.g. `tailscale serve`) with no external requests.
+const INDEX_HTML: &str = include_str!("web/index.html");
+
 // --- Handlers ---------------------------------------------------------------
+
+/// `GET /` — the embedded mobile-first HTML view of the fold.
+async fn get_index() -> Html<&'static str> {
+    Html(INDEX_HTML)
+}
 
 /// `GET /fold` — the current serialized `Fold`.
 async fn get_fold(State(shared): State<Shared>) -> Response {
@@ -219,6 +235,7 @@ async fn get_thread(
 /// Split out so a test can drive the exact app the server serves.
 pub fn app(shared: Shared) -> Router {
     Router::new()
+        .route("/", get(get_index))
         .route("/fold", get(get_fold))
         .route("/stream", get(get_stream))
         .route("/comments", get(get_comments))
@@ -376,6 +393,24 @@ mod tests {
         let v = mcp::list_comments(&repo, "../../etc/passwd");
         assert!(v.get("error").is_some(), "escaping read must error: {v}");
         std::fs::remove_dir_all(&repo).ok();
+    }
+
+    /// The embedded human view is present and wired to the API it consumes — a
+    /// non-empty page that references `/fold` and `/stream`, so an accidentally
+    /// empty `include_str!` or a renamed endpoint is caught at CI without needing
+    /// a running server.
+    #[test]
+    fn index_html_is_embedded_and_wired_to_the_api() {
+        assert!(INDEX_HTML.len() > 500, "index page looks empty");
+        assert!(
+            INDEX_HTML.contains("<title>cospan</title>"),
+            "not the cospan page"
+        );
+        assert!(INDEX_HTML.contains("/fold"), "page must fetch /fold");
+        assert!(
+            INDEX_HTML.contains("/stream"),
+            "page must subscribe to /stream"
+        );
     }
 
     /// AC-6 (the isolated fold-loop-step half): call `fold_tick` directly, with no

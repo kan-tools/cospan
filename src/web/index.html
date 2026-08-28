@@ -1,0 +1,376 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="color-scheme" content="dark light" />
+<title>cospan</title>
+<style>
+  :root {
+    --bg: #0d0f14; --bg-2: #0b0d11;
+    --panel: #161922; --panel-2: #1c2029; --edge: #262b36; --edge-2: #313745;
+    --ink: #e8eaf0; --dim: #9aa3b4; --faint: #656d7e;
+    --accent: #7aa2f7; --accent-2: #9d7cf5;
+    --good: #7ee787; --warn: #e3b341; --bad: #f7768e;
+    --telos: #bb9af7; --tension: #e3b341;
+    --nav-h: 62px;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; padding: 0; height: 100%; }
+  body {
+    background: var(--bg); color: var(--ink);
+    font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    overscroll-behavior-y: none;
+  }
+  code, pre, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+
+  /* ---- header ---- */
+  header {
+    position: sticky; top: 0; z-index: 20;
+    display: flex; align-items: center; gap: .55rem;
+    padding: calc(.7rem + env(safe-area-inset-top)) 1.1rem .7rem;
+    background: linear-gradient(180deg, rgba(13,15,20,.92), rgba(13,15,20,.72));
+    backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--edge);
+  }
+  header .logo { font-weight: 700; letter-spacing: .01em; font-size: 1.05rem;
+    background: linear-gradient(90deg, var(--accent), var(--accent-2)); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
+  header .view-name { color: var(--faint); font-size: .78rem; text-transform: uppercase; letter-spacing: .1em; }
+  header .spacer { flex: 1; }
+  .dot { width: .62rem; height: .62rem; border-radius: 50%; background: var(--faint); flex: none; }
+  .dot.live { background: var(--good); animation: pulse 2.4s infinite; }
+  .dot.stale { background: var(--warn); }
+  .dot.dead { background: var(--bad); }
+  @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(126,231,135,.5); } 70% { box-shadow: 0 0 0 .42rem rgba(126,231,135,0); } 100% { box-shadow: 0 0 0 0 rgba(126,231,135,0); } }
+
+  /* ---- layout ---- */
+  main { max-width: 860px; margin: 0 auto; padding: 1rem 1.05rem calc(var(--nav-h) + env(safe-area-inset-bottom) + 1.2rem); }
+  .view { display: none; animation: fade .22s ease; }
+  .view.active { display: block; }
+  @keyframes fade { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+  h2 { font-size: .7rem; text-transform: uppercase; letter-spacing: .13em; color: var(--faint); margin: 1.3rem .2rem .55rem; font-weight: 700; }
+  h2:first-child { margin-top: .2rem; }
+  .card { background: var(--panel); border: 1px solid var(--edge); border-radius: 14px; padding: .85rem .95rem; }
+  .card + .card { margin-top: .55rem; }
+
+  /* ---- hero: current process position ---- */
+  .hero { position: relative; overflow: hidden; border: 1px solid var(--edge-2);
+    background: radial-gradient(120% 140% at 0% 0%, rgba(122,162,247,.14), transparent 55%), var(--panel); padding: 1.05rem 1.05rem 1.1rem; }
+  .hero .lbl { font-size: .68rem; text-transform: uppercase; letter-spacing: .14em; color: var(--faint); }
+  .hero .atom-now { font-size: 1.5rem; font-weight: 700; margin: .25rem 0 .1rem; letter-spacing: -.01em; }
+  .hero .flow { display: flex; align-items: center; gap: .4rem; flex-wrap: wrap; margin-top: .6rem; color: var(--dim); font-size: .82rem; }
+  .hero .arrow { color: var(--faint); }
+  .pill { font-size: .74rem; padding: .22rem .6rem; border-radius: 999px; border: 1px solid var(--edge-2); background: var(--panel-2); color: var(--dim); white-space: nowrap; }
+  .pill.next { color: var(--accent); border-color: rgba(122,162,247,.4); background: rgba(122,162,247,.08); }
+  .hero .inputs { margin-top: .65rem; font-size: .8rem; color: var(--faint); }
+
+  details.raw { margin-top: .6rem; }
+  details.raw > summary { list-style: none; cursor: pointer; color: var(--faint); font-size: .74rem; text-transform: uppercase; letter-spacing: .1em; padding: .2rem 0; }
+  details.raw > summary::-webkit-details-marker { display: none; }
+  details.raw pre { margin: .4rem 0 0; white-space: pre-wrap; word-break: break-word; font-size: .78rem; color: var(--dim); background: var(--bg-2); border: 1px solid var(--edge); border-radius: 10px; padding: .7rem .8rem; }
+
+  .atoms { display: flex; flex-wrap: wrap; gap: .4rem; margin-top: .1rem; }
+  .atom { font-size: .74rem; padding: .3rem .6rem; border: 1px solid var(--edge); border-radius: 10px; color: var(--dim); background: var(--panel); }
+  .atom b { color: var(--ink); font-weight: 600; }
+
+  /* ---- teloi & tensions ---- */
+  .telos { border-left: 3px solid var(--telos); }
+  .telos .title { color: var(--telos); font-weight: 650; }
+  .telos .stmt { color: var(--dim); font-size: .88rem; margin-top: .25rem; }
+  .telos .wit { color: var(--faint); font-size: .73rem; margin-top: .4rem; }
+  .tension { border-left: 3px solid var(--tension); }
+  .tension .pair { color: var(--tension); font-weight: 650; font-size: .85rem; }
+  .tension .why { color: var(--dim); font-size: .85rem; margin-top: .3rem; }
+
+  /* ---- subjects browser ---- */
+  .filter { width: 100%; padding: .7rem .9rem; margin-bottom: .7rem; background: var(--panel); border: 1px solid var(--edge); border-radius: 12px; color: var(--ink); font-size: .92rem; }
+  .filter:focus { outline: none; border-color: var(--accent); }
+  .filter::placeholder { color: var(--faint); }
+  .subj-group { margin-bottom: .7rem; }
+  .subj-group > .gh { display: flex; align-items: center; gap: .5rem; padding: .35rem .25rem; color: var(--faint); font-size: .76rem; text-transform: uppercase; letter-spacing: .08em; }
+  .subj-group > .gh .count { margin-left: auto; text-transform: none; letter-spacing: 0; }
+
+  details.subj { background: var(--panel); border: 1px solid var(--edge); border-radius: 12px; margin: .38rem 0; overflow: hidden; transition: border-color .15s ease; }
+  details.subj[open] { border-color: var(--edge-2); }
+  details.subj > summary { list-style: none; cursor: pointer; padding: .68rem .85rem; display: flex; align-items: center; gap: .55rem; }
+  details.subj > summary::-webkit-details-marker { display: none; }
+  details.subj > summary:active { background: var(--panel-2); }
+  details.subj > summary .name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  details.subj > summary .n { margin-left: auto; color: var(--dim); font-size: .74rem; background: var(--panel-2); border: 1px solid var(--edge); border-radius: 999px; padding: .08rem .55rem; flex: none; }
+  details.subj > summary .chev { color: var(--faint); transition: transform .18s ease; flex: none; }
+  details.subj[open] > summary .chev { transform: rotate(90deg); }
+  details.subj[open] > summary { border-bottom: 1px solid var(--edge); }
+  .claims { padding: .35rem .85rem .65rem; }
+  .claim { padding: .6rem 0; border-top: 1px dashed var(--edge); }
+  .claim:first-child { border-top: none; }
+  .claim .row1 { display: flex; align-items: baseline; gap: .5rem; flex-wrap: wrap; }
+  .kind { font-size: .66rem; text-transform: uppercase; letter-spacing: .06em; padding: .12rem .48rem; border-radius: 6px; background: var(--panel-2); color: var(--dim); border: 1px solid var(--edge); }
+  .kind.Decision { color: #a6c8ff; } .kind.Result { color: var(--good); } .kind.Observation { color: #c8d0dc; }
+  .kind.Plan { color: var(--telos); } .kind.Subject { color: var(--accent); } .kind.Retraction, .kind.Status { color: var(--warn); }
+  .claim .meta { color: var(--faint); font-size: .73rem; margin-left: auto; }
+  .claim .summary { margin-top: .32rem; color: var(--ink); font-size: .9rem; word-break: break-word; }
+  .claim .arts { margin-top: .34rem; display: flex; flex-wrap: wrap; gap: .3rem; }
+  .art { font-size: .67rem; color: var(--faint); background: var(--panel-2); border: 1px solid var(--edge); border-radius: 6px; padding: .06rem .42rem; }
+  .cites { color: var(--faint); font-size: .72rem; margin-top: .3rem; }
+
+  .banner { background: rgba(247,118,142,.12); border: 1px solid var(--bad); color: #ffd7de; border-radius: 12px; padding: .65rem .85rem; font-size: .82rem; margin-bottom: 1rem; }
+  .empty { color: var(--faint); text-align: center; padding: 2.5rem 1rem; }
+
+  /* ---- bottom tab bar ---- */
+  nav {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 30;
+    display: flex; justify-content: center; gap: .2rem;
+    padding: .3rem .5rem calc(.3rem + env(safe-area-inset-bottom));
+    background: linear-gradient(0deg, rgba(11,13,17,.96), rgba(11,13,17,.86));
+    backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+    border-top: 1px solid var(--edge);
+  }
+  nav button {
+    flex: 1; max-width: 150px; appearance: none; border: none; background: none; cursor: pointer;
+    display: flex; flex-direction: column; align-items: center; gap: .12rem;
+    padding: .5rem .3rem .4rem; color: var(--faint); font-size: .68rem; letter-spacing: .03em;
+    border-radius: 12px; position: relative; transition: color .15s ease;
+  }
+  nav button .ic { font-size: 1.15rem; line-height: 1; }
+  nav button .badge { position: absolute; top: .32rem; right: 50%; transform: translateX(1.35rem);
+    font-size: .58rem; background: var(--accent); color: #0b0d11; border-radius: 999px; padding: .02rem .3rem; font-weight: 700; }
+  nav button.active { color: var(--accent); }
+  nav button.active::before { content: ""; position: absolute; top: .18rem; width: 26px; height: 3px; border-radius: 3px;
+    background: linear-gradient(90deg, var(--accent), var(--accent-2)); }
+
+  @media (prefers-color-scheme: light) {
+    :root { --bg:#f4f6f9; --bg-2:#eaedf2; --panel:#fff; --panel-2:#eef1f5; --edge:#dce0e8; --edge-2:#cfd4de; --ink:#161a21; --dim:#4a5464; --faint:#8a92a2; }
+    nav button .badge { color: #fff; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <span class="logo">cospan</span>
+  <span class="dot" id="dot" title="connection"></span>
+  <span class="spacer"></span>
+  <span class="view-name" id="viewname">Now</span>
+</header>
+
+<main>
+  <div id="banner"></div>
+
+  <!-- NOW: process position -->
+  <div class="view active" id="view-now">
+    <div class="card hero" id="hero">
+      <div class="lbl">Current atom</div>
+      <div class="atom-now" id="atomNow">—</div>
+      <div class="flow" id="flow"></div>
+      <div class="inputs" id="inputs"></div>
+      <details class="raw"><summary>raw day status</summary><pre id="daystatus">loading…</pre></details>
+    </div>
+    <h2>Atoms</h2>
+    <div class="atoms" id="atoms"></div>
+  </div>
+
+  <!-- TELOI: north star -->
+  <div class="view" id="view-telos">
+    <h2>Teloi</h2>
+    <div id="teloi"></div>
+    <h2 id="tension-h" hidden>Tensions held</h2>
+    <div id="tensions"></div>
+  </div>
+
+  <!-- BROWSE: subjects -->
+  <div class="view" id="view-browse">
+    <input class="filter" id="filter" placeholder="filter subjects…" autocomplete="off" autocapitalize="off" spellcheck="false" />
+    <div id="subjects"></div>
+  </div>
+</main>
+
+<nav id="nav">
+  <button data-view="now"    class="active"><span class="ic">◎</span><span>Now</span></button>
+  <button data-view="telos"><span class="ic">✦</span><span>Teloi</span></button>
+  <button data-view="browse"><span class="ic">▤</span><span>Browse</span><span class="badge" id="subjBadge" hidden></span></button>
+</nav>
+
+<script>
+(() => {
+  "use strict";
+  const $ = (id) => document.getElementById(id);
+  const el = (tag, cls, txt) => { const e = document.createElement(tag); if (cls) e.className = cls; if (txt != null) e.textContent = txt; return e; };
+
+  let fold = null;
+  let expanded = new Set();
+  let filter = "";
+  let activeView = "now";
+
+  const ns = (s) => { const i = s.indexOf("/"); return i < 0 ? s : s.slice(0, i); };
+  const leaf = (s) => s.includes("/") ? s.slice(s.indexOf("/") + 1) : s;
+  const bare = (s) => (s || "").replace(/^(atom|telos)\//, "");
+  const fmtWhen = (micros) => {
+    if (micros == null) return "date unknown";
+    const d = new Date(micros / 1000); if (isNaN(d)) return "date unknown";
+    const p = (n) => String(n).padStart(2, "0");
+    return `${d.getUTCFullYear()}-${p(d.getUTCMonth()+1)}-${p(d.getUTCDate())} ${p(d.getUTCHours())}:${p(d.getUTCMinutes())}`;
+  };
+  const shortAuthor = (a) => { a = (a || "").replace(/^did:key:/, ""); return a.length > 11 ? a.slice(0,6) + "…" + a.slice(-4) : a; };
+  const summarize = (c) => {
+    if (c.kind === "Retraction" && c.supersedes) return "retracts " + c.supersedes.slice(-8);
+    if (c.text) { const l = c.text.split("\n").find((x) => x.trim()); if (l) return l.trim(); }
+    if (c.title) return `"${c.title}"`;
+    return `(${(c.kind||"claim").toLowerCase()})`;
+  };
+  const dayField = (re) => { const m = (fold && fold.day_status || "").match(re); return m ? m[1].trim() : null; };
+
+  // ---- views ----
+  function setView(v) {
+    activeView = v;
+    document.querySelectorAll(".view").forEach((n) => n.classList.toggle("active", n.id === "view-" + v));
+    document.querySelectorAll("nav button").forEach((b) => b.classList.toggle("active", b.dataset.view === v));
+    $("viewname").textContent = { now: "Now", telos: "Teloi", browse: "Browse" }[v];
+    window.scrollTo({ top: 0 });
+  }
+
+  function render() {
+    if (!fold) return;
+
+    const b = $("banner"); b.innerHTML = "";
+    if (fold.errors && fold.errors.length) {
+      const box = el("div", "banner");
+      box.appendChild(el("strong", null, "fold errors: "));
+      box.appendChild(document.createTextNode(fold.errors.join(" · ")));
+      b.appendChild(box);
+    }
+
+    renderNow();
+    renderTeloi();
+    renderSubjects();
+  }
+
+  function renderNow() {
+    const cur = dayField(/Current atom:\s*(.+)/) || bare((fold.process?.atoms?.[0]?.slug) || "—");
+    $("atomNow").textContent = cur;
+
+    const next = dayField(/^\s*next:\s*(.+)/m);
+    const flow = $("flow"); flow.innerHTML = "";
+    flow.appendChild(el("span", "pill", cur));
+    if (next) { flow.appendChild(el("span", "arrow", "→")); next.split(/,\s*/).forEach((n) => flow.appendChild(el("span", "pill next", n))); }
+
+    const inputs = dayField(/inputs satisfied:\s*(.+)/);
+    $("inputs").textContent = inputs ? "inputs satisfied: " + inputs : "";
+
+    $("daystatus").textContent = (fold.day_status && fold.day_status.trim()) ? fold.day_status : "(day status unavailable)";
+
+    const atoms = $("atoms"); atoms.innerHTML = "";
+    (fold.process?.atoms || []).forEach((a) => {
+      const chip = el("span", "atom");
+      chip.appendChild(el("b", null, bare(a.slug)));
+      if (a.next && a.next.length) chip.appendChild(document.createTextNode(" → " + a.next.join(", ")));
+      atoms.appendChild(chip);
+    });
+    if (!atoms.children.length) atoms.appendChild(el("div", "empty", "no atoms declared"));
+  }
+
+  function renderTeloi() {
+    const t = $("teloi"); t.innerHTML = "";
+    const teloi = fold.process?.teloi || [];
+    teloi.forEach((v) => {
+      const card = el("div", "card telos");
+      card.appendChild(el("div", "title", v.title || v.slug));
+      if (v.statement) card.appendChild(el("div", "stmt", v.statement));
+      if (v.witnesses && v.witnesses.length) card.appendChild(el("div", "wit", "witnesses: " + v.witnesses.join(", ")));
+      t.appendChild(card);
+    });
+    if (!teloi.length) t.appendChild(el("div", "empty", "no teloi"));
+
+    const tn = $("tensions"); tn.innerHTML = "";
+    const tensions = fold.process?.tensions || [];
+    tensions.forEach((x) => {
+      const card = el("div", "card tension");
+      card.appendChild(el("div", "pair", `${x.between[0]} ⇄ ${x.between[1]}`));
+      if (x.why) card.appendChild(el("div", "why", x.why));
+      tn.appendChild(card);
+    });
+    $("tension-h").hidden = tensions.length === 0;
+  }
+
+  function renderSubjects() {
+    const host = $("subjects"); host.innerHTML = "";
+    const all = fold.subjects || [];
+    const subjects = all.filter((s) => !filter || s.toLowerCase().includes(filter));
+
+    const badge = $("subjBadge"); badge.hidden = all.length === 0; badge.textContent = all.length;
+
+    if (!subjects.length) { host.appendChild(el("div", "empty", filter ? "no subjects match" : "no subjects")); return; }
+
+    const groups = new Map();
+    subjects.forEach((s) => { const k = ns(s); if (!groups.has(k)) groups.set(k, []); groups.get(k).push(s); });
+    const keys = [...groups.keys()].sort((a,b) => groups.get(b).length - groups.get(a).length || a.localeCompare(b));
+
+    keys.forEach((k) => {
+      const list = groups.get(k);
+      const g = el("div", "subj-group");
+      const gh = el("div", "gh");
+      gh.appendChild(el("span", "mono", k));
+      gh.appendChild(el("span", "count", String(list.length)));
+      g.appendChild(gh);
+      list.sort().forEach((s) => g.appendChild(subjectEl(s)));
+      host.appendChild(g);
+    });
+  }
+
+  function subjectEl(subject) {
+    const claims = (fold.claims && fold.claims[subject]) || [];
+    const d = el("details", "subj");
+    if (expanded.has(subject)) d.open = true;
+    d.addEventListener("toggle", () => { d.open ? expanded.add(subject) : expanded.delete(subject); });
+    const sum = el("summary");
+    sum.appendChild(el("span", "chev", "›"));
+    sum.appendChild(el("span", "name", leaf(subject)));
+    sum.appendChild(el("span", "n", String(claims.length)));
+    d.appendChild(sum);
+    const body = el("div", "claims");
+    if (!claims.length) body.appendChild(el("div", "cites", "no live claims"));
+    claims.forEach((c) => body.appendChild(claimEl(c)));
+    d.appendChild(body);
+    return d;
+  }
+
+  function claimEl(c) {
+    const w = el("div", "claim");
+    const r1 = el("div", "row1");
+    r1.appendChild(el("span", "kind " + (c.kind||""), c.kind || "claim"));
+    r1.appendChild(el("span", "meta", `${shortAuthor(c.author)} · ${fmtWhen(c.recorded_at)}`));
+    w.appendChild(r1);
+    w.appendChild(el("div", "summary", summarize(c)));
+    if (c.artifacts && c.artifacts.length) {
+      const a = el("div", "arts");
+      c.artifacts.forEach((art) => a.appendChild(el("span", "art mono", art)));
+      w.appendChild(a);
+    }
+    if (c.cites && c.cites.length) w.appendChild(el("div", "cites", `cites ${c.cites.length}`));
+    return w;
+  }
+
+  // ---- data ----
+  function setDot(s) { const d = $("dot"); d.className = "dot" + (s ? " " + s : ""); d.title = s || "connecting"; }
+  async function load() {
+    try { const r = await fetch("/fold", { cache: "no-store" }); fold = await r.json(); render(); }
+    catch (e) { $("daystatus").textContent = "failed to load /fold: " + e; }
+  }
+  function connect() {
+    const proto = location.protocol === "https:" ? "wss" : "ws";
+    let ws; try { ws = new WebSocket(`${proto}://${location.host}/stream`); } catch (e) { setDot("dead"); return; }
+    ws.onopen = () => setDot("live");
+    ws.onmessage = (ev) => { try { fold = JSON.parse(ev.data); render(); } catch (_) {} };
+    ws.onclose = () => { setDot("stale"); setTimeout(connect, 1500); };
+    ws.onerror = () => { try { ws.close(); } catch (_) {} };
+  }
+
+  document.querySelectorAll("nav button").forEach((b) => b.addEventListener("click", () => setView(b.dataset.view)));
+  $("filter").addEventListener("input", (e) => { filter = e.target.value.trim().toLowerCase(); renderSubjects(); });
+
+  setDot(""); setView("now");
+  load().then(connect);
+})();
+</script>
+</body>
+</html>
