@@ -9,6 +9,7 @@
 //! Everything here is poll-driven: the caller watches `.kan/log/HEAD` and asks for
 //! a fresh `Fold` (one `kan show --all --json` spawn) only when it changes.
 
+use serde::Serialize;
 use serde_json::Value;
 use std::cmp::Ordering;
 use std::collections::HashMap;
@@ -116,7 +117,7 @@ fn opt_str_at(v: &Value, key: &str) -> Option<String> {
 /// The narrative payload is kind-dependent: Decision/Observation/Plan/Result
 /// carry `text`, a Subject claim carries `title`, and some (e.g. Publication)
 /// carry neither — hence both are optional.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize)]
 pub struct Claim {
     pub cid: String,
     pub kind: String,
@@ -321,7 +322,7 @@ pub fn extract_fenced<'a>(text: &'a str, name: &str) -> Option<&'a str> {
     }
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize)]
 pub struct Atom {
     pub slug: String,
     pub inputs: Vec<String>,
@@ -333,7 +334,7 @@ pub struct Atom {
     pub revisits: Vec<String>,
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize)]
 pub struct TelosView {
     pub slug: String,
     pub title: String,
@@ -343,7 +344,7 @@ pub struct TelosView {
 
 /// A recorded telos tension: the two teloi it holds between, and the rationale
 /// text (the claim body, minus its `day-tension` fence) explaining the trade-off.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize)]
 pub struct Tension {
     pub between: (String, String),
     pub why: String,
@@ -360,7 +361,7 @@ impl Tension {
     }
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, Serialize)]
 pub struct ProcessSnapshot {
     pub atoms: Vec<Atom>,
     pub teloi: Vec<TelosView>,
@@ -678,7 +679,7 @@ pub fn block_summary(fence: &str, j: &Value) -> Option<Vec<String>> {
 /// memory: the subjects, each subject's newest-first claims, a `cid -> Claim`
 /// index for cite resolution, and the declared process structure — plus the
 /// `day status` text and any errors. Rebuilt only when the log changes.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, Serialize)]
 pub struct Fold {
     pub subjects: Vec<String>,
     pub claims: HashMap<String, Vec<Claim>>,

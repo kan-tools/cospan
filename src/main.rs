@@ -33,12 +33,14 @@ fn main() {
         Some("comment") => comment_cmd(&args[1..]),
         Some("comments") => comments_cmd(&args[1..]),
         Some("mcp") => mcp_cmd(&args[1..]),
+        Some("serve") => serve_cmd(&args[1..]),
         _ => {
             eprintln!(
                 "usage:\n  cospan demo\n  cospan watch <file> --line <N> [--ctx <N>]\n  \
                  cospan watch-repo <path> [--once]\n  cospan subject <repo> <subject>\n  \
                  cospan comment add <file> --line <N> [--ctx <C>] <body>\n  \
-                 cospan comments <file>\n  cospan mcp [repo]"
+                 cospan comments <file>\n  cospan mcp [repo]\n  \
+                 cospan serve <repo> [--port N]"
             );
             std::process::exit(2);
         }
@@ -54,6 +56,40 @@ fn mcp_cmd(args: &[String]) {
         .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
     if let Err(e) = cospan::mcp::run(repo) {
         eprintln!("cospan mcp: {e}");
+        std::process::exit(1);
+    }
+}
+
+/// `cospan serve <repo> [--port N]` — run the watch-and-fold spine headless and
+/// expose it over a localhost HTTP/WS read API (mobile Phase 1). Foreground,
+/// 127.0.0.1-only, no on-disk state; Ctrl-C stops it. Repo path parsed the way
+/// `watch_repo` does (first non-`--` arg, canonicalized), so `.` resolves to the
+/// absolute path kan reads under.
+fn serve_cmd(args: &[String]) {
+    let repo: PathBuf = args
+        .iter()
+        .find(|a| !a.starts_with("--"))
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("."));
+    let repo = std::fs::canonicalize(&repo).unwrap_or(repo);
+    let mut port = cospan::server::DEFAULT_PORT;
+    let mut i = 0;
+    while i < args.len() {
+        if args[i] == "--port" {
+            match args.get(i + 1).and_then(|s| s.parse().ok()) {
+                Some(p) => port = p,
+                None => {
+                    eprintln!("cospan serve: --port needs a number");
+                    std::process::exit(2);
+                }
+            }
+            i += 2;
+        } else {
+            i += 1;
+        }
+    }
+    if let Err(e) = cospan::server::run(repo, port) {
+        eprintln!("cospan serve: {e}");
         std::process::exit(1);
     }
 }

@@ -21,7 +21,20 @@ two-face = { version = "0.4", default-features = false, features = ["syntect-oni
 # schema + async-runtime deps. Pure Rust (no C toolchain).
 rmcp = { version = "3", features = ["server", "macros", "schemars", "transport-io"] }
 schemars = "1"
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "io-std"] }
+# The mobile read-API server (Phase 1): axum over the same tokio runtime the MCP
+# server already builds — no second async runtime. `ws` for the /stream push;
+# `net`/`sync`/`time` on tokio for the TcpListener, the broadcast channel, and the
+# 250ms fold-loop tick.
+axum = { version = "0.8", features = ["ws"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "io-std", "net", "sync", "time"] }
+
+[dev-dependencies]
+# A real WebSocket client for the `#[ignore]`d server smoke (AC-3): drives the
+# handshake and reads pushed frames robustly (extended-length + fragmentation),
+# which a hand-rolled reader would get wrong on a large fold. Test-only — nothing
+# here ships in the binary, so it does not touch the server's disposability.
+tokio-tungstenite = "0.29"
+futures-util = "0.3"
 
 [[bin]]
 name = "cospan"
