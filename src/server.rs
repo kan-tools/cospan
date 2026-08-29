@@ -24,13 +24,16 @@
 use crate::substrate::{self, Fold};
 use crate::{mcp, tui};
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
-use axum::extract::{Query, State};
+use axum::extract::{Query, Request, State};
+use axum::http::{header::AUTHORIZATION, StatusCode};
+use axum::middleware::{self, Next};
 use axum::response::{Html, IntoResponse, Json, Response};
 use axum::routing::get;
 use axum::Router;
 use serde::Deserialize;
 use std::net::{Ipv4Addr, SocketAddr};
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, SystemTime};
 use tokio::net::TcpListener;
@@ -47,9 +50,52 @@ const STREAM_BUFFER: usize = 32;
 /// The fold loop's poll interval — the same ~250ms tick the TUI uses.
 const TICK: Duration = Duration::from_millis(250);
 
+/// Default cap on concurrent `/stream` clients (`--max-stream`). Generous for a
+/// personal tool; an upgrade past it is cleanly rejected, never queued.
+pub const DEFAULT_MAX_STREAM: usize = 64;
+
+/// The auth posture of a running server. `None` (from `--no-auth`) leaves every
+/// route open; `Token` gates every route — including the `/stream` upgrade — on a
+/// bearer token presented as `?token=` or `Authorization: Bearer`. Held in memory
+/// only; never written to disk (`telos/disposable`).
+#[derive(Clone)]
+pub enum Auth {
+    None,
+    Token(Arc<str>),
+}
+
+/// Mint a fresh URL-safe token from OS randomness (32 bytes → 64 hex chars),
+/// held only in memory. Falls back to a time-free fixed-length placeholder only
+/// if the OS RNG fails, which on a supported platform it does not.
+pub fn mint_token() -> String {
+    let mut bytes = [0u8; 32];
+    match getrandom::fill(&mut bytes) {
+        Ok(()) => bytes.iter().map(|b| format!("{b:02x}")).collect(),
+        // getrandom failing is effectively impossible on a supported OS; if it
+        // ever does, refuse to mint a guessable token — the caller prints the
+        // error path via an empty string it must handle.
+        Err(_) => String::new(),
+    }
+}
+
+/// Constant-time byte equality — no early return on the first differing byte, so
+/// the auth check leaks no timing signal about how much of the token matched.
+/// (The length comparison itself is not secret: the token length is fixed.)
+fn ct_eq(a: &[u8], b: &[u8]) -> bool {
+    if a.len() != b.len() {
+        return false;
+    }
+    let mut diff = 0u8;
+    for (x, y) in a.iter().zip(b) {
+        diff |= x ^ y;
+    }
+    diff == 0
+}
+
 /// The shared state every handler and the fold loop read: the repo root, the
-/// latest folded `Fold`, and the broadcast sender that fans a fresh serialized
-/// fold out to `/stream` subscribers. Cheap to `clone` — everything is `Arc`.
+/// latest folded `Fold`, the broadcast sender that fans a fresh serialized fold
+/// out to `/stream` subscribers, the auth posture, and the live-`/stream` counter
+/// + its cap. Cheap to `clone` — everything is `Arc` or `Copy`.
 #[derive(Clone)]
 pub struct Shared {
     repo: Arc<PathBuf>,
@@ -61,18 +107,41 @@ pub struct Shared {
     /// A serialized `Fold` is broadcast here on every refold. `Arc<str>` so the
     /// JSON is serialized once per refold and shared across all subscribers.
     tx: broadcast::Sender<Arc<str>>,
+    /// The auth posture; the auth middleware reads it per request.
+    auth: Auth,
+    /// The cap on concurrent `/stream` clients, and the live count (shared across
+    /// clones so every connection sees the same tally).
+    max_stream: usize,
+    live_streams: Arc<AtomicUsize>,
 }
 
 impl Shared {
     /// Build shared state seeded with an initial fold, so `/fold` answers before
-    /// the loop's first tick.
+    /// the loop's first tick. Auth defaults to open and the stream cap to
+    /// `DEFAULT_MAX_STREAM`; `with_auth`/`with_max_stream` set them.
     pub fn seed(repo: PathBuf, initial: Fold) -> Self {
         let (tx, _rx) = broadcast::channel(STREAM_BUFFER);
         Self {
             repo: Arc::new(repo),
             latest: Arc::new(RwLock::new(initial)),
             tx,
+            auth: Auth::None,
+            max_stream: DEFAULT_MAX_STREAM,
+            live_streams: Arc::new(AtomicUsize::new(0)),
         }
+    }
+
+    /// Set the auth posture (builder-style; keeps `seed`'s call sites — the tests
+    /// and smokes — auth-free).
+    pub fn with_auth(mut self, auth: Auth) -> Self {
+        self.auth = auth;
+        self
+    }
+
+    /// Set the concurrent-`/stream` cap.
+    pub fn with_max_stream(mut self, max: usize) -> Self {
+        self.max_stream = max.max(1);
+        self
     }
 
     /// The current fold serialized to JSON. A poisoned lock is recovered rather
@@ -81,6 +150,87 @@ impl Shared {
     fn snapshot_json(&self) -> String {
         let f = self.latest.read().unwrap_or_else(|e| e.into_inner());
         serde_json::to_string(&*f).unwrap_or_else(|_| "{}".to_string())
+    }
+}
+
+/// An acquired `/stream` slot: increments the live count on `acquire` (rejecting
+/// past the cap) and decrements on `Drop`, so a normal close, an error, or a
+/// panic all release it. Held for the life of the WS task.
+struct StreamSlot(Arc<AtomicUsize>);
+
+impl StreamSlot {
+    /// Take a slot if the live count is under `max`, else `None`. The optimistic
+    /// `fetch_add` may transiently overshoot under a race but self-corrects (the
+    /// loser decrements immediately), so the live count never *settles* above the
+    /// cap.
+    fn acquire(counter: &Arc<AtomicUsize>, max: usize) -> Option<Self> {
+        let prev = counter.fetch_add(1, Ordering::SeqCst);
+        if prev >= max {
+            counter.fetch_sub(1, Ordering::SeqCst);
+            None
+        } else {
+            Some(StreamSlot(counter.clone()))
+        }
+    }
+}
+
+impl Drop for StreamSlot {
+    fn drop(&mut self) {
+        self.0.fetch_sub(1, Ordering::SeqCst);
+    }
+}
+
+/// Every token a request presents — the `Authorization: Bearer <t>` header and
+/// the `token` query parameter, in that order. Both are collected (not
+/// header-first-wins) so a stale/wrong header cannot mask a correct query token:
+/// the caller accepts the request if *any* presented token matches.
+fn presented_tokens(req: &Request) -> Vec<String> {
+    let mut out = Vec::new();
+    if let Some(v) = req
+        .headers()
+        .get(AUTHORIZATION)
+        .and_then(|h| h.to_str().ok())
+    {
+        if let Some(tok) = v.strip_prefix("Bearer ") {
+            out.push(tok.trim().to_string());
+        }
+    }
+    if let Some(q) = req.uri().query() {
+        if let Some(t) = q
+            .split('&')
+            .find_map(|kv| kv.strip_prefix("token=").map(|t| t.replace('+', " ")))
+        {
+            out.push(t);
+        }
+    }
+    out
+}
+
+/// Auth middleware: with `Auth::Token`, every route (including the `/stream`
+/// upgrade, whose request passes through here before `on_upgrade`) must present
+/// the matching token, compared constant-time; otherwise `401`. With `Auth::None`
+/// it is a pass-through.
+async fn require_auth(State(shared): State<Shared>, req: Request, next: Next) -> Response {
+    match &shared.auth {
+        Auth::None => next.run(req).await,
+        Auth::Token(tok) => {
+            // An empty configured token authenticates nothing — defends the
+            // (OS-RNG-failure) branch where a token could be blank: never fail
+            // open on an empty secret, regardless of what a request presents.
+            let ok = !tok.is_empty()
+                && presented_tokens(&req)
+                    .iter()
+                    .any(|p| ct_eq(p.as_bytes(), tok.as_bytes()));
+            if ok {
+                next.run(req).await
+            } else {
+                (
+                    StatusCode::UNAUTHORIZED,
+                    "401 unauthorized: append ?token=<token> (printed at startup) or send Authorization: Bearer <token>\n",
+                )
+                    .into_response()
+            }
+        }
     }
 }
 
@@ -152,15 +302,25 @@ async fn get_fold(State(shared): State<Shared>) -> Response {
 }
 
 /// `WS /stream` — upgrade, then push the serialized `Fold` on connect and on
-/// every refold.
+/// every refold. Rejected with `503` when the concurrent-connection cap
+/// (`--max-stream`) is already reached; the acquired slot rides into the task and
+/// releases on disconnect.
 async fn get_stream(ws: WebSocketUpgrade, State(shared): State<Shared>) -> Response {
-    ws.on_upgrade(move |socket| stream_folds(socket, shared))
+    match StreamSlot::acquire(&shared.live_streams, shared.max_stream) {
+        Some(slot) => ws.on_upgrade(move |socket| stream_folds(socket, shared, slot)),
+        None => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            "503 too many /stream clients (see --max-stream)\n",
+        )
+            .into_response(),
+    }
 }
 
 /// Send the current fold immediately, then forward each broadcast refold until
 /// the client disconnects. Client→server frames are ignored (the API is
-/// read-only) except a Close, which ends the loop.
-async fn stream_folds(mut socket: WebSocket, shared: Shared) {
+/// read-only) except a Close, which ends the loop. `_slot` is held for the whole
+/// task so the connection count is released exactly when the task ends.
+async fn stream_folds(mut socket: WebSocket, shared: Shared, _slot: StreamSlot) {
     let mut rx = shared.tx.subscribe();
     // Snapshot on connect, so a client that connects between refolds still gets
     // the current state without waiting for the next log change.
@@ -231,8 +391,9 @@ async fn get_thread(
     Json(v)
 }
 
-/// The router over the shared state — the four read endpoints, no middleware.
-/// Split out so a test can drive the exact app the server serves.
+/// The router over the shared state — the page + four read endpoints, wrapped in
+/// the auth middleware (a pass-through under `Auth::None`). Split out so a test
+/// can drive the exact app the server serves.
 pub fn app(shared: Shared) -> Router {
     Router::new()
         .route("/", get(get_index))
@@ -240,6 +401,7 @@ pub fn app(shared: Shared) -> Router {
         .route("/stream", get(get_stream))
         .route("/comments", get(get_comments))
         .route("/thread", get(get_thread))
+        .layer(middleware::from_fn_with_state(shared.clone(), require_auth))
         .with_state(shared)
 }
 
@@ -265,24 +427,71 @@ pub async fn serve_on(listener: TcpListener, shared: Shared) -> Result<(), Strin
         .map_err(|e| e.to_string())
 }
 
-/// `cospan serve <repo> [--port N]` — run the read API in the foreground on
-/// 127.0.0.1. Builds one tokio runtime and blocks on it (like `mcp::run`), so
-/// `fn main` stays synchronous and no `#[tokio::main]` is introduced.
-pub fn run(repo: PathBuf, port: u16) -> Result<(), String> {
+/// Resolve the effective auth posture: `--no-auth` wins; otherwise an explicit
+/// `--token`/`COSPAN_SERVE_TOKEN` (non-empty) is used, else a fresh token is
+/// minted. Split out so it is unit-testable without a running server.
+pub fn resolve_auth(token_opt: Option<String>, no_auth: bool) -> Auth {
+    if no_auth {
+        return Auth::None;
+    }
+    let tok = token_opt
+        .filter(|t| !t.is_empty())
+        .or_else(|| {
+            std::env::var("COSPAN_SERVE_TOKEN")
+                .ok()
+                .filter(|t| !t.is_empty())
+        })
+        .unwrap_or_else(mint_token);
+    Auth::Token(Arc::from(tok.as_str()))
+}
+
+/// `cospan serve <repo> [--port N] [--token T | --no-auth] [--max-stream N]` —
+/// run the read API in the foreground on 127.0.0.1. Builds one tokio runtime and
+/// blocks on it (like `mcp::run`), so `fn main` stays synchronous. Auth is on by
+/// default: a token is minted and the ready URL (with `?token=`) is printed once
+/// to stderr; the token is held in memory only.
+pub fn run(
+    repo: PathBuf,
+    port: u16,
+    token_opt: Option<String>,
+    no_auth: bool,
+    max_stream: usize,
+) -> Result<(), String> {
     if !repo.join(".kan").is_dir() {
         eprintln!(
             "warning: {} has no .kan/ — is this a kan repo?",
             repo.display()
         );
     }
+    let auth = resolve_auth(token_opt, no_auth);
+    // A blank token can only arise if the OS RNG failed to mint one; refuse to
+    // serve rather than run a gate that an empty `?token=` would satisfy.
+    if let Auth::Token(t) = &auth {
+        if t.is_empty() {
+            return Err(
+                "failed to mint an auth token (OS RNG unavailable); refusing to serve without one — pass --token <t> or --no-auth".into(),
+            );
+        }
+    }
     let rt = tokio::runtime::Runtime::new().map_err(|e| e.to_string())?;
     rt.block_on(async move {
         let listener = bind(port).await.map_err(|e| e.to_string())?;
         let addr = listener.local_addr().map_err(|e| e.to_string())?;
+        match &auth {
+            Auth::Token(tok) => {
+                eprintln!("cospan serve: http://{addr}/?token={tok}  (read-only; Ctrl-C to stop)");
+                eprintln!("  open that URL, or send `Authorization: Bearer {tok}`.");
+            }
+            Auth::None => {
+                eprintln!("cospan serve: http://{addr}/  (read-only; Ctrl-C to stop)");
+                eprintln!("  WARNING: --no-auth — this channel is UNAUTHENTICATED; a proxy (e.g. `tailscale serve`) would expose it to your tailnet.");
+            }
+        }
         // Seed with an initial fold so the first request does not race the loop.
         let initial = substrate::fold(&repo);
-        let shared = Shared::seed(repo, initial);
-        eprintln!("cospan serve: http://{addr}  (read-only; Ctrl-C to stop)");
+        let shared = Shared::seed(repo, initial)
+            .with_auth(auth)
+            .with_max_stream(max_stream);
         serve_on(listener, shared).await
     })
 }
@@ -411,6 +620,50 @@ mod tests {
             INDEX_HTML.contains("/stream"),
             "page must subscribe to /stream"
         );
+        // AC-4: the page captures its own ?token= and reuses it (withTok wraps
+        // the API + WS URLs) so a single saved link authenticates.
+        assert!(
+            INDEX_HTML.contains("token") && INDEX_HTML.contains("withTok"),
+            "page must read and reuse a ?token="
+        );
+    }
+
+    /// AC-1: the token minter yields a non-empty URL-safe token that differs each
+    /// call, and `resolve_auth` honors `--no-auth` (open) vs an explicit token.
+    #[test]
+    fn token_minting_and_auth_resolution() {
+        let t1 = mint_token();
+        let t2 = mint_token();
+        assert!(t1.len() >= 32, "token too short: {}", t1.len());
+        assert!(
+            t1.chars().all(|c| c.is_ascii_hexdigit()),
+            "not url-safe: {t1}"
+        );
+        assert_ne!(t1, t2, "two mints must differ");
+
+        assert!(
+            matches!(resolve_auth(None, true), Auth::None),
+            "--no-auth is open"
+        );
+        match resolve_auth(Some("pinned".into()), false) {
+            Auth::Token(t) => assert_eq!(&*t, "pinned"),
+            Auth::None => panic!("explicit --token must gate"),
+        }
+        // Empty --token falls through to a mint, not an empty (guessable) token.
+        match resolve_auth(Some(String::new()), false) {
+            Auth::Token(t) => assert!(t.len() >= 32, "empty --token must mint"),
+            Auth::None => panic!("must still gate"),
+        }
+    }
+
+    /// The constant-time compare accepts an exact match and rejects mismatches
+    /// (including a length mismatch) — the gate's core predicate.
+    #[test]
+    fn constant_time_eq_matches_only_exact() {
+        assert!(ct_eq(b"abc123", b"abc123"));
+        assert!(!ct_eq(b"abc123", b"abc124"));
+        assert!(!ct_eq(b"abc", b"abc123"));
+        assert!(!ct_eq(b"", b"x"));
     }
 
     /// AC-6 (the isolated fold-loop-step half): call `fold_tick` directly, with no

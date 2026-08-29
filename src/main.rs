@@ -40,7 +40,7 @@ fn main() {
                  cospan watch-repo <path> [--once]\n  cospan subject <repo> <subject>\n  \
                  cospan comment add <file> --line <N> [--ctx <C>] <body>\n  \
                  cospan comments <file>\n  cospan mcp [repo]\n  \
-                 cospan serve <repo> [--port N]"
+                 cospan serve <repo> [--port N] [--token T | --no-auth] [--max-stream N]"
             );
             std::process::exit(2);
         }
@@ -60,11 +60,12 @@ fn mcp_cmd(args: &[String]) {
     }
 }
 
-/// `cospan serve <repo> [--port N]` — run the watch-and-fold spine headless and
-/// expose it over a localhost HTTP/WS read API (mobile Phase 1). Foreground,
-/// 127.0.0.1-only, no on-disk state; Ctrl-C stops it. Repo path parsed the way
-/// `watch_repo` does (first non-`--` arg, canonicalized), so `.` resolves to the
-/// absolute path kan reads under.
+/// `cospan serve <repo> [--port N] [--token T | --no-auth] [--max-stream N]` —
+/// run the watch-and-fold spine headless and expose it over a localhost HTTP/WS
+/// read API. Foreground, 127.0.0.1-only, no on-disk state; Ctrl-C stops it. Auth
+/// is on by default (a token is minted and printed); `--token`/`COSPAN_SERVE_TOKEN`
+/// pins a stable one, `--no-auth` disables it. Repo path parsed the way
+/// `watch_repo` does (first non-`--` arg, canonicalized).
 fn serve_cmd(args: &[String]) {
     let repo: PathBuf = args
         .iter()
@@ -72,23 +73,47 @@ fn serve_cmd(args: &[String]) {
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from("."));
     let repo = std::fs::canonicalize(&repo).unwrap_or(repo);
+
     let mut port = cospan::server::DEFAULT_PORT;
+    let mut token: Option<String> = None;
+    let mut no_auth = false;
+    let mut max_stream = cospan::server::DEFAULT_MAX_STREAM;
+    let value_needed = |name: &str| -> ! {
+        eprintln!("cospan serve: {name} needs a value");
+        std::process::exit(2);
+    };
     let mut i = 0;
     while i < args.len() {
-        if args[i] == "--port" {
-            match args.get(i + 1).and_then(|s| s.parse().ok()) {
-                Some(p) => port = p,
-                None => {
-                    eprintln!("cospan serve: --port needs a number");
-                    std::process::exit(2);
+        match args[i].as_str() {
+            "--port" => {
+                match args.get(i + 1).and_then(|s| s.parse().ok()) {
+                    Some(p) => port = p,
+                    None => value_needed("--port (a number)"),
                 }
+                i += 2;
             }
-            i += 2;
-        } else {
-            i += 1;
+            "--token" => {
+                match args.get(i + 1) {
+                    Some(t) => token = Some(t.clone()),
+                    None => value_needed("--token"),
+                }
+                i += 2;
+            }
+            "--max-stream" => {
+                match args.get(i + 1).and_then(|s| s.parse().ok()) {
+                    Some(n) => max_stream = n,
+                    None => value_needed("--max-stream (a number)"),
+                }
+                i += 2;
+            }
+            "--no-auth" => {
+                no_auth = true;
+                i += 1;
+            }
+            _ => i += 1,
         }
     }
-    if let Err(e) = cospan::server::run(repo, port) {
+    if let Err(e) = cospan::server::run(repo, port, token, no_auth, max_stream) {
         eprintln!("cospan serve: {e}");
         std::process::exit(1);
     }
