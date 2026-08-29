@@ -42,16 +42,57 @@ fn sidecar(repo: &Path, file: &str) -> std::path::PathBuf {
     repo.join(comments::sidecar_path(file))
 }
 
-/// Reject a `file` that is absolute or escapes the repo via a `..` component, so
-/// an agent over MCP can only read/write files inside the watched repo — no path
-/// traversal to `../../etc/passwd`. Returns the error `Value` to return as-is.
-fn guard(file: &str) -> Result<(), Value> {
+/// Reject a `file` that is absolute, escapes the repo via a `..` component, or
+/// whose *resolved real path* leaves the repo through a symlink — so an agent
+/// over MCP (and, now, a client over HTTP) can only read/write files inside the
+/// watched repo. Returns the error `Value` to return as-is.
+///
+/// The lexical check (absolute / `..`) is cheap and catches the common case. The
+/// symlink check canonicalizes the repo root and the target's real path — for a
+/// not-yet-existing target, the nearest existing ancestor plus the remaining
+/// tail — and requires containment, closing the hole where an in-repo symlink
+/// (`link -> /etc`) points outside the repo.
+fn guard(repo: &Path, file: &str) -> Result<(), Value> {
+    let err = || json!({ "error": format!("file must be a path inside the repo: {file}") });
     let p = Path::new(file);
-    let escapes = p.is_absolute() || p.components().any(|c| c == std::path::Component::ParentDir);
-    if escapes {
-        Err(json!({ "error": format!("file must be a path inside the repo: {file}") }))
-    } else {
-        Ok(())
+    if p.is_absolute() || p.components().any(|c| c == std::path::Component::ParentDir) {
+        return Err(err());
+    }
+    // A repo that itself can't be canonicalized (does not exist) can't be escaped
+    // through a symlink; fall back to the lexical check already passed above.
+    let Ok(root) = repo.canonicalize() else {
+        return Ok(());
+    };
+    if real_path_escapes(&root, &repo.join(file)) {
+        return Err(err());
+    }
+    Ok(())
+}
+
+/// Whether `target`'s real path lands outside `root`, resolving symlinks. Walks
+/// up to the deepest existing ancestor of `target`, canonicalizes it (following
+/// links), rejoins the non-existent tail, and checks containment. A target that
+/// resolves to nothing under `root` is treated as escaping (fail closed).
+fn real_path_escapes(root: &Path, target: &Path) -> bool {
+    let mut cur = target.to_path_buf();
+    let mut tail = std::path::PathBuf::new();
+    loop {
+        if let Ok(real) = cur.canonicalize() {
+            let full = if tail.as_os_str().is_empty() {
+                real
+            } else {
+                real.join(&tail)
+            };
+            return !full.starts_with(root);
+        }
+        match (cur.file_name(), cur.parent()) {
+            (Some(name), Some(parent)) => {
+                tail = Path::new(name).join(&tail);
+                cur = parent.to_path_buf();
+            }
+            // Nothing along the path exists — can't confirm containment.
+            _ => return true,
+        }
     }
 }
 
@@ -74,7 +115,7 @@ fn comment_json(c: &Comment, loc: &Localization) -> Value {
 /// current content so its `state`/`line` are honest. A pure read: it does not
 /// persist re-anchoring.
 pub fn list_comments(repo: &Path, file: &str) -> Value {
-    if let Err(e) = guard(file) {
+    if let Err(e) = guard(repo, file) {
         return e;
     }
     let content = read_content(repo, file);
@@ -91,7 +132,7 @@ pub fn list_comments(repo: &Path, file: &str) -> Value {
 
 /// `get_thread(file, id)` — one comment with its full reply thread, re-localized.
 pub fn get_thread(repo: &Path, file: &str, id: &str) -> Value {
-    if let Err(e) = guard(file) {
+    if let Err(e) = guard(repo, file) {
         return e;
     }
     let content = read_content(repo, file);
@@ -109,7 +150,7 @@ pub fn get_thread(repo: &Path, file: &str, id: &str) -> Value {
 /// the current file and append an agent-authored comment. Same sidecar the human
 /// TUI and CLI write, so it re-localizes and surfaces like any other comment.
 pub fn add_comment(repo: &Path, file: &str, line: usize, body: &str) -> Value {
-    if let Err(e) = guard(file) {
+    if let Err(e) = guard(repo, file) {
         return e;
     }
     let content = read_content(repo, file);
@@ -139,7 +180,7 @@ pub fn add_comment(repo: &Path, file: &str, line: usize, body: &str) -> Value {
 
 /// `reply(file, id, body)` — append an agent-authored reply to a comment's thread.
 pub fn reply(repo: &Path, file: &str, id: &str, body: &str) -> Value {
-    if let Err(e) = guard(file) {
+    if let Err(e) = guard(repo, file) {
         return e;
     }
     let path = sidecar(repo, file);
@@ -160,7 +201,7 @@ pub fn reply(repo: &Path, file: &str, id: &str, body: &str) -> Value {
 
 /// `resolve(file, id, [value])` — set (default) or clear a comment's resolved flag.
 pub fn resolve(repo: &Path, file: &str, id: &str, value: bool) -> Value {
-    if let Err(e) = guard(file) {
+    if let Err(e) = guard(repo, file) {
         return e;
     }
     let path = sidecar(repo, file);
@@ -507,6 +548,36 @@ mod tests {
         assert!(!repo
             .join(".cospan/comments/../../etc/passwd.jsonl")
             .exists());
+        std::fs::remove_dir_all(&repo).ok();
+    }
+
+    /// AC-5: a repo-internal *symlink* that points outside the repo cannot be used
+    /// to read past the guard — the lexical `..`/absolute check misses this, so the
+    /// canonicalizing containment check must catch it, while a normal in-repo file
+    /// is still accepted.
+    #[test]
+    #[cfg(unix)]
+    fn symlink_escape_is_refused_but_in_repo_file_is_allowed() {
+        use std::os::unix::fs::symlink;
+        let repo = tmp("symlink");
+        // `link` -> `/etc`, entirely inside the repo path-wise, resolves outside.
+        let link = repo.join("link");
+        let _ = std::fs::remove_file(&link);
+        symlink("/etc", &link).unwrap();
+
+        // Reading `link/hosts` has no `..` and is not absolute, so only the
+        // symlink-resolving guard rejects it.
+        let escaped = list_comments(&repo, "link/hosts");
+        assert!(
+            escaped.get("error").is_some(),
+            "symlinked escape must error: {escaped}"
+        );
+
+        // A genuine in-repo file (no comments yet) is still served, not rejected.
+        let ok = list_comments(&repo, "src/a.rs");
+        assert!(ok.get("error").is_none(), "in-repo read must succeed: {ok}");
+        assert_eq!(ok["file"], "src/a.rs");
+
         std::fs::remove_dir_all(&repo).ok();
     }
 }

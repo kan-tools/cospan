@@ -202,6 +202,13 @@
   let filter = "";
   let activeView = "now";
 
+  // Auth: the page is opened as `/?token=<t>`; reuse that token on every API
+  // call and on the WS URL, so a single saved link works with no in-app entry.
+  // Absent (the --no-auth case), URLs are unchanged.
+  const TOKEN = new URLSearchParams(location.search).get("token") || "";
+  const withTok = (path) =>
+    TOKEN ? path + (path.includes("?") ? "&" : "?") + "token=" + encodeURIComponent(TOKEN) : path;
+
   const ns = (s) => { const i = s.indexOf("/"); return i < 0 ? s : s.slice(0, i); };
   const leaf = (s) => s.includes("/") ? s.slice(s.indexOf("/") + 1) : s;
   const bare = (s) => (s || "").replace(/^(atom|telos)\//, "");
@@ -353,12 +360,12 @@
   // ---- data ----
   function setDot(s) { const d = $("dot"); d.className = "dot" + (s ? " " + s : ""); d.title = s || "connecting"; }
   async function load() {
-    try { const r = await fetch("/fold", { cache: "no-store" }); fold = await r.json(); render(); }
+    try { const r = await fetch(withTok("/fold"), { cache: "no-store" }); fold = await r.json(); render(); }
     catch (e) { $("daystatus").textContent = "failed to load /fold: " + e; }
   }
   function connect() {
     const proto = location.protocol === "https:" ? "wss" : "ws";
-    let ws; try { ws = new WebSocket(`${proto}://${location.host}/stream`); } catch (e) { setDot("dead"); return; }
+    let ws; try { ws = new WebSocket(`${proto}://${location.host}${withTok("/stream")}`); } catch (e) { setDot("dead"); return; }
     ws.onopen = () => setDot("live");
     ws.onmessage = (ev) => { try { fold = JSON.parse(ev.data); render(); } catch (_) {} };
     ws.onclose = () => { setDot("stale"); setTimeout(connect, 1500); };

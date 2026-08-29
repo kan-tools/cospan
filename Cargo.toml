@@ -27,6 +27,9 @@ schemars = "1"
 # 250ms fold-loop tick.
 axum = { version = "0.8", features = ["ws"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "io-std", "net", "sync", "time"] }
+# OS randomness for the `cospan serve` auth token (minted at startup, held in
+# memory only). Tiny, and already in the tree transitively.
+getrandom = "0.3"
 
 [dev-dependencies]
 # A real WebSocket client for the `#[ignore]`d server smoke (AC-3): drives the
