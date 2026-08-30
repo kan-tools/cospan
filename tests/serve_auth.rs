@@ -378,6 +378,29 @@ fn writes_are_auth_gated_and_path_guarded() {
 }
 
 #[test]
+fn chat_index_unknown_session_and_auth() {
+    // AC-3 (Chat): GET /chat returns a sessions array; an unknown session errors;
+    // and /chat is behind the auth gate.
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    rt.block_on(async {
+        let port = spawn(Auth::None, 64).await; // nonexistent repo → no sessions
+        let idx: serde_json::Value = serde_json::from_str(&http_body(port, "/chat").await).unwrap();
+        assert!(idx["sessions"].is_array(), "/chat index: {idx}");
+        let one: serde_json::Value =
+            serde_json::from_str(&http_body(port, "/chat?session=nope").await).unwrap();
+        assert!(one.get("error").is_some(), "unknown session errors: {one}");
+
+        // auth-gated like every route
+        let tport = spawn(Auth::Token(Arc::from(TOKEN)), 64).await;
+        assert_eq!(
+            http_status(tport, "/chat", None).await,
+            401,
+            "chat needs the token"
+        );
+    });
+}
+
+#[test]
 fn no_auth_leaves_routes_open() {
     let rt = tokio::runtime::Runtime::new().unwrap();
     rt.block_on(async {

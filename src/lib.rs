@@ -22,6 +22,7 @@
 //! optimisation, diffs against the *last-seen* contents rather than re-searching
 //! the whole file — but the fingerprint search below is the source of truth.
 
+pub mod chat;
 pub mod command_bus;
 pub mod comments;
 pub mod diff;

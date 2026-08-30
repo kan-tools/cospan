@@ -160,6 +160,28 @@
   .wbtn:disabled { opacity: .5; cursor: default; }
   .wbtn.small { align-self: auto; margin-left: auto; padding: .18rem .6rem; font-size: .72rem; }
 
+  /* chat tab */
+  .csession { padding: .65rem .85rem; background: var(--panel); border: 1px solid var(--edge); border-radius: 12px; margin: .38rem 0; cursor: pointer; }
+  .csession:active { background: var(--panel-2); }
+  .csession.sub { margin-left: 1rem; border-left: 2px solid var(--edge-2); }
+  .csession .row1 { display: flex; align-items: baseline; gap: .5rem; }
+  .harness { font-size: .64rem; text-transform: uppercase; letter-spacing: .06em; padding: .1rem .42rem; border-radius: 6px; background: var(--panel-2); border: 1px solid var(--edge); color: var(--accent); flex: none; }
+  .stitle { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .csession .meta { margin-left: auto; color: var(--faint); font-size: .72rem; flex: none; }
+  .turn { padding: .55rem .8rem; margin: .35rem 0; border-radius: 12px; background: var(--panel); border: 1px solid var(--edge); }
+  .turn.user { border-left: 3px solid var(--accent); }
+  .turn.assistant { border-left: 3px solid var(--good); }
+  .turn .trow { display: flex; align-items: baseline; gap: .5rem; }
+  .trole { font-size: .64rem; text-transform: uppercase; letter-spacing: .08em; color: var(--faint); }
+  .turn .meta { margin-left: auto; color: var(--faint); font-size: .7rem; }
+  .tbody { margin-top: .3rem; color: var(--ink); font-size: .9rem; white-space: pre-wrap; word-break: break-word; }
+  details.turn.collapsed { background: var(--bg-2); border-style: dashed; }
+  details.turn.collapsed > summary { list-style: none; cursor: pointer; display: flex; align-items: baseline; gap: .5rem; }
+  details.turn.collapsed > summary::-webkit-details-marker { display: none; }
+  .tkind { font-size: .64rem; text-transform: uppercase; letter-spacing: .06em; color: var(--telos); flex: none; }
+  .tpeek { color: var(--faint); font-size: .8rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tfull { margin: .45rem 0 0; white-space: pre-wrap; word-break: break-word; font-size: .8rem; color: var(--dim); }
+
   .banner { background: rgba(247,118,142,.12); border: 1px solid var(--bad); color: #ffd7de; border-radius: 12px; padding: .65rem .85rem; font-size: .82rem; margin-bottom: 1rem; }
   .empty { color: var(--faint); text-align: center; padding: 2.5rem 1rem; }
 
@@ -233,6 +255,11 @@
   <div class="view" id="view-comments">
     <div id="comments"></div>
   </div>
+
+  <!-- CHAT: sessions → a session's turns -->
+  <div class="view" id="view-chat">
+    <div id="chat"></div>
+  </div>
 </main>
 
 <nav id="nav">
@@ -240,6 +267,7 @@
   <button data-view="telos"><span class="ic">✦</span><span>Teloi</span></button>
   <button data-view="browse"><span class="ic">▤</span><span>Browse</span><span class="badge" id="subjBadge" hidden></span></button>
   <button data-view="comments"><span class="ic">✎</span><span>Comments</span></button>
+  <button data-view="chat"><span class="ic">◇</span><span>Chat</span></button>
 </nav>
 
 <script>
@@ -289,11 +317,12 @@
     activeView = v;
     document.querySelectorAll(".view").forEach((n) => n.classList.toggle("active", n.id === "view-" + v));
     document.querySelectorAll("nav button").forEach((b) => b.classList.toggle("active", b.dataset.view === v));
-    $("viewname").textContent = { now: "Now", telos: "Teloi", browse: "Browse", comments: "Comments" }[v];
+    $("viewname").textContent = { now: "Now", telos: "Teloi", browse: "Browse", comments: "Comments", chat: "Chat" }[v];
     window.scrollTo({ top: 0 });
-    // Comments are fetched (not in the fold), and don't auto-update over /stream —
-    // (re)load the index fresh each time the tab is opened, resetting to level 0.
+    // Comments and Chat are fetched (not in the fold) and don't auto-update over
+    // /stream — (re)load fresh each time the tab is opened, resetting to level 0.
     if (v === "comments") loadCommentIndex();
+    if (v === "chat") loadChatIndex();
   }
 
   function render() {
@@ -618,6 +647,90 @@
         openThread(file, id);
       }));
     }
+  }
+
+  // ---- chat: sessions → a session's turns ----
+  const relTime = (ms) => {
+    const diff = Date.now() - ms;
+    if (diff < 0) return "";
+    const m = Math.floor(diff / 60000);
+    if (m < 1) return "just now";
+    if (m < 60) return m + "m ago";
+    const h = Math.floor(m / 60);
+    if (h < 24) return h + "h ago";
+    return Math.floor(h / 24) + "d ago";
+  };
+  const COLLAPSES = new Set(["thinking", "toolcall", "toolresult"]);
+
+  async function loadChatIndex() {
+    const host = $("chat");
+    host.innerHTML = "";
+    host.appendChild(el("div", "empty", "loading…"));
+    let sessions = [];
+    try {
+      const r = await fetch(withTok("/chat"), { cache: "no-store" });
+      sessions = (await r.json()).sessions || [];
+    } catch (e) { sessions = []; }
+    host.innerHTML = "";
+    if (!sessions.length) {
+      host.appendChild(el("div", "empty", "no chat sessions for this repo"));
+      return;
+    }
+    host.appendChild(el("h2", null, "Sessions"));
+    sessions.forEach((s) => {
+      const row = el("div", "csession" + (s.is_subagent ? " sub" : ""));
+      const top = el("div", "row1");
+      top.appendChild(el("span", "harness", s.harness));
+      top.appendChild(el("span", "stitle", s.title || s.id));
+      if (s.last_active) top.appendChild(el("span", "meta", relTime(s.last_active)));
+      row.appendChild(top);
+      if (!s.body_available) row.appendChild(el("div", "cites", "body unavailable"));
+      else row.addEventListener("click", () => openChatSession(s.id, s.title || s.id));
+      host.appendChild(row);
+    });
+  }
+
+  async function openChatSession(id, title) {
+    const host = $("chat");
+    host.innerHTML = "";
+    host.appendChild(el("div", "empty", "loading…"));
+    let s;
+    try {
+      const r = await fetch(withTok("/chat?session=" + encodeURIComponent(id)), { cache: "no-store" });
+      s = await r.json();
+    } catch (e) { s = { error: String(e) }; }
+    host.innerHTML = "";
+    host.appendChild(backBar(title, loadChatIndex));
+    if (!s || s.error) {
+      host.appendChild(el("div", "empty", s && s.error ? s.error : "unavailable"));
+      return;
+    }
+    const events = s.events || [];
+    if (!events.length) host.appendChild(el("div", "empty", "no turns"));
+    events.forEach((e) => host.appendChild(turnEl(e)));
+  }
+
+  function turnEl(e) {
+    if (COLLAPSES.has(e.kind)) {
+      // thinking / tool traffic: a dim one-liner that expands to the text on tap
+      const d = el("details", "turn collapsed");
+      const sum = el("summary");
+      sum.appendChild(el("span", "tkind", e.kind));
+      const first = (e.text || "").split("\n").find((x) => x.trim()) || "";
+      sum.appendChild(el("span", "tpeek", first.slice(0, 80)));
+      d.appendChild(sum);
+      const pre = el("pre", "tfull");
+      pre.textContent = e.text || "";
+      d.appendChild(pre);
+      return d;
+    }
+    const w = el("div", "turn " + (e.role || ""));
+    const r1 = el("div", "trow");
+    r1.appendChild(el("span", "trole", e.role));
+    if (e.ts) r1.appendChild(el("span", "meta", e.ts));
+    w.appendChild(r1);
+    w.appendChild(el("div", "tbody", e.text || ""));
+    return w;
   }
 
   // ---- data ----

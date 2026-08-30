@@ -81,6 +81,17 @@ impl EventKind {
             EventKind::Thinking | EventKind::ToolCall | EventKind::ToolResult
         )
     }
+
+    /// The lowercase wire label, matching `Role`/`Harness::label`.
+    pub fn label(self) -> &'static str {
+        match self {
+            EventKind::Message => "message",
+            EventKind::Thinking => "thinking",
+            EventKind::ToolCall => "toolcall",
+            EventKind::ToolResult => "toolresult",
+            EventKind::Meta => "meta",
+        }
+    }
 }
 
 /// One turn in a session, normalized across harnesses. `parent`/`is_sidechain`
