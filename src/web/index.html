@@ -115,6 +115,41 @@
   .art { font-size: .67rem; color: var(--faint); background: var(--panel-2); border: 1px solid var(--edge); border-radius: 6px; padding: .06rem .42rem; }
   .cites { color: var(--faint); font-size: .72rem; margin-top: .3rem; }
 
+  /* claim drill-in */
+  .claim.expandable { cursor: pointer; }
+  .claim.expandable .summary::after { content: " ›"; color: var(--faint); }
+  .claim.open .summary::after { content: " ⌄"; }
+  .claim-detail { margin-top: .5rem; padding: .55rem .65rem; background: var(--bg-2); border: 1px solid var(--edge); border-radius: 10px; }
+  .claim-detail .full-text { margin: 0 0 .4rem; white-space: pre-wrap; word-break: break-word; font-size: .82rem; color: var(--ink); font-family: inherit; }
+  .claim-detail .detail-meta { color: var(--faint); font-size: .72rem; }
+  .cite-list { margin-top: .5rem; }
+  .cite-list .cite-h { font-size: .66rem; text-transform: uppercase; letter-spacing: .1em; color: var(--faint); margin-bottom: .25rem; }
+  .cite-line { display: flex; gap: .5rem; align-items: baseline; padding: .15rem 0; }
+  .cite-line .cite-cid { color: var(--accent); font-size: .72rem; flex: none; }
+  .cite-line .cite-sum { color: var(--dim); font-size: .8rem; word-break: break-word; }
+
+  /* comments tab */
+  .cfile { display: flex; align-items: center; gap: .6rem; padding: .7rem .85rem; background: var(--panel); border: 1px solid var(--edge); border-radius: 12px; margin: .38rem 0; cursor: pointer; }
+  .cfile:active { background: var(--panel-2); }
+  .cfile .name { font-size: .85rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .cfile .cbadges { margin-left: auto; display: flex; gap: .35rem; flex: none; }
+  .cbadge { font-size: .72rem; color: var(--dim); background: var(--panel-2); border: 1px solid var(--edge); border-radius: 999px; padding: .06rem .5rem; }
+  .cbadge.unres { color: var(--warn); border-color: rgba(227,179,65,.4); background: rgba(227,179,65,.08); }
+  .cback { display: flex; align-items: center; gap: .6rem; margin-bottom: .6rem; }
+  .backbtn { appearance: none; border: 1px solid var(--edge); background: var(--panel); color: var(--accent); border-radius: 999px; padding: .3rem .7rem; font-size: .78rem; cursor: pointer; }
+  .cback .cpath { color: var(--faint); font-size: .78rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ccomment { background: var(--panel); border: 1px solid var(--edge); border-radius: 12px; padding: .7rem .85rem; margin: .4rem 0; cursor: pointer; }
+  .ccomment:active { background: var(--panel-2); }
+  .ccomment .row1 { display: flex; align-items: baseline; gap: .5rem; flex-wrap: wrap; }
+  .cstate { font-size: .66rem; text-transform: uppercase; letter-spacing: .06em; padding: .1rem .45rem; border-radius: 6px; border: 1px solid var(--edge); color: var(--dim); }
+  .cstate.anchored { color: var(--good); } .cstate.drifted { color: var(--warn); } .cstate.unresolvable { color: var(--bad); }
+  .cline { font-size: .72rem; color: var(--faint); }
+  .ccomment .meta { margin-left: auto; color: var(--faint); font-size: .73rem; }
+  .cbody { margin-top: .32rem; color: var(--ink); font-size: .9rem; word-break: break-word; white-space: pre-wrap; }
+  .cthreadlink { margin-top: .35rem; color: var(--accent); font-size: .76rem; }
+  .creply { margin: .35rem 0 .35rem 1rem; padding: .55rem .7rem; background: var(--bg-2); border: 1px solid var(--edge); border-left: 2px solid var(--edge-2); border-radius: 10px; }
+  .creply .meta { color: var(--faint); font-size: .72rem; margin-bottom: .2rem; }
+
   .banner { background: rgba(247,118,142,.12); border: 1px solid var(--bad); color: #ffd7de; border-radius: 12px; padding: .65rem .85rem; font-size: .82rem; margin-bottom: 1rem; }
   .empty { color: var(--faint); text-align: center; padding: 2.5rem 1rem; }
 
@@ -183,12 +218,18 @@
     <input class="filter" id="filter" placeholder="filter subjects…" autocomplete="off" autocapitalize="off" spellcheck="false" />
     <div id="subjects"></div>
   </div>
+
+  <!-- COMMENTS: files → comments → thread -->
+  <div class="view" id="view-comments">
+    <div id="comments"></div>
+  </div>
 </main>
 
 <nav id="nav">
   <button data-view="now"    class="active"><span class="ic">◎</span><span>Now</span></button>
   <button data-view="telos"><span class="ic">✦</span><span>Teloi</span></button>
   <button data-view="browse"><span class="ic">▤</span><span>Browse</span><span class="badge" id="subjBadge" hidden></span></button>
+  <button data-view="comments"><span class="ic">✎</span><span>Comments</span></button>
 </nav>
 
 <script>
@@ -201,6 +242,11 @@
   let expanded = new Set();
   let filter = "";
   let activeView = "now";
+  let commentsIndex = null;   // [{file,total,unresolved}] from GET /comments
+  let started = false;        // has the first fold render happened (REQ-5)
+  let ws = null;              // the live /stream socket
+  let backoff = 1000;         // reconnect backoff, capped (REQ-4)
+  let reconnectTimer = null;
 
   // Auth: the page is opened as `/?token=<t>`; reuse that token on every API
   // call and on the WS URL, so a single saved link works with no in-app entry.
@@ -232,8 +278,11 @@
     activeView = v;
     document.querySelectorAll(".view").forEach((n) => n.classList.toggle("active", n.id === "view-" + v));
     document.querySelectorAll("nav button").forEach((b) => b.classList.toggle("active", b.dataset.view === v));
-    $("viewname").textContent = { now: "Now", telos: "Teloi", browse: "Browse" }[v];
+    $("viewname").textContent = { now: "Now", telos: "Teloi", browse: "Browse", comments: "Comments" }[v];
     window.scrollTo({ top: 0 });
+    // Comments are fetched (not in the fold), and don't auto-update over /stream —
+    // (re)load the index fresh each time the tab is opened, resetting to level 0.
+    if (v === "comments") loadCommentIndex();
   }
 
   function render() {
@@ -353,30 +402,229 @@
       c.artifacts.forEach((art) => a.appendChild(el("span", "art mono", art)));
       w.appendChild(a);
     }
-    if (c.cites && c.cites.length) w.appendChild(el("div", "cites", `cites ${c.cites.length}`));
+
+    // Drill-in (REQ-3): tap to reveal the full untruncated text, the cites
+    // resolved through the fold's by_cid map, author, and time. Only offered when
+    // there is more than the one-line summary already shown.
+    const multiline = c.text && c.text.trim() !== summarize(c);
+    const hasCites = c.cites && c.cites.length;
+    if (hasCites) w.appendChild(el("div", "cites", `cites ${c.cites.length} ·  tap to expand`));
+    else if (multiline) w.appendChild(el("div", "cites", "tap to expand"));
+
+    if (multiline || hasCites) {
+      w.classList.add("expandable");
+      const detail = el("div", "claim-detail");
+      detail.hidden = true;
+      if (c.text) {
+        const pre = el("pre", "full-text");
+        pre.textContent = c.text;
+        detail.appendChild(pre);
+      }
+      detail.appendChild(el("div", "detail-meta", `${c.author || "?"} · ${fmtWhen(c.recorded_at)} · ${c.cid ? c.cid.slice(-10) : ""}`));
+      if (hasCites) {
+        const ci = el("div", "cite-list");
+        ci.appendChild(el("div", "cite-h", "cites"));
+        c.cites.forEach((cid) => {
+          const cited = fold.by_cid && fold.by_cid[cid];
+          const line = el("div", "cite-line");
+          line.appendChild(el("span", "cite-cid mono", cid.slice(-8)));
+          line.appendChild(el("span", "cite-sum", cited ? summarize(cited) : "(not in this fold)"));
+          ci.appendChild(line);
+        });
+        detail.appendChild(ci);
+      }
+      w.appendChild(detail);
+      w.addEventListener("click", () => {
+        detail.hidden = !detail.hidden;
+        w.classList.toggle("open", !detail.hidden);
+      });
+    }
     return w;
+  }
+
+  // ---- comments: files → a file's comments → one comment's thread ----
+  function backBar(label, onBack) {
+    const bar = el("div", "cback");
+    const b = el("button", "backbtn", "‹ back");
+    b.addEventListener("click", onBack);
+    bar.appendChild(b);
+    bar.appendChild(el("span", "cpath mono", label));
+    return bar;
+  }
+
+  async function loadCommentIndex() {
+    const host = $("comments");
+    host.innerHTML = "";
+    host.appendChild(el("div", "empty", "loading…"));
+    try {
+      const r = await fetch(withTok("/comments"), { cache: "no-store" });
+      commentsIndex = (await r.json()).files || [];
+    } catch (e) {
+      commentsIndex = [];
+    }
+    renderCommentIndex();
+  }
+
+  function renderCommentIndex() {
+    const host = $("comments");
+    host.innerHTML = "";
+    if (!commentsIndex || !commentsIndex.length) {
+      host.appendChild(el("div", "empty", "no comments in this repo"));
+      return;
+    }
+    host.appendChild(el("h2", null, "Files with comments"));
+    commentsIndex.forEach((f) => {
+      const row = el("div", "cfile");
+      row.appendChild(el("span", "name mono", f.file));
+      const badges = el("span", "cbadges");
+      if (f.unresolved) badges.appendChild(el("span", "cbadge unres", `${f.unresolved} open`));
+      badges.appendChild(el("span", "cbadge", String(f.total)));
+      row.appendChild(badges);
+      row.addEventListener("click", () => openCommentFile(f.file));
+      host.appendChild(row);
+    });
+  }
+
+  async function openCommentFile(file) {
+    const host = $("comments");
+    host.innerHTML = "";
+    host.appendChild(el("div", "empty", "loading…"));
+    let data;
+    try {
+      const r = await fetch(withTok("/comments?file=" + encodeURIComponent(file)), { cache: "no-store" });
+      data = await r.json();
+    } catch (e) {
+      data = { file, comments: [] };
+    }
+    host.innerHTML = "";
+    host.appendChild(backBar(file, loadCommentIndex));
+    const cs = (data && data.comments) || [];
+    if (!cs.length) {
+      host.appendChild(el("div", "empty", "no comments"));
+      return;
+    }
+    cs.forEach((c) => host.appendChild(commentRow(file, c)));
+  }
+
+  function commentRow(file, c) {
+    const w = el("div", "ccomment");
+    const r1 = el("div", "row1");
+    r1.appendChild(el("span", "cstate " + (c.state || ""), c.state || ""));
+    if (c.line != null) r1.appendChild(el("span", "cline", "line " + c.line));
+    const who = c.author ? `${c.author.who}:${c.author.id}` : "";
+    r1.appendChild(el("span", "meta", who + (c.resolved ? " · resolved" : "")));
+    w.appendChild(r1);
+    w.appendChild(el("div", "cbody", c.body));
+    const rc = (c.replies || []).length;
+    if (rc) w.appendChild(el("div", "cthreadlink", `${rc} repl${rc === 1 ? "y" : "ies"} ›`));
+    w.addEventListener("click", () => openThread(file, c.id));
+    return w;
+  }
+
+  async function openThread(file, id) {
+    const host = $("comments");
+    host.innerHTML = "";
+    host.appendChild(el("div", "empty", "loading…"));
+    let c;
+    try {
+      const r = await fetch(withTok(`/thread?file=${encodeURIComponent(file)}&id=${encodeURIComponent(id)}`), { cache: "no-store" });
+      c = await r.json();
+    } catch (e) {
+      c = { error: String(e) };
+    }
+    host.innerHTML = "";
+    host.appendChild(backBar(file, () => openCommentFile(file)));
+    if (!c || c.error) {
+      host.appendChild(el("div", "empty", c && c.error ? c.error : "not found"));
+      return;
+    }
+    const head = el("div", "ccomment");
+    const r1 = el("div", "row1");
+    r1.appendChild(el("span", "cstate " + (c.state || ""), c.state || ""));
+    if (c.line != null) r1.appendChild(el("span", "cline", "line " + c.line));
+    const who = c.author ? `${c.author.who}:${c.author.id}` : "";
+    r1.appendChild(el("span", "meta", who + (c.resolved ? " · resolved" : "")));
+    head.appendChild(r1);
+    head.appendChild(el("div", "cbody", c.body));
+    host.appendChild(head);
+    (c.replies || []).forEach((r) => {
+      const rep = el("div", "creply");
+      rep.appendChild(el("div", "meta", r.author ? `${r.author.who}:${r.author.id}` : ""));
+      rep.appendChild(el("div", "cbody", r.body));
+      host.appendChild(rep);
+    });
   }
 
   // ---- data ----
   function setDot(s) { const d = $("dot"); d.className = "dot" + (s ? " " + s : ""); d.title = s || "connecting"; }
+
+  // When the fetch fallback did the initial paint, the /stream connect-snapshot
+  // that follows carries the same state — skip exactly that one frame so startup
+  // renders once (REQ-5). Armed only briefly, so a genuine (later) reconnect
+  // snapshot is never suppressed — it must render to catch up.
+  let skipNextFrame = false;
+
+  // Apply a fold and (re)render. `started` gates the initial paint so the fetch
+  // fallback and the /stream connect-snapshot don't both render at startup (REQ-5).
+  function applyFold(f) { fold = f; render(); started = true; }
+
+  // Fallback first-paint if /stream is slow to deliver its snapshot; only paints
+  // if the socket hasn't already (REQ-5). Never renders over live WS data.
   async function load() {
-    try { const r = await fetch(withTok("/fold"), { cache: "no-store" }); fold = await r.json(); render(); }
-    catch (e) { $("daystatus").textContent = "failed to load /fold: " + e; }
+    try {
+      const r = await fetch(withTok("/fold"), { cache: "no-store" });
+      const f = await r.json();
+      if (!started) {
+        applyFold(f);
+        // The next /stream frame (this connection's connect-snapshot) is the same
+        // state we just painted — skip it. Disarm after 2s so a real reconnect
+        // snapshot much later still renders.
+        skipNextFrame = true;
+        setTimeout(() => { skipNextFrame = false; }, 2000);
+      }
+    } catch (e) {
+      if (!started) $("daystatus").textContent = "failed to load /fold: " + e;
+    }
+  }
+
+  // Capped-backoff, visibility-aware /stream reconnect (REQ-4).
+  function scheduleReconnect() {
+    if (document.hidden) return;             // resume on visibilitychange instead
+    clearTimeout(reconnectTimer);
+    reconnectTimer = setTimeout(connect, backoff);
+    backoff = Math.min(backoff * 2, 30000);  // 1s → 2s → … → 30s cap
   }
   function connect() {
+    if (document.hidden) return;             // don't hold a socket while hidden
+    if (ws) { try { ws.onclose = null; ws.onerror = null; ws.close(); } catch (_) {} ws = null; }
     const proto = location.protocol === "https:" ? "wss" : "ws";
-    let ws; try { ws = new WebSocket(`${proto}://${location.host}${withTok("/stream")}`); } catch (e) { setDot("dead"); return; }
-    ws.onopen = () => setDot("live");
-    ws.onmessage = (ev) => { try { fold = JSON.parse(ev.data); render(); } catch (_) {} };
-    ws.onclose = () => { setDot("stale"); setTimeout(connect, 1500); };
+    try { ws = new WebSocket(`${proto}://${location.host}${withTok("/stream")}`); }
+    catch (e) { setDot("dead"); scheduleReconnect(); return; }
+    ws.onopen = () => { setDot("live"); backoff = 1000; };  // reset backoff on success
+    ws.onmessage = (ev) => {
+      if (skipNextFrame) { skipNextFrame = false; return; }  // the post-fetch connect-snapshot (REQ-5)
+      try { applyFold(JSON.parse(ev.data)); } catch (_) {}
+    };
+    ws.onclose = () => { setDot("stale"); scheduleReconnect(); };
     ws.onerror = () => { try { ws.close(); } catch (_) {} };
   }
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) {
+      clearTimeout(reconnectTimer);
+      if (ws) { try { ws.onclose = null; ws.onerror = null; ws.close(); } catch (_) {} ws = null; }
+      setDot("stale");
+    } else {
+      backoff = 1000;
+      connect();  // reconnect immediately on return to foreground
+    }
+  });
 
   document.querySelectorAll("nav button").forEach((b) => b.addEventListener("click", () => setView(b.dataset.view)));
   $("filter").addEventListener("input", (e) => { filter = e.target.value.trim().toLowerCase(); renderSubjects(); });
 
   setDot(""); setView("now");
-  load().then(connect);
+  connect();                                    // /stream paints first, normally
+  setTimeout(() => { if (!started) load(); }, 800);  // fetch fallback if WS is silent
 })();
 </script>
 </body>

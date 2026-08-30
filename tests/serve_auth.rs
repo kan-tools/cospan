@@ -7,7 +7,7 @@
 use cospan::server::{self, Auth, Shared};
 use cospan::substrate::Fold;
 use futures_util::StreamExt;
-use std::path::PathBuf;
+use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -20,18 +20,39 @@ const TOKEN: &str = "cafef00dcafef00dcafef00dcafef00dcafef00dcafef00dcafef00dcaf
 /// against a nonexistent repo (the fold loop's mtime gate never fires, so kan is
 /// never invoked). Returns the port.
 async fn spawn(auth: Auth, max_stream: usize) -> u16 {
+    spawn_repo(
+        Path::new("/nonexistent-cospan-serveauth-repo"),
+        auth,
+        max_stream,
+    )
+    .await
+}
+
+/// Like `spawn` but against a specific repo (with no `.kan/`, so the fold loop's
+/// mtime gate never fires and kan is never invoked) — used to serve real comment
+/// sidecars written under the repo.
+async fn spawn_repo(repo: &Path, auth: Auth, max_stream: usize) -> u16 {
     let listener = server::bind(0).await.unwrap();
     let port = listener.local_addr().unwrap().port();
-    let shared = Shared::seed(
-        PathBuf::from("/nonexistent-cospan-serveauth-repo"),
-        Fold::default(),
-    )
-    .with_auth(auth)
-    .with_max_stream(max_stream);
+    let shared = Shared::seed(repo.to_path_buf(), Fold::default())
+        .with_auth(auth)
+        .with_max_stream(max_stream);
     tokio::spawn(server::serve_on(listener, shared));
-    // Yield so the listener is accepting before the first client connects.
     tokio::time::sleep(Duration::from_millis(50)).await;
     port
+}
+
+/// GET the response body (everything after the header terminator).
+async fn http_body(port: u16, path: &str) -> String {
+    let mut s = TcpStream::connect(("127.0.0.1", port)).await.unwrap();
+    let req = format!("GET {path} HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n");
+    s.write_all(req.as_bytes()).await.unwrap();
+    let mut buf = Vec::new();
+    s.read_to_end(&mut buf).await.unwrap();
+    String::from_utf8_lossy(&buf)
+        .split_once("\r\n\r\n")
+        .map(|x| x.1.to_string())
+        .unwrap_or_default()
 }
 
 /// Issue an HTTP/1.1 GET (optionally with one extra header line, e.g.
@@ -140,6 +161,44 @@ fn empty_configured_token_authenticates_nothing() {
             "empty token: empty ?token= must NOT authenticate"
         );
     });
+}
+
+#[test]
+fn comment_index_endpoint_and_single_file_and_traversal() {
+    // AC-2 + AC-4 (Slice A): GET /comments (no file) returns the files index;
+    // GET /comments?file= still returns that file's comments; a traversal on the
+    // single-file path still hits the guard.
+    let repo = std::env::temp_dir().join(format!("cospan-serveA-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&repo);
+    std::fs::create_dir_all(repo.join("src")).unwrap();
+    std::fs::write(repo.join("src/a.rs"), "l0\nl1\nl2\n").unwrap();
+    // Seed a comment through the public core (writes a sidecar).
+    cospan::mcp::add_comment(&repo, "src/a.rs", 1, "hot?");
+
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    rt.block_on(async {
+        let port = spawn_repo(&repo, Auth::None, 64).await;
+
+        let idx: serde_json::Value =
+            serde_json::from_str(&http_body(port, "/comments").await).unwrap();
+        let files = idx["files"].as_array().expect("files array");
+        assert_eq!(files.len(), 1, "index lists the one commented file: {idx}");
+        assert_eq!(files[0]["file"], "src/a.rs");
+        assert_eq!(files[0]["total"], 1);
+
+        let one: serde_json::Value =
+            serde_json::from_str(&http_body(port, "/comments?file=src/a.rs").await).unwrap();
+        assert_eq!(
+            one["comments"][0]["body"], "hot?",
+            "single-file path still works: {one}"
+        );
+
+        let esc: serde_json::Value =
+            serde_json::from_str(&http_body(port, "/comments?file=../../etc/passwd").await)
+                .unwrap();
+        assert!(esc.get("error").is_some(), "traversal still guarded: {esc}");
+    });
+    std::fs::remove_dir_all(&repo).ok();
 }
 
 #[test]

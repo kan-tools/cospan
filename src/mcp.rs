@@ -111,6 +111,61 @@ fn comment_json(c: &Comment, loc: &Localization) -> Value {
     })
 }
 
+/// `comment_files()` — the index of files that have a comment sidecar, each with
+/// its comment `total` and `unresolved` counts. A cheap read: it walks the
+/// `.cospan/comments/` tree and reads each sidecar's records for the counts only,
+/// never re-localizing (no source file is opened), so it does not need file
+/// content. The `file` paths returned are repo-relative, recovered from the
+/// sidecar layout (`comments::sidecar_path`), so nothing outside the tree is
+/// listed. Missing tree → an empty list.
+pub fn comment_files(repo: &Path) -> Value {
+    let root = repo.join(".cospan/comments");
+    let mut files: Vec<Value> = Vec::new();
+    let mut stack = vec![root.clone()];
+    while let Some(dir) = stack.pop() {
+        let Ok(entries) = std::fs::read_dir(&dir) else {
+            continue;
+        };
+        for e in entries.flatten() {
+            // `file_type()` reads the dir entry without following symlinks, so a
+            // symlinked dir is skipped rather than traversed — no walk cycle and no
+            // escape out of the tree via a symlink.
+            let Ok(ft) = e.file_type() else {
+                continue;
+            };
+            if ft.is_symlink() {
+                continue;
+            }
+            let p = e.path();
+            if ft.is_dir() {
+                stack.push(p);
+                continue;
+            }
+            if !ft.is_file() {
+                continue;
+            }
+            // Recover the repo-relative source path: strip the tree prefix and the
+            // `.jsonl` suffix. A file that is not `<rel>.jsonl` is skipped.
+            let Ok(rel_jsonl) = p.strip_prefix(&root) else {
+                continue;
+            };
+            let Some(rel) = rel_jsonl.to_str().and_then(|s| s.strip_suffix(".jsonl")) else {
+                continue;
+            };
+            let cs = comments::load(&p).unwrap_or_default();
+            if cs.is_empty() {
+                continue;
+            }
+            let total = cs.len();
+            let unresolved = cs.iter().filter(|c| !c.resolved).count();
+            files.push(json!({ "file": rel, "total": total, "unresolved": unresolved }));
+        }
+    }
+    // Stable order for a stable render.
+    files.sort_by(|a, b| a["file"].as_str().cmp(&b["file"].as_str()));
+    json!({ "files": files })
+}
+
 /// `list_comments(file)` — every comment on `file`, each re-localized against the
 /// current content so its `state`/`line` are honest. A pure read: it does not
 /// persist re-anchoring.
@@ -548,6 +603,62 @@ mod tests {
         assert!(!repo
             .join(".cospan/comments/../../etc/passwd.jsonl")
             .exists());
+        std::fs::remove_dir_all(&repo).ok();
+    }
+
+    /// AC-1 (Slice A): the comment index lists every file with a sidecar and its
+    /// total/unresolved counts (no source read, no re-localization), an empty repo
+    /// yields an empty list, and only repo-relative paths are surfaced.
+    #[test]
+    fn comment_files_indexes_sidecars_with_counts() {
+        let repo = tmp("index");
+        // No sidecars yet → empty index.
+        let empty = comment_files(&repo);
+        assert_eq!(
+            empty["files"].as_array().unwrap().len(),
+            0,
+            "empty: {empty}"
+        );
+
+        // Two commented files: src/a.rs (1 open + 1 resolved), README.md (1 open).
+        call_tool(
+            &repo,
+            "add_comment",
+            &json!({"file":"src/a.rs","line":1,"body":"open one"}),
+        )
+        .unwrap();
+        let r = call_tool(
+            &repo,
+            "add_comment",
+            &json!({"file":"src/a.rs","line":2,"body":"to resolve"}),
+        )
+        .unwrap();
+        let id = r["id"].as_str().unwrap().to_string();
+        call_tool(&repo, "resolve", &json!({"file":"src/a.rs","id":id})).unwrap();
+        std::fs::write(repo.join("README.md"), "hello\nworld\n").unwrap();
+        call_tool(
+            &repo,
+            "add_comment",
+            &json!({"file":"README.md","line":1,"body":"readme note"}),
+        )
+        .unwrap();
+
+        let idx = comment_files(&repo);
+        let files = idx["files"].as_array().unwrap();
+        assert_eq!(files.len(), 2, "two commented files: {idx}");
+        // Sorted by path: README.md before src/a.rs.
+        assert_eq!(files[0]["file"], "README.md");
+        assert_eq!(files[0]["total"], 1);
+        assert_eq!(files[0]["unresolved"], 1);
+        assert_eq!(files[1]["file"], "src/a.rs");
+        assert_eq!(files[1]["total"], 2);
+        assert_eq!(files[1]["unresolved"], 1, "one of two resolved");
+        // Every listed path is repo-relative (no tree prefix leaks out).
+        for f in files {
+            let p = f["file"].as_str().unwrap();
+            assert!(!p.contains(".cospan"), "path leaks the sidecar tree: {p}");
+            assert!(!p.starts_with('/'), "path is absolute: {p}");
+        }
         std::fs::remove_dir_all(&repo).ok();
     }
 

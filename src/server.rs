@@ -9,7 +9,9 @@
 //!   * `GET /fold`            — the current `substrate::Fold` as a JSON snapshot.
 //!   * `WS  /stream`          — the serialized `Fold` pushed on every refold; the
 //!     current snapshot arrives on connect.
-//!   * `GET /comments?file=`  — the S5 comment read core (`mcp::list_comments`).
+//!   * `GET /comments`        — index of files that have comments
+//!     (`mcp::comment_files`); with `?file=`, that file's comments
+//!     (`mcp::list_comments`).
 //!   * `GET /thread?file=&id=`— one comment + thread (`mcp::get_thread`).
 //!
 //! This is the same projection the TUI renders — a read of the kan/day log,
@@ -355,21 +357,25 @@ async fn stream_folds(mut socket: WebSocket, shared: Shared, _slot: StreamSlot) 
 
 #[derive(Deserialize)]
 struct CommentsQuery {
-    file: String,
+    file: Option<String>,
 }
 
-/// `GET /comments?file=<rel>` — the S5 comment read core over HTTP. The blocking
-/// sidecar I/O runs under `spawn_blocking`; `mcp::list_comments` is already
-/// path-traversal-guarded, so a `file=../x` returns its error JSON, never a read
-/// outside the repo.
+/// `GET /comments` — the comment read collection. With no `file`, returns the
+/// index of files that have comments (`mcp::comment_files`); with `?file=<rel>`,
+/// that file's comments (`mcp::list_comments`). The blocking sidecar I/O runs
+/// under `spawn_blocking`; the single-file path is path-guarded, so a
+/// `file=../x` returns the guard error, never a read outside the repo.
 async fn get_comments(
     State(shared): State<Shared>,
     Query(q): Query<CommentsQuery>,
 ) -> Json<serde_json::Value> {
     let repo = shared.repo.clone();
-    let v = tokio::task::spawn_blocking(move || mcp::list_comments(&repo, &q.file))
-        .await
-        .unwrap_or_else(|e| serde_json::json!({ "error": format!("task join failed: {e}") }));
+    let v = tokio::task::spawn_blocking(move || match q.file {
+        Some(file) => mcp::list_comments(&repo, &file),
+        None => mcp::comment_files(&repo),
+    })
+    .await
+    .unwrap_or_else(|e| serde_json::json!({ "error": format!("task join failed: {e}") }));
     Json(v)
 }
 
@@ -626,6 +632,27 @@ mod tests {
             INDEX_HTML.contains("token") && INDEX_HTML.contains("withTok"),
             "page must read and reuse a ?token="
         );
+    }
+
+    /// AC-3 (Slice A): the page wires the UX-pass behavior — a Comments tab over
+    /// `/comments`+`/thread`, claim drill-in resolving cites through `by_cid`, a
+    /// visibility-aware capped-backoff reconnect, and the render-once startup.
+    #[test]
+    fn index_html_wires_the_ux_pass() {
+        for needle in [
+            "data-view=\"comments\"", // the fourth tab
+            "/thread",                // thread drill-in
+            "by_cid",                 // cite resolution
+            "document.hidden",        // visibility gating
+            "visibilitychange",       // reconnect on return
+            "backoff",                // capped backoff
+            "started",                // render-once gate (REQ-5)
+        ] {
+            assert!(
+                INDEX_HTML.contains(needle),
+                "page missing UX-pass wiring: {needle}"
+            );
+        }
     }
 
     /// AC-1: the token minter yields a non-empty URL-safe token that differs each
