@@ -40,7 +40,7 @@ fn main() {
                  cospan watch-repo <path> [--once]\n  cospan subject <repo> <subject>\n  \
                  cospan comment add <file> --line <N> [--ctx <C>] <body>\n  \
                  cospan comments <file>\n  cospan mcp [repo]\n  \
-                 cospan serve <repo> [--port N] [--token T | --no-auth] [--max-stream N]"
+                 cospan serve <repo> [--port N] [--token T | --no-auth] [--max-stream N] [--allow-writes [--author ID]]"
             );
             std::process::exit(2);
         }
@@ -78,6 +78,8 @@ fn serve_cmd(args: &[String]) {
     let mut token: Option<String> = None;
     let mut no_auth = false;
     let mut max_stream = cospan::server::DEFAULT_MAX_STREAM;
+    let mut allow_writes = false;
+    let mut author = String::new();
     let value_needed = |name: &str| -> ! {
         eprintln!("cospan serve: {name} needs a value");
         std::process::exit(2);
@@ -106,14 +108,34 @@ fn serve_cmd(args: &[String]) {
                 }
                 i += 2;
             }
+            "--author" => {
+                match args.get(i + 1) {
+                    Some(a) => author = a.clone(),
+                    None => value_needed("--author"),
+                }
+                i += 2;
+            }
             "--no-auth" => {
                 no_auth = true;
+                i += 1;
+            }
+            "--allow-writes" => {
+                allow_writes = true;
                 i += 1;
             }
             _ => i += 1,
         }
     }
-    if let Err(e) = cospan::server::run(repo, port, token, no_auth, max_stream) {
+    // Resolve the web-author id: --author, else COSPAN_WEB_AUTHOR, else empty
+    // (the server defaults an empty id to "web").
+    let author = if author.is_empty() {
+        std::env::var("COSPAN_WEB_AUTHOR").unwrap_or_default()
+    } else {
+        author
+    };
+    if let Err(e) =
+        cospan::server::run(repo, port, token, no_auth, max_stream, allow_writes, author)
+    {
         eprintln!("cospan serve: {e}");
         std::process::exit(1);
     }

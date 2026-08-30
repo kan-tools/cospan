@@ -42,6 +42,44 @@ async fn spawn_repo(repo: &Path, auth: Auth, max_stream: usize) -> u16 {
     port
 }
 
+/// Like `spawn_repo` but with comment writes enabled (`--allow-writes`), stamping
+/// the given author id.
+async fn spawn_writes(repo: &Path, auth: Auth, author: &str) -> u16 {
+    let listener = server::bind(0).await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let shared = Shared::seed(repo.to_path_buf(), Fold::default())
+        .with_auth(auth)
+        .with_writes(author.to_string());
+    tokio::spawn(server::serve_on(listener, shared));
+    tokio::time::sleep(Duration::from_millis(50)).await;
+    port
+}
+
+/// POST a JSON body (optionally with one header line, e.g. Authorization),
+/// returning (status, response-body).
+async fn http_post(port: u16, path: &str, body: &str, header: Option<&str>) -> (u16, String) {
+    let mut s = TcpStream::connect(("127.0.0.1", port)).await.unwrap();
+    let extra = header.map(|h| format!("{h}\r\n")).unwrap_or_default();
+    let req = format!(
+        "POST {path} HTTP/1.1\r\nHost: 127.0.0.1\r\n{extra}content-type: application/json\r\ncontent-length: {}\r\nConnection: close\r\n\r\n{body}",
+        body.len()
+    );
+    s.write_all(req.as_bytes()).await.unwrap();
+    let mut buf = Vec::new();
+    s.read_to_end(&mut buf).await.unwrap();
+    let text = String::from_utf8_lossy(&buf);
+    let status = text
+        .split_whitespace()
+        .nth(1)
+        .and_then(|c| c.parse().ok())
+        .unwrap_or(0);
+    let rbody = text
+        .split_once("\r\n\r\n")
+        .map(|x| x.1.to_string())
+        .unwrap_or_default();
+    (status, rbody)
+}
+
 /// GET the response body (everything after the header terminator).
 async fn http_body(port: u16, path: &str) -> String {
     let mut s = TcpStream::connect(("127.0.0.1", port)).await.unwrap();
@@ -197,6 +235,144 @@ fn comment_index_endpoint_and_single_file_and_traversal() {
             serde_json::from_str(&http_body(port, "/comments?file=../../etc/passwd").await)
                 .unwrap();
         assert!(esc.get("error").is_some(), "traversal still guarded: {esc}");
+    });
+    std::fs::remove_dir_all(&repo).ok();
+}
+
+#[test]
+fn writes_off_by_default_405s_and_capabilities_reports_false() {
+    // AC-2 (Slice C): without --allow-writes, POST is a 405 and /capabilities says so.
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    rt.block_on(async {
+        let port = spawn(Auth::None, 64).await; // read-only server
+        let (status, _b) = http_post(
+            port,
+            "/comments?file=src/a.rs",
+            "{\"line\":1,\"body\":\"x\"}",
+            None,
+        )
+        .await;
+        assert_eq!(status, 405, "POST must be 405 when writes are off");
+        let caps: serde_json::Value =
+            serde_json::from_str(&http_body(port, "/capabilities").await).unwrap();
+        assert_eq!(caps["writes"], false, "capabilities: {caps}");
+    });
+}
+
+#[test]
+fn writes_on_add_reply_resolve_round_trip_with_web_attribution() {
+    // AC-3 (Slice C): add → reply → resolve over POST, attributed who:human id:web,
+    // and a second add does not lose the first (the write lock).
+    let repo = std::env::temp_dir().join(format!("cospan-serveC-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&repo);
+    std::fs::create_dir_all(repo.join("src")).unwrap();
+    std::fs::write(repo.join("src/a.rs"), "l0\nl1\nl2\n").unwrap();
+
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    rt.block_on(async {
+        let port = spawn_writes(&repo, Auth::None, "web").await;
+
+        // capabilities reports writes + the author.
+        let caps: serde_json::Value =
+            serde_json::from_str(&http_body(port, "/capabilities").await).unwrap();
+        assert_eq!(caps["writes"], true);
+        assert_eq!(caps["author"]["id"], "web");
+
+        // add
+        let (st, body) = http_post(
+            port,
+            "/comments?file=src/a.rs",
+            "{\"line\":1,\"body\":\"from the phone\"}",
+            None,
+        )
+        .await;
+        assert_eq!(st, 200, "add: {body}");
+        let add: serde_json::Value = serde_json::from_str(&body).unwrap();
+        let id = add["id"].as_str().expect("new comment id").to_string();
+
+        // a second add — the first must survive (no lost update)
+        let (_st2, _b2) = http_post(
+            port,
+            "/comments?file=src/a.rs",
+            "{\"line\":2,\"body\":\"second\"}",
+            None,
+        )
+        .await;
+
+        // GET shows both, the first authored who:human id:web
+        let listed: serde_json::Value =
+            serde_json::from_str(&http_body(port, "/comments?file=src/a.rs").await).unwrap();
+        let items = listed["comments"].as_array().unwrap();
+        assert_eq!(items.len(), 2, "both adds persisted: {listed}");
+        assert_eq!(items[0]["author"]["who"], "human");
+        assert_eq!(items[0]["author"]["id"], "web");
+
+        // reply
+        let (rst, rbody) = http_post(
+            port,
+            &format!("/thread?file=src/a.rs&id={id}"),
+            "{\"body\":\"a reply\"}",
+            None,
+        )
+        .await;
+        assert_eq!(rst, 200, "reply: {rbody}");
+
+        // resolve
+        let (sst, sbody) = http_post(
+            port,
+            &format!("/resolve?file=src/a.rs&id={id}"),
+            "{\"value\":true}",
+            None,
+        )
+        .await;
+        assert_eq!(sst, 200, "resolve: {sbody}");
+        let thread: serde_json::Value =
+            serde_json::from_str(&http_body(port, &format!("/thread?file=src/a.rs&id={id}")).await)
+                .unwrap();
+        assert_eq!(thread["resolved"], true);
+        assert_eq!(thread["replies"][0]["body"], "a reply");
+        assert_eq!(thread["replies"][0]["author"]["id"], "web");
+    });
+    std::fs::remove_dir_all(&repo).ok();
+}
+
+#[test]
+fn writes_are_auth_gated_and_path_guarded() {
+    // AC-4 (Slice C): a POST needs the token, and the guard fires on ?file=../
+    let repo = std::env::temp_dir().join(format!("cospan-serveCg-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&repo);
+    std::fs::create_dir_all(&repo).unwrap();
+
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    rt.block_on(async {
+        let port = spawn_writes(&repo, Auth::Token(Arc::from(TOKEN)), "web").await;
+
+        // no token → 401
+        let (st, _b) = http_post(
+            port,
+            "/comments?file=x",
+            "{\"line\":1,\"body\":\"x\"}",
+            None,
+        )
+        .await;
+        assert_eq!(st, 401, "write without token must be 401");
+
+        // with token but a traversal path → guard error, no write outside repo
+        let bearer = format!("Authorization: Bearer {TOKEN}");
+        let (st2, b2) = http_post(
+            port,
+            "/comments?file=../../etc/passwd",
+            "{\"line\":1,\"body\":\"x\"}",
+            Some(&bearer),
+        )
+        .await;
+        assert_eq!(st2, 200, "guard returns JSON error, not an HTTP error");
+        let v: serde_json::Value = serde_json::from_str(&b2).unwrap();
+        assert!(v.get("error").is_some(), "traversal must be guarded: {v}");
+        assert!(
+            !std::path::Path::new("/etc/passwd.jsonl").exists(),
+            "no write escaped"
+        );
     });
     std::fs::remove_dir_all(&repo).ok();
 }

@@ -201,10 +201,18 @@ pub fn get_thread(repo: &Path, file: &str, id: &str) -> Value {
     }
 }
 
-/// `add_comment(file, line, body)` — capture a fingerprint at `line` (1-based) of
-/// the current file and append an agent-authored comment. Same sidecar the human
-/// TUI and CLI write, so it re-localizes and surfaces like any other comment.
+/// `add_comment(file, line, body)` — add an agent-authored comment (the MCP
+/// path). Thin wrapper over `add_comment_as` with `agent_author()`.
 pub fn add_comment(repo: &Path, file: &str, line: usize, body: &str) -> Value {
+    add_comment_as(repo, file, line, body, agent_author())
+}
+
+/// `add_comment_as(file, line, body, author)` — capture a fingerprint at `line`
+/// (1-based) of the current file and append a comment stamped `author`. Same
+/// sidecar the human TUI and CLI write, so it re-localizes and surfaces like any
+/// other comment. The author is passed in so the MCP path stamps `who:"agent"`
+/// while a web write stamps `who:"human"`.
+pub fn add_comment_as(repo: &Path, file: &str, line: usize, body: &str, author: Author) -> Value {
     if let Err(e) = guard(repo, file) {
         return e;
     }
@@ -217,7 +225,7 @@ pub fn add_comment(repo: &Path, file: &str, line: usize, body: &str) -> Value {
         id: format!("c_{created_at}_{}", cs.len()),
         anchor: comments::StoredAnchor::capture(&content, line0, 2),
         body: body.to_string(),
-        author: agent_author(),
+        author,
         created_at,
         resolved: false,
         thread: Vec::new(),
@@ -233,15 +241,22 @@ pub fn add_comment(repo: &Path, file: &str, line: usize, body: &str) -> Value {
     }
 }
 
-/// `reply(file, id, body)` — append an agent-authored reply to a comment's thread.
+/// `reply(file, id, body)` — append an agent-authored reply (the MCP path). Thin
+/// wrapper over `reply_as` with `agent_author()`.
 pub fn reply(repo: &Path, file: &str, id: &str, body: &str) -> Value {
+    reply_as(repo, file, id, body, agent_author())
+}
+
+/// `reply_as(file, id, body, author)` — append a reply stamped `author` to a
+/// comment's thread.
+pub fn reply_as(repo: &Path, file: &str, id: &str, body: &str, author: Author) -> Value {
     if let Err(e) = guard(repo, file) {
         return e;
     }
     let path = sidecar(repo, file);
     let mut cs = comments::load(&path).unwrap_or_default();
     let r = comments::Reply {
-        author: agent_author(),
+        author,
         body: body.to_string(),
         created_at: comments::now_micros(),
     };
@@ -603,6 +618,35 @@ mod tests {
         assert!(!repo
             .join(".cospan/comments/../../etc/passwd.jsonl")
             .exists());
+        std::fs::remove_dir_all(&repo).ok();
+    }
+
+    /// AC-1 (Slice C): the `_as` write cores stamp the supplied author on the
+    /// record, while the plain `add_comment`/`reply` still stamp `agent_author()` —
+    /// so a web write is `who:"human"` and the MCP path stays `who:"agent"`.
+    #[test]
+    fn write_cores_carry_the_supplied_author() {
+        let repo = tmp("author");
+        let web = Author {
+            who: "human".into(),
+            id: "web".into(),
+        };
+        // add_comment_as stamps the web author; reply_as too.
+        let r = add_comment_as(&repo, "src/a.rs", 1, "from the phone", web.clone());
+        let id = r["id"].as_str().unwrap().to_string();
+        reply_as(&repo, "src/a.rs", &id, "and a reply", web.clone());
+        let t = get_thread(&repo, "src/a.rs", &id);
+        assert_eq!(t["author"]["who"], "human");
+        assert_eq!(t["author"]["id"], "web");
+        assert_eq!(t["replies"][0]["author"]["who"], "human");
+        assert_eq!(t["replies"][0]["author"]["id"], "web");
+
+        // The MCP path (plain add_comment) is unchanged: who:"agent".
+        std::env::remove_var("KAN_AGENT");
+        let r2 = add_comment(&repo, "src/a.rs", 2, "from an agent");
+        let id2 = r2["id"].as_str().unwrap().to_string();
+        let t2 = get_thread(&repo, "src/a.rs", &id2);
+        assert_eq!(t2["author"]["who"], "agent");
         std::fs::remove_dir_all(&repo).ok();
     }
 

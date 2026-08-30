@@ -150,6 +150,16 @@
   .creply { margin: .35rem 0 .35rem 1rem; padding: .55rem .7rem; background: var(--bg-2); border: 1px solid var(--edge); border-left: 2px solid var(--edge-2); border-radius: 10px; }
   .creply .meta { color: var(--faint); font-size: .72rem; margin-bottom: .2rem; }
 
+  /* write affordances (only shown when --allow-writes) */
+  .writebox { margin: .6rem 0; padding: .7rem .85rem; background: var(--panel); border: 1px dashed var(--edge-2); border-radius: 12px; display: flex; flex-direction: column; gap: .4rem; }
+  .writeh { font-size: .68rem; text-transform: uppercase; letter-spacing: .1em; color: var(--accent); }
+  .wtext { width: 100%; min-height: 3rem; resize: vertical; background: var(--bg-2); border: 1px solid var(--edge); border-radius: 8px; color: var(--ink); font: inherit; font-size: .88rem; padding: .5rem .6rem; }
+  .wtext:focus, .winput:focus { outline: none; border-color: var(--accent); }
+  .winput { width: 6rem; background: var(--bg-2); border: 1px solid var(--edge); border-radius: 8px; color: var(--ink); font: inherit; font-size: .85rem; padding: .4rem .5rem; }
+  .wbtn { align-self: flex-start; appearance: none; border: 1px solid var(--accent); background: rgba(122,162,247,.12); color: var(--accent); border-radius: 999px; padding: .35rem .9rem; font-size: .82rem; font-weight: 600; cursor: pointer; }
+  .wbtn:disabled { opacity: .5; cursor: default; }
+  .wbtn.small { align-self: auto; margin-left: auto; padding: .18rem .6rem; font-size: .72rem; }
+
   .banner { background: rgba(247,118,142,.12); border: 1px solid var(--bad); color: #ffd7de; border-radius: 12px; padding: .65rem .85rem; font-size: .82rem; margin-bottom: 1rem; }
   .empty { color: var(--faint); text-align: center; padding: 2.5rem 1rem; }
 
@@ -243,6 +253,7 @@
   let filter = "";
   let activeView = "now";
   let commentsIndex = null;   // [{file,total,unresolved}] from GET /comments
+  let caps = { writes: false }; // GET /capabilities — gates the write affordances
   let started = false;        // has the first fold render happened (REQ-5)
   let ws = null;              // the live /stream socket
   let backoff = 1000;         // reconnect backoff, capped (REQ-4)
@@ -443,6 +454,40 @@
   }
 
   // ---- comments: files → a file's comments → one comment's thread ----
+  // Writes (add/reply/resolve) appear only when the server reports the capability
+  // (`--allow-writes`); otherwise the tab is read-only.
+  async function loadCaps() {
+    try {
+      const r = await fetch(withTok("/capabilities"), { cache: "no-store" });
+      caps = await r.json();
+    } catch (e) { caps = { writes: false }; }
+  }
+  async function postJson(path, body) {
+    const r = await fetch(withTok(path), {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    return r.json().catch(() => ({}));
+  }
+  function writeBox(title, placeholder, onSubmit, extra) {
+    const box = el("div", "writebox");
+    box.appendChild(el("div", "writeh", title));
+    if (extra) box.appendChild(extra);
+    const ta = el("textarea", "wtext");
+    ta.placeholder = placeholder;
+    const btn = el("button", "wbtn", title);
+    btn.addEventListener("click", async () => {
+      const b = ta.value.trim();
+      if (!b) return;
+      btn.disabled = true;
+      await onSubmit(b);
+    });
+    box.appendChild(ta);
+    box.appendChild(btn);
+    return box;
+  }
+
   function backBar(label, onBack) {
     const bar = el("div", "cback");
     const b = el("button", "backbtn", "‹ back");
@@ -499,11 +544,16 @@
     host.innerHTML = "";
     host.appendChild(backBar(file, loadCommentIndex));
     const cs = (data && data.comments) || [];
-    if (!cs.length) {
-      host.appendChild(el("div", "empty", "no comments"));
-      return;
-    }
+    if (!cs.length) host.appendChild(el("div", "empty", "no comments"));
     cs.forEach((c) => host.appendChild(commentRow(file, c)));
+    if (caps.writes) {
+      const lineInput = el("input", "winput");
+      lineInput.type = "number"; lineInput.min = "1"; lineInput.value = "1";
+      host.appendChild(writeBox("Add", "new comment…", async (b) => {
+        await postJson("/comments?file=" + encodeURIComponent(file), { line: parseInt(lineInput.value, 10) || 1, body: b });
+        openCommentFile(file);
+      }, lineInput));
+    }
   }
 
   function commentRow(file, c) {
@@ -546,6 +596,15 @@
     r1.appendChild(el("span", "meta", who + (c.resolved ? " · resolved" : "")));
     head.appendChild(r1);
     head.appendChild(el("div", "cbody", c.body));
+    if (caps.writes) {
+      const rbtn = el("button", "wbtn small", c.resolved ? "Unresolve" : "Resolve");
+      rbtn.addEventListener("click", async () => {
+        rbtn.disabled = true;
+        await postJson(`/resolve?file=${encodeURIComponent(file)}&id=${encodeURIComponent(id)}`, { value: !c.resolved });
+        openThread(file, id);
+      });
+      head.appendChild(rbtn);
+    }
     host.appendChild(head);
     (c.replies || []).forEach((r) => {
       const rep = el("div", "creply");
@@ -553,6 +612,12 @@
       rep.appendChild(el("div", "cbody", r.body));
       host.appendChild(rep);
     });
+    if (caps.writes) {
+      host.appendChild(writeBox("Reply", "reply…", async (b) => {
+        await postJson(`/thread?file=${encodeURIComponent(file)}&id=${encodeURIComponent(id)}`, { body: b });
+        openThread(file, id);
+      }));
+    }
   }
 
   // ---- data ----
@@ -623,6 +688,7 @@
   $("filter").addEventListener("input", (e) => { filter = e.target.value.trim().toLowerCase(); renderSubjects(); });
 
   setDot(""); setView("now");
+  loadCaps();                                   // learn whether writes are enabled
   connect();                                    // /stream paints first, normally
   setTimeout(() => { if (!started) load(); }, 800);  // fetch fallback if WS is silent
 })();
