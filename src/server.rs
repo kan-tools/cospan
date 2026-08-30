@@ -13,16 +13,23 @@
 //!     (`mcp::comment_files`); with `?file=`, that file's comments
 //!     (`mcp::list_comments`).
 //!   * `GET /thread?file=&id=`— one comment + thread (`mcp::get_thread`).
+//!   * `GET /capabilities`    — `{writes, author}`, so the page knows whether to
+//!     show write UI.
+//!   * With `--allow-writes`, `POST /comments` (add), `POST /thread` (reply), and
+//!     `POST /resolve` write comments to the sidecar — attributed `who:"human"`.
 //!
-//! This is the same projection the TUI renders — a read of the kan/day log,
-//! nothing persisted, no claim written (`telos/kan-is-truth`,
-//! `telos/observe-now-control-later`; the write seam `command_bus::WriteChannel`
-//! stays untouched). It stays disposable (`telos/disposable`): a foreground
-//! process bound to 127.0.0.1 with no daemon and no on-disk state.
+//! The reads are a projection of the kan/day log; the writes touch only cospan's
+//! own sidecar state (`telos/kan-is-truth`'s stated exception) — **no kan claim
+//! is written** and the write seam `command_bus::WriteChannel` stays untouched
+//! (`telos/observe-now-control-later`: comment writes are the mildest control
+//! step, opt-in via `--allow-writes`). It stays disposable (`telos/disposable`):
+//! a foreground process bound to 127.0.0.1, no daemon, no on-disk state beyond
+//! the owned sidecar tree.
 //!
 //! No second async runtime is introduced — `run` builds one `tokio` runtime and
 //! `block_on`s the server, exactly as `mcp::run` does, so `fn main` stays sync.
 
+use crate::comments::Author;
 use crate::substrate::{self, Fold};
 use crate::{mcp, tui};
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
@@ -30,12 +37,13 @@ use axum::extract::{Query, Request, State};
 use axum::http::{header::AUTHORIZATION, StatusCode};
 use axum::middleware::{self, Next};
 use axum::response::{Html, IntoResponse, Json, Response};
-use axum::routing::get;
+use axum::routing::{get, post};
 use axum::Router;
 use serde::Deserialize;
 use std::net::{Ipv4Addr, SocketAddr};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Mutex;
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, SystemTime};
 use tokio::net::TcpListener;
@@ -115,6 +123,15 @@ pub struct Shared {
     /// clones so every connection sees the same tally).
     max_stream: usize,
     live_streams: Arc<AtomicUsize>,
+    /// Whether comment-write POST routes are mounted (`--allow-writes`). Off by
+    /// default — `serve` is read-only unless control is explicitly enabled.
+    allow_writes: bool,
+    /// The author stamped on a web-written comment/reply (`who:"human"`, id from
+    /// `--author`/`COSPAN_WEB_AUTHOR`, default `"web"`).
+    web_author: Author,
+    /// Serializes comment writes so two concurrent POSTs can't lose an update —
+    /// the same load-modify-save guard `CommentServer` uses over MCP.
+    writes: Arc<Mutex<()>>,
 }
 
 impl Shared {
@@ -130,6 +147,12 @@ impl Shared {
             auth: Auth::None,
             max_stream: DEFAULT_MAX_STREAM,
             live_streams: Arc::new(AtomicUsize::new(0)),
+            allow_writes: false,
+            web_author: Author {
+                who: "human".into(),
+                id: "web".into(),
+            },
+            writes: Arc::new(Mutex::new(())),
         }
     }
 
@@ -137,6 +160,22 @@ impl Shared {
     /// and smokes — auth-free).
     pub fn with_auth(mut self, auth: Auth) -> Self {
         self.auth = auth;
+        self
+    }
+
+    /// Enable comment writes (`--allow-writes`), stamping web writes with `author`
+    /// (`who:"human"`, the given id). Default posture is read-only, so `seed`'s
+    /// existing call sites stay writeless.
+    pub fn with_writes(mut self, author_id: String) -> Self {
+        self.allow_writes = true;
+        self.web_author = Author {
+            who: "human".into(),
+            id: if author_id.is_empty() {
+                "web".into()
+            } else {
+                author_id
+            },
+        };
         self
     }
 
@@ -397,16 +436,121 @@ async fn get_thread(
     Json(v)
 }
 
-/// The router over the shared state — the page + four read endpoints, wrapped in
-/// the auth middleware (a pass-through under `Auth::None`). Split out so a test
-/// can drive the exact app the server serves.
+/// `GET /capabilities` — what this server allows, so the page knows whether to
+/// show write UI without probing a `405`. `{writes, author}` when writes are on,
+/// `{writes:false}` when off.
+async fn get_capabilities(State(shared): State<Shared>) -> Json<serde_json::Value> {
+    if shared.allow_writes {
+        Json(serde_json::json!({
+            "writes": true,
+            "author": { "who": shared.web_author.who, "id": shared.web_author.id },
+        }))
+    } else {
+        Json(serde_json::json!({ "writes": false }))
+    }
+}
+
+#[derive(Deserialize)]
+struct AddBody {
+    line: usize,
+    body: String,
+}
+
+/// `POST /comments?file=<rel>` `{line, body}` — add a web-authored comment. The
+/// write lock serializes the load-modify-save; the core is path-guarded.
+async fn post_comment(
+    State(shared): State<Shared>,
+    Query(q): Query<CommentsQuery>,
+    Json(b): Json<AddBody>,
+) -> Json<serde_json::Value> {
+    let Some(file) = q.file else {
+        return Json(serde_json::json!({ "error": "missing ?file=" }));
+    };
+    write_blocking(shared.clone(), move |s| {
+        mcp::add_comment_as(&s.repo, &file, b.line, &b.body, s.web_author.clone())
+    })
+    .await
+}
+
+#[derive(Deserialize)]
+struct ReplyBody {
+    body: String,
+}
+
+/// `POST /thread?file=<rel>&id=<id>` `{body}` — add a web-authored reply.
+async fn post_reply(
+    State(shared): State<Shared>,
+    Query(q): Query<ThreadQuery>,
+    Json(b): Json<ReplyBody>,
+) -> Json<serde_json::Value> {
+    write_blocking(shared.clone(), move |s| {
+        mcp::reply_as(&s.repo, &q.file, &q.id, &b.body, s.web_author.clone())
+    })
+    .await
+}
+
+#[derive(Deserialize)]
+struct ResolveBody {
+    value: Option<bool>,
+}
+
+/// `POST /resolve?file=<rel>&id=<id>` `{value}` — set (default true) or clear a
+/// comment's resolved flag.
+async fn post_resolve(
+    State(shared): State<Shared>,
+    Query(q): Query<ThreadQuery>,
+    Json(b): Json<ResolveBody>,
+) -> Json<serde_json::Value> {
+    let value = b.value.unwrap_or(true);
+    write_blocking(shared.clone(), move |s| {
+        mcp::resolve(&s.repo, &q.file, &q.id, value)
+    })
+    .await
+}
+
+/// Run a comment-write core under `spawn_blocking`, holding the write lock across
+/// the load-modify-save so concurrent writes cannot lose an update. The lock is a
+/// std `Mutex` taken and released inside the blocking closure — never across an
+/// `.await`.
+async fn write_blocking<F>(shared: Shared, f: F) -> Json<serde_json::Value>
+where
+    F: FnOnce(&Shared) -> serde_json::Value + Send + 'static,
+{
+    let v = tokio::task::spawn_blocking(move || {
+        let _w = shared.writes.lock().unwrap_or_else(|e| e.into_inner());
+        f(&shared)
+    })
+    .await
+    .unwrap_or_else(|e| serde_json::json!({ "error": format!("task join failed: {e}") }));
+    Json(v)
+}
+
+/// The router over the shared state — the page, the read endpoints, and
+/// `/capabilities`, plus the comment-write POST routes when `--allow-writes` is
+/// set; all wrapped in the auth middleware (a pass-through under `Auth::None`).
+/// Split out so a test can drive the exact app the server serves.
 pub fn app(shared: Shared) -> Router {
-    Router::new()
+    // Read endpoints. When writes are enabled, the same `/comments` and `/thread`
+    // paths also accept POST (add / reply), plus a `/resolve` POST.
+    let (comments, thread) = if shared.allow_writes {
+        (
+            get(get_comments).post(post_comment),
+            get(get_thread).post(post_reply),
+        )
+    } else {
+        (get(get_comments), get(get_thread))
+    };
+    let mut router = Router::new()
         .route("/", get(get_index))
         .route("/fold", get(get_fold))
         .route("/stream", get(get_stream))
-        .route("/comments", get(get_comments))
-        .route("/thread", get(get_thread))
+        .route("/comments", comments)
+        .route("/thread", thread)
+        .route("/capabilities", get(get_capabilities));
+    if shared.allow_writes {
+        router = router.route("/resolve", post(post_resolve));
+    }
+    router
         .layer(middleware::from_fn_with_state(shared.clone(), require_auth))
         .with_state(shared)
 }
@@ -456,12 +600,15 @@ pub fn resolve_auth(token_opt: Option<String>, no_auth: bool) -> Auth {
 /// blocks on it (like `mcp::run`), so `fn main` stays synchronous. Auth is on by
 /// default: a token is minted and the ready URL (with `?token=`) is printed once
 /// to stderr; the token is held in memory only.
+#[allow(clippy::too_many_arguments)]
 pub fn run(
     repo: PathBuf,
     port: u16,
     token_opt: Option<String>,
     no_auth: bool,
     max_stream: usize,
+    allow_writes: bool,
+    author_id: String,
 ) -> Result<(), String> {
     if !repo.join(".kan").is_dir() {
         eprintln!(
@@ -493,11 +640,18 @@ pub fn run(
                 eprintln!("  WARNING: --no-auth — this channel is UNAUTHENTICATED; a proxy (e.g. `tailscale serve`) would expose it to your tailnet.");
             }
         }
+        if allow_writes {
+            let who = if author_id.is_empty() { "web" } else { &author_id };
+            eprintln!("  --allow-writes: comment writes (add/reply/resolve) ENABLED, attributed human:{who} (sidecars only; no kan claim, no agent control).");
+        }
         // Seed with an initial fold so the first request does not race the loop.
         let initial = substrate::fold(&repo);
-        let shared = Shared::seed(repo, initial)
+        let mut shared = Shared::seed(repo, initial)
             .with_auth(auth)
             .with_max_stream(max_stream);
+        if allow_writes {
+            shared = shared.with_writes(author_id);
+        }
         serve_on(listener, shared).await
     })
 }
@@ -632,6 +786,39 @@ mod tests {
             INDEX_HTML.contains("token") && INDEX_HTML.contains("withTok"),
             "page must read and reuse a ?token="
         );
+    }
+
+    /// AC-5 (Slice C): the write posture — `with_writes` flips `allow_writes` and
+    /// resolves the web author (default `web`, else the supplied id, always
+    /// `who:"human"`); the default posture is read-only. And the page wires the
+    /// capability probe + a POST write path.
+    #[test]
+    fn write_config_and_page_wiring() {
+        let base = Shared::seed(PathBuf::from("/x"), Fold::default());
+        assert!(!base.allow_writes, "read-only by default");
+
+        let dflt = base.clone().with_writes(String::new());
+        assert!(dflt.allow_writes);
+        assert_eq!(dflt.web_author.who, "human");
+        assert_eq!(dflt.web_author.id, "web", "empty id defaults to web");
+
+        let named = base.with_writes("maxine".into());
+        assert_eq!(named.web_author.id, "maxine", "supplied id is used");
+
+        // The page probes /capabilities and offers a POST write path.
+        assert!(
+            INDEX_HTML.contains("/capabilities"),
+            "page must probe capabilities"
+        );
+        assert!(
+            INDEX_HTML.contains("caps.writes"),
+            "write UI gated on the capability"
+        );
+        assert!(
+            INDEX_HTML.contains("method: \"POST\""),
+            "page must POST a write"
+        );
+        assert!(INDEX_HTML.contains("/resolve"), "page wires resolve");
     }
 
     /// AC-3 (Slice A): the page wires the UX-pass behavior — a Comments tab over
