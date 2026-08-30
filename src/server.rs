@@ -13,6 +13,9 @@
 //!     (`mcp::comment_files`); with `?file=`, that file's comments
 //!     (`mcp::list_comments`).
 //!   * `GET /thread?file=&id=`— one comment + thread (`mcp::get_thread`).
+//!   * `GET /chat`            — index of agent chat sessions (`chat::chat_index`);
+//!     with `?session=`, that session's turns (`chat::chat_session`). No local
+//!     paths are ever returned.
 //!   * `GET /capabilities`    — `{writes, author}`, so the page knows whether to
 //!     show write UI.
 //!   * With `--allow-writes`, `POST /comments` (add), `POST /thread` (reply), and
@@ -31,7 +34,7 @@
 
 use crate::comments::Author;
 use crate::substrate::{self, Fold};
-use crate::{mcp, tui};
+use crate::{chat, mcp, tui};
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::extract::{Query, Request, State};
 use axum::http::{header::AUTHORIZATION, StatusCode};
@@ -436,6 +439,28 @@ async fn get_thread(
     Json(v)
 }
 
+#[derive(Deserialize)]
+struct ChatQuery {
+    session: Option<String>,
+}
+
+/// `GET /chat` — the index of the repo's chat sessions; with `?session=<id>`,
+/// that session's turns. A read of the transcript stores under `spawn_blocking`
+/// (discovery reads files / a SQLite DB); no local path is ever returned.
+async fn get_chat(
+    State(shared): State<Shared>,
+    Query(q): Query<ChatQuery>,
+) -> Json<serde_json::Value> {
+    let repo = shared.repo.clone();
+    let v = tokio::task::spawn_blocking(move || match q.session {
+        Some(id) => chat::chat_session(&repo, &id),
+        None => chat::chat_index(&repo),
+    })
+    .await
+    .unwrap_or_else(|e| serde_json::json!({ "error": format!("task join failed: {e}") }));
+    Json(v)
+}
+
 /// `GET /capabilities` — what this server allows, so the page knows whether to
 /// show write UI without probing a `405`. `{writes, author}` when writes are on,
 /// `{writes:false}` when off.
@@ -546,6 +571,7 @@ pub fn app(shared: Shared) -> Router {
         .route("/stream", get(get_stream))
         .route("/comments", comments)
         .route("/thread", thread)
+        .route("/chat", get(get_chat))
         .route("/capabilities", get(get_capabilities));
     if shared.allow_writes {
         router = router.route("/resolve", post(post_resolve));
@@ -819,6 +845,22 @@ mod tests {
             "page must POST a write"
         );
         assert!(INDEX_HTML.contains("/resolve"), "page wires resolve");
+    }
+
+    /// AC-4 (Chat): the page wires the Chat tab over `/chat` with a collapse
+    /// affordance for thinking/tool turns.
+    #[test]
+    fn index_html_wires_the_chat_tab() {
+        assert!(
+            INDEX_HTML.contains("data-view=\"chat\""),
+            "chat tab present"
+        );
+        assert!(INDEX_HTML.contains("/chat"), "page fetches /chat");
+        assert!(INDEX_HTML.contains("?session="), "session drill-in");
+        assert!(
+            INDEX_HTML.contains("COLLAPSES") && INDEX_HTML.contains("thinking"),
+            "thinking/tool turns collapse"
+        );
     }
 
     /// AC-3 (Slice A): the page wires the UX-pass behavior — a Comments tab over
