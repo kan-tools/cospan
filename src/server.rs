@@ -34,7 +34,7 @@
 
 use crate::comments::Author;
 use crate::substrate::{self, Fold};
-use crate::{chat, mcp, tui};
+use crate::{chat, filetree, mcp, tui};
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::extract::{Query, Request, State};
 use axum::http::{header::AUTHORIZATION, StatusCode};
@@ -461,6 +461,50 @@ async fn get_chat(
     Json(v)
 }
 
+/// `GET /files` — the browsable file list: the same tracked ∪ untracked-not-ignored
+/// set the TUI browses (`filetree::list`), each `{path, status}` with `status` the
+/// one-char git marker. A read (no `--allow-writes` needed) and the source for the
+/// phone's file picker, so a file with **no** comments can still be reached to
+/// receive its first one.
+async fn get_files(State(shared): State<Shared>) -> Json<serde_json::Value> {
+    let repo = shared.repo.clone();
+    let v = tokio::task::spawn_blocking(move || {
+        let files: Vec<serde_json::Value> = filetree::list(&repo)
+            .into_iter()
+            .map(|e| {
+                serde_json::json!({
+                    "path": e.path.to_string_lossy(),
+                    "status": filetree::marker(e.status).to_string(),
+                })
+            })
+            .collect();
+        serde_json::json!({ "files": files })
+    })
+    .await
+    .unwrap_or_else(|e| serde_json::json!({ "error": format!("task join failed: {e}") }));
+    Json(v)
+}
+
+#[derive(Deserialize)]
+struct FileQuery {
+    path: String,
+}
+
+/// `GET /file?path=<rel>` — one file's syntax-highlighted content for the viewer
+/// (`mcp::file_view`): `{path, lines, truncated, total}`, capped at
+/// `mcp::FILE_VIEW_MAX_LINES`. Path-guarded under `spawn_blocking`, so
+/// `path=../x` returns the guard error and a non-file path returns `{error}`.
+async fn get_file(
+    State(shared): State<Shared>,
+    Query(q): Query<FileQuery>,
+) -> Json<serde_json::Value> {
+    let repo = shared.repo.clone();
+    let v = tokio::task::spawn_blocking(move || mcp::file_view(&repo, &q.path))
+        .await
+        .unwrap_or_else(|e| serde_json::json!({ "error": format!("task join failed: {e}") }));
+    Json(v)
+}
+
 /// `GET /capabilities` — what this server allows, so the page knows whether to
 /// show write UI without probing a `405`. `{writes, author}` when writes are on,
 /// `{writes:false}` when off.
@@ -572,6 +616,8 @@ pub fn app(shared: Shared) -> Router {
         .route("/comments", comments)
         .route("/thread", thread)
         .route("/chat", get(get_chat))
+        .route("/files", get(get_files))
+        .route("/file", get(get_file))
         .route("/capabilities", get(get_capabilities));
     if shared.allow_writes {
         router = router.route("/resolve", post(post_resolve));
@@ -882,6 +928,38 @@ mod tests {
                 "page missing UX-pass wiring: {needle}"
             );
         }
+    }
+
+    /// AC-5 (file-viewer slice): the page wires the file browser + viewer + the
+    /// tap-a-line add path, and the add affordance is gated on the writes
+    /// capability (not present in the read-only render path).
+    #[test]
+    fn index_html_wires_the_file_viewer() {
+        for needle in [
+            "/files",             // the browsable-file list endpoint
+            "/file?path=",        // the file-content endpoint
+            "renderFilesBrowser", // the all-files browser
+            "openFileViewer",     // the highlighted viewer
+            "segmented",          // the all files | commented toggle
+            "codeview",           // the rendered code
+            "startAddAt",         // tap-a-line to add the first comment
+        ] {
+            assert!(
+                INDEX_HTML.contains(needle),
+                "page missing file-viewer wiring: {needle}"
+            );
+        }
+        // The add affordance (startAddAt) is reached only under caps.writes — the
+        // tap handler guards it, so a read-only page never offers it.
+        let tap = INDEX_HTML
+            .split_once("startAddAt(file, lineNo)")
+            .expect("tap handler present")
+            .0;
+        let guard = &tap[tap.len().saturating_sub(60)..];
+        assert!(
+            guard.contains("caps.writes"),
+            "startAddAt must be gated on caps.writes, saw: {guard}"
+        );
     }
 
     /// AC-1: the token minter yields a non-empty URL-safe token that differs each

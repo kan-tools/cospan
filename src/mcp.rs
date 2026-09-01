@@ -166,6 +166,106 @@ pub fn comment_files(repo: &Path) -> Value {
     json!({ "files": files })
 }
 
+/// The cap on how many lines `file_view` highlights and returns. A phone viewer
+/// wants a readable head of a file, not a multi-megabyte payload; a longer file
+/// comes back `truncated` with the real `total`.
+pub const FILE_VIEW_MAX_LINES: usize = 2000;
+
+/// The cap on how many *bytes* `file_view` reads before decoding/highlighting.
+/// The line cap alone does not bound memory: a minified or low-newline file is
+/// few lines but huge, so without a byte cap the whole thing is read into memory
+/// and highlighted (a review finding). Bounding the read first keeps a single
+/// long line from defeating the "truncated head" contract.
+pub const FILE_VIEW_MAX_BYTES: usize = 512 * 1024;
+
+/// `file_view(file)` — one file's content, syntax-highlighted for the web viewer.
+/// Path-guarded like every file op (an escaping path returns the guard error).
+/// Returns `{ path, lines, truncated, total }` where `lines` is one array of
+/// `{t, c}` runs per source line (`c` = `#rrggbb` or `""`), highlighted via
+/// `highlight::styled_web`. The read is bounded by `FILE_VIEW_MAX_BYTES` and the
+/// returned window by `FILE_VIEW_MAX_LINES`; `truncated` is set when either bound
+/// clips the file. `total` is the real line count when the whole file was read,
+/// else the line count of the head that was (the byte cap means the true total is
+/// not known without reading past the bound). A path that is not a readable UTF-8
+/// file (a directory, a binary, a missing file) returns `{error}`. A pure read:
+/// no source file is written, no sidecar touched.
+pub fn file_view(repo: &Path, file: &str) -> Value {
+    use std::io::Read;
+    if let Err(e) = guard(repo, file) {
+        return e;
+    }
+    let err = || json!({ "error": format!("not a readable file: {file}") });
+    let mut f = match std::fs::File::open(repo.join(file)) {
+        Ok(f) => f,
+        Err(_) => return err(),
+    };
+    // A directory opens on Unix but is not a file to view; reject it explicitly.
+    if f.metadata().map(|m| m.is_dir()).unwrap_or(true) {
+        return err();
+    }
+    // Read at most one byte past the cap, so a file exactly at the cap is not
+    // falsely marked truncated, and bound memory before any decode/highlight.
+    let mut buf = Vec::new();
+    if f.by_ref()
+        .take(FILE_VIEW_MAX_BYTES as u64 + 1)
+        .read_to_end(&mut buf)
+        .is_err()
+    {
+        return err();
+    }
+    let over_bytes = buf.len() > FILE_VIEW_MAX_BYTES;
+    if over_bytes {
+        buf.truncate(FILE_VIEW_MAX_BYTES);
+    }
+    // Decode as UTF-8. A byte-capped read can slice a multibyte char at the tail;
+    // accept the valid prefix in that case (the invalid bytes are within one
+    // char-width of the end). A file that is invalid UTF-8 well before the cap is
+    // binary — reject it rather than emit mojibake (`telos/honest-ambiguity`).
+    let content = match std::str::from_utf8(&buf) {
+        Ok(s) => s.to_string(),
+        Err(e) => {
+            let valid = e.valid_up_to();
+            if over_bytes && buf.len() - valid < 4 {
+                String::from_utf8_lossy(&buf[..valid]).into_owned()
+            } else {
+                return err();
+            }
+        }
+    };
+    let head_lines = content.lines().count();
+    let over_lines = head_lines > FILE_VIEW_MAX_LINES;
+    let truncated = over_bytes || over_lines;
+    // The highlighted window: the head we read, or its first N lines. Re-join with
+    // '\n' (line endings were stripped by `.lines()`) so the grammar sees text.
+    let shown = if over_lines {
+        let mut s = content
+            .lines()
+            .take(FILE_VIEW_MAX_LINES)
+            .collect::<Vec<_>>()
+            .join("\n");
+        s.push('\n');
+        s
+    } else {
+        content
+    };
+    let total = head_lines;
+    let ext = Path::new(file)
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("");
+    let lines: Vec<Value> = crate::highlight::styled_web(&shown, ext)
+        .into_iter()
+        .map(|runs| {
+            Value::Array(
+                runs.into_iter()
+                    .map(|(c, t)| json!({ "t": t, "c": c }))
+                    .collect(),
+            )
+        })
+        .collect();
+    json!({ "path": file, "lines": lines, "truncated": truncated, "total": total })
+}
+
 /// `list_comments(file)` — every comment on `file`, each re-localized against the
 /// current content so its `state`/`line` are honest. A pure read: it does not
 /// persist re-anchoring.
@@ -703,6 +803,78 @@ mod tests {
             assert!(!p.contains(".cospan"), "path leaks the sidecar tree: {p}");
             assert!(!p.starts_with('/'), "path is absolute: {p}");
         }
+        std::fs::remove_dir_all(&repo).ok();
+    }
+
+    /// AC-2 + review finding F1: `file_view` serves a normal file, rejects a
+    /// directory and a binary, guards a traversal, and — the F1 fix — byte-caps a
+    /// low-newline file without slicing a multibyte char mid-way or emitting
+    /// mojibake.
+    #[test]
+    fn file_view_serves_guards_and_byte_caps() {
+        let repo = tmp("fileview");
+
+        // a normal small file: served, not truncated, with styled runs.
+        let v = file_view(&repo, "src/a.rs");
+        assert!(v.get("error").is_none(), "in-repo file served: {v}");
+        assert_eq!(v["truncated"], false);
+        assert_eq!(v["total"], 4, "l0..l3");
+        assert!(v["lines"].as_array().is_some_and(|l| l.len() == 4));
+
+        // a directory and a traversal both error, not panic.
+        assert!(
+            file_view(&repo, "src").get("error").is_some(),
+            "directory errors"
+        );
+        assert!(
+            file_view(&repo, "../../etc/passwd").get("error").is_some(),
+            "traversal guarded"
+        );
+
+        // a binary file (invalid UTF-8 early) is rejected, not mojibake'd.
+        std::fs::write(repo.join("bin"), [0x00u8, 0xff, 0xfe, 0x01, 0x02]).unwrap();
+        assert!(
+            file_view(&repo, "bin").get("error").is_some(),
+            "binary rejected"
+        );
+
+        // F1: one line of 2× the byte cap is byte-capped; the shown text is bounded
+        // by the cap, not the file size, and it is marked truncated.
+        let huge = "x".repeat(FILE_VIEW_MAX_BYTES * 2);
+        std::fs::write(repo.join("huge.txt"), &huge).unwrap();
+        let hv = file_view(&repo, "huge.txt");
+        assert_eq!(
+            hv["truncated"], true,
+            "byte-over file truncated: {}",
+            hv["truncated"]
+        );
+        let shown: usize = hv["lines"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .flat_map(|l| l.as_array().unwrap())
+            .map(|r| r["t"].as_str().unwrap().len())
+            .sum();
+        assert!(
+            shown <= FILE_VIEW_MAX_BYTES,
+            "shown text byte-capped: {shown}"
+        );
+
+        // A valid-UTF-8 file whose multibyte char straddles the cap must NOT be
+        // rejected as binary: fill just under the cap with ASCII, then a 3-byte
+        // char (\u{20AC} = €) that the cap slices. The valid prefix is accepted.
+        let pad = FILE_VIEW_MAX_BYTES - 1; // 1 byte of the € lands inside the cap
+        let mut straddle = "a".repeat(pad);
+        straddle.push('\u{20AC}');
+        straddle.push_str("bbbb");
+        std::fs::write(repo.join("straddle.txt"), &straddle).unwrap();
+        let sv = file_view(&repo, "straddle.txt");
+        assert!(
+            sv.get("error").is_none(),
+            "boundary-cut UTF-8 must not be binary: {sv}"
+        );
+        assert_eq!(sv["truncated"], true);
+
         std::fs::remove_dir_all(&repo).ok();
     }
 

@@ -160,6 +160,30 @@
   .wbtn:disabled { opacity: .5; cursor: default; }
   .wbtn.small { align-self: auto; margin-left: auto; padding: .18rem .6rem; font-size: .72rem; }
 
+  /* files browser + viewer (comment-creation slice) */
+  .segmented { display: flex; gap: .3rem; background: var(--panel-2); border: 1px solid var(--edge); border-radius: 999px; padding: .22rem; margin-bottom: .7rem; }
+  .seg { flex: 1; appearance: none; border: none; background: transparent; color: var(--dim); font: inherit; font-size: .82rem; padding: .4rem .6rem; border-radius: 999px; cursor: pointer; }
+  .seg.on { background: var(--panel); color: var(--ink); border: 1px solid var(--edge); }
+  .ffile { display: flex; align-items: center; gap: .55rem; padding: .55rem .8rem; background: var(--panel); border: 1px solid var(--edge); border-radius: 10px; margin: .3rem 0; cursor: pointer; }
+  .ffile:active { background: var(--panel-2); }
+  .ffile .fpath { font-size: .84rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ffile .fmark { flex: none; font-size: .7rem; color: var(--accent); }
+  .ffile .fst { margin-left: auto; flex: none; font-size: .72rem; width: 1.1rem; text-align: center; color: var(--warn); }
+  .vnotice, .vhint { font-size: .74rem; color: var(--faint); margin: .3rem .2rem .5rem; }
+  .vcomments { margin: .2rem 0 .7rem; }
+  .vch { font-size: .68rem; text-transform: uppercase; letter-spacing: .1em; color: var(--faint); margin: .2rem 0 .35rem; }
+  .vcrow { display: flex; align-items: baseline; gap: .5rem; padding: .5rem .7rem; background: var(--panel); border: 1px solid var(--edge); border-radius: 10px; margin: .3rem 0; cursor: pointer; }
+  .vcrow:active { background: var(--panel-2); }
+  .vcrow .vcbody { color: var(--dim); font-size: .84rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .codeview { background: var(--bg-2); border: 1px solid var(--edge); border-radius: 10px; padding: .4rem 0; overflow-x: auto; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .8rem; line-height: 1.5; }
+  .codeline { display: flex; align-items: flex-start; min-width: max-content; padding: 0 .5rem; }
+  .codeline:active { background: var(--panel-2); }
+  .codeline.hascomment { background: rgba(122,162,247,.08); }
+  .cgutter { flex: none; width: 1rem; text-align: center; color: var(--accent); font-size: .7rem; user-select: none; }
+  .clnum { flex: none; width: 2.6rem; text-align: right; padding-right: .7rem; color: var(--faint); user-select: none; }
+  .csrc { white-space: pre; }
+  .addbox { margin-top: .6rem; }
+
   /* chat tab */
   .csession { padding: .65rem .85rem; background: var(--panel); border: 1px solid var(--edge); border-radius: 12px; margin: .38rem 0; cursor: pointer; }
   .csession:active { background: var(--panel-2); }
@@ -281,6 +305,9 @@
   let filter = "";
   let activeView = "now";
   let commentsIndex = null;   // [{file,total,unresolved}] from GET /comments
+  let commentsMode = "commented"; // Comments tab: "commented" | "files"
+  let filesList = null;       // [{path,status}] from GET /files (all files mode)
+  let filesFilter = "";       // client-side substring filter over filesList
   let caps = { writes: false }; // GET /capabilities — gates the write affordances
   let started = false;        // has the first fold render happened (REQ-5)
   let ws = null;              // the live /stream socket
@@ -321,7 +348,7 @@
     window.scrollTo({ top: 0 });
     // Comments and Chat are fetched (not in the fold) and don't auto-update over
     // /stream — (re)load fresh each time the tab is opened, resetting to level 0.
-    if (v === "comments") loadCommentIndex();
+    if (v === "comments") loadComments();
     if (v === "chat") loadChatIndex();
   }
 
@@ -526,24 +553,58 @@
     return bar;
   }
 
-  async function loadCommentIndex() {
+  // The Comments tab is one file surface with an `all files | commented` toggle.
+  // `commented` (default) is the files-with-comments index (GET /comments);
+  // `all files` is the browsable tree (GET /files), so a file with *no* comments
+  // can be reached to receive its first one. Both open the same file viewer.
+  async function loadComments() {
     const host = $("comments");
     host.innerHTML = "";
     host.appendChild(el("div", "empty", "loading…"));
+    if (commentsMode === "files") { await loadFilesData(); await loadCommentIndexData(); }
+    else await loadCommentIndexData();
+    renderCommentsHome();
+  }
+
+  async function loadCommentIndexData() {
     try {
       const r = await fetch(withTok("/comments"), { cache: "no-store" });
       commentsIndex = (await r.json()).files || [];
-    } catch (e) {
-      commentsIndex = [];
-    }
-    renderCommentIndex();
+    } catch (e) { commentsIndex = []; }
   }
 
-  function renderCommentIndex() {
+  async function loadFilesData() {
+    try {
+      const r = await fetch(withTok("/files"), { cache: "no-store" });
+      filesList = (await r.json()).files || [];
+    } catch (e) { filesList = []; }
+  }
+
+  function commentsToggle() {
+    const bar = el("div", "segmented");
+    const mk = (mode, label) => {
+      const b = el("button", "seg" + (commentsMode === mode ? " on" : ""), label);
+      b.addEventListener("click", () => { if (commentsMode !== mode) { commentsMode = mode; loadComments(); } });
+      return b;
+    };
+    bar.appendChild(mk("commented", "Commented"));
+    bar.appendChild(mk("files", "All files"));
+    return bar;
+  }
+
+  function renderCommentsHome() {
     const host = $("comments");
     host.innerHTML = "";
+    host.appendChild(commentsToggle());
+    const body = el("div", "chome-body");
+    host.appendChild(body);
+    if (commentsMode === "files") renderFilesBrowser(body);
+    else renderCommentIndex(body);
+  }
+
+  function renderCommentIndex(host) {
     if (!commentsIndex || !commentsIndex.length) {
-      host.appendChild(el("div", "empty", "no comments in this repo"));
+      host.appendChild(el("div", "empty", "no comments yet — switch to All files to add one"));
       return;
     }
     host.appendChild(el("h2", null, "Files with comments"));
@@ -554,50 +615,135 @@
       if (f.unresolved) badges.appendChild(el("span", "cbadge unres", `${f.unresolved} open`));
       badges.appendChild(el("span", "cbadge", String(f.total)));
       row.appendChild(badges);
-      row.addEventListener("click", () => openCommentFile(f.file));
+      row.addEventListener("click", () => openFileViewer(f.file));
       host.appendChild(row);
     });
   }
 
-  async function openCommentFile(file) {
+  function renderFilesBrowser(host) {
+    const filter = el("input", "filter");
+    filter.placeholder = "filter files…";
+    filter.setAttribute("autocomplete", "off");
+    filter.setAttribute("autocapitalize", "off");
+    filter.setAttribute("spellcheck", "false");
+    filter.value = filesFilter;
+    host.appendChild(filter);
+    const listWrap = el("div", "flist");
+    host.appendChild(listWrap);
+    // files that already carry comments, for an at-a-glance badge in the list
+    const commented = new Set((commentsIndex || []).map((f) => f.file));
+    const draw = () => {
+      listWrap.innerHTML = "";
+      const q = filesFilter.trim().toLowerCase();
+      const rows = (filesList || []).filter((f) => !q || f.path.toLowerCase().includes(q));
+      if (!rows.length) {
+        listWrap.appendChild(el("div", "empty", (filesList && filesList.length) ? "no files match" : "no files"));
+        return;
+      }
+      rows.forEach((f) => {
+        const row = el("div", "ffile");
+        if (commented.has(f.path)) row.appendChild(el("span", "fmark", "✎"));
+        row.appendChild(el("span", "fpath mono", f.path));
+        const st = (f.status || "").trim();
+        if (st) row.appendChild(el("span", "fst", st));
+        row.addEventListener("click", () => openFileViewer(f.path));
+        listWrap.appendChild(row);
+      });
+    };
+    filter.addEventListener("input", () => { filesFilter = filter.value; draw(); });
+    draw();
+  }
+
+  // The file viewer: highlighted content + a gutter marking commented lines, an
+  // exhaustive comment list (so every comment is reachable regardless of anchor
+  // state), and — under --allow-writes — tap-a-line to add the first comment.
+  async function openFileViewer(file) {
     const host = $("comments");
     host.innerHTML = "";
     host.appendChild(el("div", "empty", "loading…"));
-    let data;
+    let fileData, comments;
     try {
-      const r = await fetch(withTok("/comments?file=" + encodeURIComponent(file)), { cache: "no-store" });
-      data = await r.json();
+      const [fr, cr] = await Promise.all([
+        fetch(withTok("/file?path=" + encodeURIComponent(file)), { cache: "no-store" }),
+        fetch(withTok("/comments?file=" + encodeURIComponent(file)), { cache: "no-store" }),
+      ]);
+      fileData = await fr.json();
+      comments = (await cr.json()).comments || [];
     } catch (e) {
-      data = { file, comments: [] };
+      fileData = { error: String(e) }; comments = [];
     }
     host.innerHTML = "";
-    host.appendChild(backBar(file, loadCommentIndex));
-    const cs = (data && data.comments) || [];
-    if (!cs.length) host.appendChild(el("div", "empty", "no comments"));
-    cs.forEach((c) => host.appendChild(commentRow(file, c)));
-    if (caps.writes) {
-      const lineInput = el("input", "winput");
-      lineInput.type = "number"; lineInput.min = "1"; lineInput.value = "1";
-      host.appendChild(writeBox("Add", "new comment…", async (b) => {
-        await postJson("/comments?file=" + encodeURIComponent(file), { line: parseInt(lineInput.value, 10) || 1, body: b });
-        openCommentFile(file);
-      }, lineInput));
+    host.appendChild(backBar(file, () => renderCommentsHome()));
+    if (!fileData || fileData.error) {
+      host.appendChild(el("div", "empty", (fileData && fileData.error) ? fileData.error : "cannot open file"));
+      return;
     }
+    const byLine = new Map();
+    comments.forEach((c) => {
+      if (c.line != null) {
+        if (!byLine.has(c.line)) byLine.set(c.line, []);
+        byLine.get(c.line).push(c);
+      }
+    });
+    if (comments.length) {
+      const cwrap = el("div", "vcomments");
+      cwrap.appendChild(el("div", "vch", `${comments.length} comment${comments.length === 1 ? "" : "s"} on this file`));
+      comments.forEach((c) => {
+        const row = el("div", "vcrow");
+        row.appendChild(el("span", "cstate " + (c.state || ""), c.state || ""));
+        row.appendChild(el("span", "cline", c.line != null ? "line " + c.line : "unanchored"));
+        row.appendChild(el("span", "vcbody", c.body));
+        row.addEventListener("click", () => openThread(file, c.id));
+        cwrap.appendChild(row);
+      });
+      host.appendChild(cwrap);
+    }
+    if (fileData.truncated) {
+      const shown = (fileData.lines || []).length;
+      // A line-truncated file knows its real total; a byte-truncated one (a huge
+      // low-newline file) does not, so say so honestly rather than "N of N".
+      const notice = (fileData.total > shown)
+        ? `showing first ${shown} of ${fileData.total} lines`
+        : "showing a truncated head — file too large";
+      host.appendChild(el("div", "vnotice", notice));
+    }
+    if (caps.writes) host.appendChild(el("div", "vhint", "tap a line to comment on it"));
+    const code = el("div", "codeview");
+    (fileData.lines || []).forEach((runs, i) => {
+      const lineNo = i + 1;
+      const row = el("div", "codeline");
+      const gutter = el("span", "cgutter");
+      const marks = byLine.get(lineNo);
+      if (marks && marks.length) { row.classList.add("hascomment"); gutter.textContent = marks.length > 1 ? String(marks.length) : "●"; }
+      row.appendChild(gutter);
+      row.appendChild(el("span", "clnum", String(lineNo)));
+      const src = el("span", "csrc");
+      if (!runs.length) src.appendChild(document.createTextNode(" "));
+      runs.forEach((run) => { const sp = el("span", null, run.t); if (run.c) sp.style.color = run.c; src.appendChild(sp); });
+      row.appendChild(src);
+      row.addEventListener("click", () => {
+        if (marks && marks.length) { openThread(file, marks[0].id); return; }
+        if (caps.writes) startAddAt(file, lineNo);
+      });
+      code.appendChild(row);
+    });
+    host.appendChild(code);
   }
 
-  function commentRow(file, c) {
-    const w = el("div", "ccomment");
-    const r1 = el("div", "row1");
-    r1.appendChild(el("span", "cstate " + (c.state || ""), c.state || ""));
-    if (c.line != null) r1.appendChild(el("span", "cline", "line " + c.line));
-    const who = c.author ? `${c.author.who}:${c.author.id}` : "";
-    r1.appendChild(el("span", "meta", who + (c.resolved ? " · resolved" : "")));
-    w.appendChild(r1);
-    w.appendChild(el("div", "cbody", c.body));
-    const rc = (c.replies || []).length;
-    if (rc) w.appendChild(el("div", "cthreadlink", `${rc} repl${rc === 1 ? "y" : "ies"} ›`));
-    w.addEventListener("click", () => openThread(file, c.id));
-    return w;
+  function startAddAt(file, lineNo) {
+    const host = $("comments");
+    const prev = host.querySelector(".addbox");
+    if (prev) prev.remove();
+    const lineInput = el("input", "winput");
+    lineInput.type = "number"; lineInput.min = "1"; lineInput.value = String(lineNo);
+    const box = writeBox("Add · line " + lineNo, "new comment…", async (b) => {
+      await postJson("/comments?file=" + encodeURIComponent(file), { line: parseInt(lineInput.value, 10) || lineNo, body: b });
+      openFileViewer(file);
+    }, lineInput);
+    box.classList.add("addbox");
+    host.appendChild(box);
+    box.scrollIntoView({ behavior: "smooth", block: "center" });
+    const ta = box.querySelector(".wtext"); if (ta) ta.focus();
   }
 
   async function openThread(file, id) {
@@ -612,7 +758,7 @@
       c = { error: String(e) };
     }
     host.innerHTML = "";
-    host.appendChild(backBar(file, () => openCommentFile(file)));
+    host.appendChild(backBar(file, () => openFileViewer(file)));
     if (!c || c.error) {
       host.appendChild(el("div", "empty", c && c.error ? c.error : "not found"));
       return;
