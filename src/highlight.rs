@@ -145,6 +145,38 @@ pub fn plain(content: &str) -> Vec<StyledLine> {
         .collect()
 }
 
+/// Per-line highlighted runs for the web file viewer: `(hex, text)` where `hex`
+/// is `#rrggbb` for the run's foreground, or `""` for an unstyled run. Same
+/// `syntect` grammar set and theme as [`styled`], but the color is emitted as a
+/// hex string the embedded page can drop straight onto a `<span>` — so the page
+/// needs no client-side highlighter (`telos/disposable`: it stays one embedded
+/// document). An unknown extension degrades to one unstyled (empty-hex) run per
+/// line. Every line is present so the caller's line numbers and comment anchors
+/// stay aligned. No windowing: the caller caps how much content it passes.
+pub fn styled_web(content: &str, ext: &str) -> Vec<Vec<(String, String)>> {
+    let h = hl();
+    let strip = |t: &str| t.trim_end_matches(['\r', '\n']).to_string();
+    let Some(syntax) = h.ss.find_syntax_by_extension(ext) else {
+        return content
+            .lines()
+            .map(|l| vec![(String::new(), l.to_string())])
+            .collect();
+    };
+    let mut liner = HighlightLines::new(syntax, &h.theme);
+    LinesWithEndings::from(content)
+        .map(|line| match liner.highlight_line(line, &h.ss) {
+            Ok(runs) => runs
+                .into_iter()
+                .map(|(st, t)| {
+                    let c = st.foreground;
+                    (format!("#{:02x}{:02x}{:02x}", c.r, c.g, c.b), strip(t))
+                })
+                .collect(),
+            Err(_) => vec![(String::new(), strip(line))],
+        })
+        .collect()
+}
+
 fn conv(st: syntect::highlighting::Style, truecolor: bool) -> Style {
     let c = st.foreground;
     let color = if truecolor {
@@ -319,6 +351,46 @@ mod tests {
             full[500].iter().any(|(s, _)| *s != Style::default()),
             "the deep line highlights when the whole file is requested"
         );
+    }
+
+    #[test]
+    fn styled_web_emits_hex_colors_and_really_highlights() {
+        // (AC-3) the web projection colors runs as `#rrggbb`, and highlighting is
+        // real: a Rust snippet with a keyword yields more than one distinct color,
+        // not a single flat foreground.
+        let out = styled_web("fn main() { let x = 1; }\n", "rs");
+        assert_eq!(out.len(), 1, "one source line");
+        let colors: std::collections::HashSet<_> = out
+            .iter()
+            .flatten()
+            .map(|(c, _)| c.clone())
+            .filter(|c| !c.is_empty())
+            .collect();
+        assert!(
+            colors.len() > 1,
+            "expected multiple hex colors, got {colors:?}"
+        );
+        for c in &colors {
+            assert!(
+                c.len() == 7 && c.starts_with('#') && c[1..].chars().all(|d| d.is_ascii_hexdigit()),
+                "not a #rrggbb color: {c}"
+            );
+        }
+        // Text is preserved verbatim across the runs (sans line endings).
+        let joined: String = out[0].iter().map(|(_, t)| t.as_str()).collect();
+        assert_eq!(joined, "fn main() { let x = 1; }");
+    }
+
+    #[test]
+    fn styled_web_unknown_extension_is_plain_empty_hex() {
+        // (AC-3) an unknown grammar degrades to one empty-hex run per line.
+        let out = styled_web("just text\nno grammar\n", "nonesuch");
+        assert_eq!(out.len(), 2);
+        for line in &out {
+            assert_eq!(line.len(), 1, "a plain line is a single run");
+            assert_eq!(line[0].0, "", "plain runs carry no color");
+        }
+        assert_eq!(out[0][0].1, "just text");
     }
 
     #[test]

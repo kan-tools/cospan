@@ -55,6 +55,32 @@ async fn spawn_writes(repo: &Path, auth: Auth, author: &str) -> u16 {
     port
 }
 
+/// A throwaway git repo with a couple of committed files, so `filetree::list`
+/// (which shells git) returns a browsable set for the `/files` + `/file` tests.
+/// Needs git (CI has it) but not kan.
+fn git_repo(tag: &str) -> std::path::PathBuf {
+    use std::process::Command;
+    let dir = std::env::temp_dir().join(format!("cospan-files-{}-{tag}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(dir.join("src")).unwrap();
+    std::fs::write(dir.join("src/a.rs"), "fn main() {\n    let x = 1;\n}\n").unwrap();
+    std::fs::write(dir.join("README.md"), "# hi\n").unwrap();
+    let git = |args: &[&str]| {
+        Command::new("git")
+            .arg("-C")
+            .arg(&dir)
+            .args(args)
+            .output()
+            .unwrap();
+    };
+    git(&["init", "-q"]);
+    git(&["config", "user.email", "t@t"]);
+    git(&["config", "user.name", "t"]);
+    git(&["add", "-A"]);
+    git(&["commit", "-qm", "init"]);
+    dir
+}
+
 /// POST a JSON body (optionally with one header line, e.g. Authorization),
 /// returning (status, response-body).
 async fn http_post(port: u16, path: &str, body: &str, header: Option<&str>) -> (u16, String) {
@@ -235,6 +261,164 @@ fn comment_index_endpoint_and_single_file_and_traversal() {
             serde_json::from_str(&http_body(port, "/comments?file=../../etc/passwd").await)
                 .unwrap();
         assert!(esc.get("error").is_some(), "traversal still guarded: {esc}");
+    });
+    std::fs::remove_dir_all(&repo).ok();
+}
+
+#[test]
+fn files_endpoint_lists_browsable_files_behind_auth() {
+    // AC-1 (file-viewer slice): GET /files returns the browsable set with a status
+    // per file, and is behind the same auth gate as every route.
+    let repo = git_repo("list");
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    rt.block_on(async {
+        // auth-gated
+        let tport = spawn_repo(&repo, Auth::Token(Arc::from(TOKEN)), 64).await;
+        assert_eq!(
+            http_status(tport, "/files", None).await,
+            401,
+            "/files needs the token"
+        );
+
+        let port = spawn_repo(&repo, Auth::None, 64).await;
+        let idx: serde_json::Value =
+            serde_json::from_str(&http_body(port, "/files").await).unwrap();
+        let files = idx["files"].as_array().expect("files array");
+        let paths: Vec<&str> = files.iter().filter_map(|f| f["path"].as_str()).collect();
+        assert!(
+            paths.contains(&"src/a.rs") && paths.contains(&"README.md"),
+            "lists the committed files: {paths:?}"
+        );
+        assert!(
+            files.iter().all(|f| f.get("status").is_some()),
+            "each file carries a status: {idx}"
+        );
+    });
+    std::fs::remove_dir_all(&repo).ok();
+}
+
+#[test]
+fn file_endpoint_highlights_guards_and_truncates() {
+    // AC-2 (file-viewer slice): GET /file returns highlighted lines (one array of
+    // {t,c} runs per source line); a traversal is guarded; an over-long file comes
+    // back truncated with the real total.
+    let repo = git_repo("view");
+    let mut big = String::new();
+    for i in 0..(cospan::mcp::FILE_VIEW_MAX_LINES + 50) {
+        big.push_str(&format!("let n{i} = {i};\n"));
+    }
+    std::fs::write(repo.join("src/big.rs"), &big).unwrap();
+
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    rt.block_on(async {
+        let port = spawn_repo(&repo, Auth::None, 64).await;
+
+        let v: serde_json::Value =
+            serde_json::from_str(&http_body(port, "/file?path=src/a.rs").await).unwrap();
+        let lines = v["lines"].as_array().expect("lines array");
+        assert!(!lines.is_empty(), "content returned: {v}");
+        assert!(
+            lines[0].as_array().is_some_and(|r| !r.is_empty()),
+            "the first line has styled runs: {v}"
+        );
+        assert_eq!(v["truncated"], false, "a short file is not truncated");
+
+        let esc: serde_json::Value =
+            serde_json::from_str(&http_body(port, "/file?path=../../etc/passwd").await).unwrap();
+        assert!(
+            esc.get("error").is_some(),
+            "traversal must be guarded: {esc}"
+        );
+
+        let big: serde_json::Value =
+            serde_json::from_str(&http_body(port, "/file?path=src/big.rs").await).unwrap();
+        assert_eq!(big["truncated"], true, "over-long file truncated: {big}");
+        assert_eq!(
+            big["lines"].as_array().unwrap().len(),
+            cospan::mcp::FILE_VIEW_MAX_LINES,
+            "returns exactly the capped line count"
+        );
+        assert!(
+            big["total"].as_u64().unwrap() > cospan::mcp::FILE_VIEW_MAX_LINES as u64,
+            "total is the real line count: {}",
+            big["total"]
+        );
+
+        // Review finding F1: a low-newline file must be BYTE-capped, not read
+        // whole. One line of 2× the byte cap comes back truncated with the shown
+        // text bounded by the byte cap (not the full file size).
+        let one_huge_line = "x".repeat(cospan::mcp::FILE_VIEW_MAX_BYTES * 2);
+        std::fs::write(repo.join("src/huge.txt"), &one_huge_line).unwrap();
+        let hv: serde_json::Value =
+            serde_json::from_str(&http_body(port, "/file?path=src/huge.txt").await).unwrap();
+        assert_eq!(
+            hv["truncated"], true,
+            "low-newline over-byte file truncated: {}",
+            hv["truncated"]
+        );
+        let shown_bytes: usize = hv["lines"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .flat_map(|l| l.as_array().unwrap())
+            .map(|r| r["t"].as_str().unwrap().len())
+            .sum();
+        assert!(
+            shown_bytes <= cospan::mcp::FILE_VIEW_MAX_BYTES,
+            "shown content is byte-capped ({shown_bytes} > cap) — the whole file was read"
+        );
+    });
+    std::fs::remove_dir_all(&repo).ok();
+}
+
+#[test]
+fn first_comment_on_an_uncommented_file_appears_and_indexes() {
+    // AC-4 (file-viewer slice): the dead-end fix. A file with NO comment (absent
+    // from the /comments index) can receive its first via POST /comments; it then
+    // shows on the file authored who:human, and the file joins the index.
+    let repo = git_repo("first");
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    rt.block_on(async {
+        let port = spawn_writes(&repo, Auth::None, "web").await;
+
+        // no comments yet: the index is empty (the old dead-end's precondition).
+        let idx0: serde_json::Value =
+            serde_json::from_str(&http_body(port, "/comments").await).unwrap();
+        assert_eq!(
+            idx0["files"].as_array().unwrap().len(),
+            0,
+            "no commented files yet: {idx0}"
+        );
+
+        // add the first comment to src/a.rs, which was never in the index.
+        let (st, body) = http_post(
+            port,
+            "/comments?file=src/a.rs",
+            "{\"line\":2,\"body\":\"first!\"}",
+            None,
+        )
+        .await;
+        assert_eq!(st, 200, "add of the first comment: {body}");
+
+        // it shows on the file, authored who:human.
+        let one: serde_json::Value =
+            serde_json::from_str(&http_body(port, "/comments?file=src/a.rs").await).unwrap();
+        assert_eq!(one["comments"][0]["body"], "first!", "{one}");
+        assert_eq!(one["comments"][0]["author"]["who"], "human");
+
+        // and the file now appears in the index — the dead-end is closed.
+        let idx1: serde_json::Value =
+            serde_json::from_str(&http_body(port, "/comments").await).unwrap();
+        let files: Vec<&str> = idx1["files"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|f| f["file"].as_str())
+            .collect();
+        assert!(
+            files.contains(&"src/a.rs"),
+            "the newly-commented file is now indexed: {files:?}"
+        );
     });
     std::fs::remove_dir_all(&repo).ok();
 }
