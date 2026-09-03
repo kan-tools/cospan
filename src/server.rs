@@ -962,6 +962,86 @@ mod tests {
         );
     }
 
+    /// Responsive-desktop-layout slice: the page carries the desktop shell (a
+    /// 900px breakpoint, the single `<nav>` restyled into a rail), the Comments
+    /// and Chat master-detail panes with drill-ins targeting the detail pane, a
+    /// readability cap, and leaves Now/Teloi/Browse single-pane — without dropping
+    /// the mobile wiring.
+    #[test]
+    fn index_html_wires_the_responsive_layout() {
+        // AC-1: desktop breakpoint, and the rail is the ONE restyled nav (not a 2nd).
+        assert!(
+            INDEX_HTML.contains("@media (min-width: 900px)"),
+            "no desktop breakpoint"
+        );
+        assert_eq!(
+            INDEX_HTML.matches("<nav").count(),
+            1,
+            "exactly one <nav> — the rail is the restyled bottom bar"
+        );
+
+        // AC-2: two master-detail views, each a list + detail pane; drill-ins
+        // target the detail pane; the old single #comments/#chat replace-target is
+        // gone (so drill-in no longer overwrites the whole view).
+        assert_eq!(
+            INDEX_HTML.matches("class=\"view md\"").count(),
+            2,
+            "Comments+Chat are master-detail"
+        );
+        assert_eq!(
+            INDEX_HTML.matches("class=\"pane-list\"").count(),
+            2,
+            "two list panes"
+        );
+        assert_eq!(
+            INDEX_HTML.matches("class=\"pane-detail\"").count(),
+            2,
+            "two detail panes"
+        );
+        assert!(
+            INDEX_HTML.contains("detail-open"),
+            "the mobile one-pane toggle"
+        );
+        assert!(
+            INDEX_HTML.contains("paneDetail(\"comments\")")
+                && INDEX_HTML.contains("paneDetail(\"chat\")"),
+            "drill-ins must render into the detail pane"
+        );
+        assert!(
+            !INDEX_HTML.contains("id=\"comments\"") && !INDEX_HTML.contains("id=\"chat\""),
+            "the single #comments/#chat replace-target must be split into panes"
+        );
+
+        // AC-3: a readability cap on the DETAIL/text column at desktop (not just a
+        // comment — the detail pane itself must carry a max-width so prose and the
+        // transcript don't stretch on ultra-wide).
+        assert!(
+            INDEX_HTML.contains(".pane-detail { min-width: 0; max-width:"),
+            "the detail pane must carry a max-width readability cap (REQ-6)"
+        );
+
+        // AC-4: the mobile/live/token wiring is intact (the refactor dropped none).
+        for needle in [
+            "function setView",
+            "withTok",
+            "/stream",
+            "openFileViewer",
+            "startAddAt",
+            "--nav-h",
+            "data-view=",
+        ] {
+            assert!(
+                INDEX_HTML.contains(needle),
+                "responsive refactor dropped: {needle}"
+            );
+        }
+
+        // AC-5: Now/Teloi/Browse stay present and single-pane (not master-detail).
+        for v in ["view-now", "view-telos", "view-browse"] {
+            assert!(INDEX_HTML.contains(&format!("id=\"{v}\"")), "missing {v}");
+        }
+    }
+
     /// AC-1: the token minter yields a non-empty URL-safe token that differs each
     /// call, and `resolve_auth` honors `--no-auth` (open) vs an explicit token.
     #[test]
