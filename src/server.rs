@@ -983,20 +983,21 @@ mod tests {
         // AC-2: two master-detail views, each a list + detail pane; drill-ins
         // target the detail pane; the old single #comments/#chat replace-target is
         // gone (so drill-in no longer overwrites the whole view).
+        // Comments + Chat + Teloi are master-detail (Teloi joined in the teloi-grid slice).
         assert_eq!(
             INDEX_HTML.matches("class=\"view md\"").count(),
-            2,
-            "Comments+Chat are master-detail"
+            3,
+            "Comments+Chat+Teloi are master-detail"
         );
         assert_eq!(
             INDEX_HTML.matches("class=\"pane-list\"").count(),
-            2,
-            "two list panes"
+            3,
+            "three list panes (Comments, Chat, Teloi)"
         );
         assert_eq!(
             INDEX_HTML.matches("class=\"pane-detail\"").count(),
-            2,
-            "two detail panes"
+            3,
+            "three detail panes (Comments, Chat, Teloi)"
         );
         assert!(
             INDEX_HTML.contains("detail-open"),
@@ -1040,6 +1041,56 @@ mod tests {
         for v in ["view-now", "view-telos", "view-browse"] {
             assert!(INDEX_HTML.contains(&format!("id=\"{v}\"")), "missing {v}");
         }
+    }
+
+    /// Teloi-grid-drilldown slice: the Teloi tab is master-detail with a tappable
+    /// telos grid in the list pane and a drill-in detail (statement, witnesses +
+    /// their probe descriptions, tensions naming it, and the telos's claims via the
+    /// shared Browse renderer), with the tensions overview retained.
+    #[test]
+    fn index_html_wires_the_teloi_grid() {
+        // AC-1: master-detail Teloi with a grid + drill-in.
+        for needle in [
+            "id=\"telos-list\"",
+            "id=\"telos-detail\"",
+            "telos-rows",
+            "openTelos(",
+        ] {
+            assert!(
+                INDEX_HTML.contains(needle),
+                "missing teloi grid wiring: {needle}"
+            );
+        }
+        // AC-4: renderTeloi fills the list pane, openTelos the detail pane.
+        assert!(
+            INDEX_HTML.contains("paneList(\"telos\")")
+                && INDEX_HTML.contains("paneDetail(\"telos\")"),
+            "renderTeloi must target the list pane and openTelos the detail pane"
+        );
+        // AC-2: the detail wires witness descriptions, tensions-for-slug, the
+        // telos's claims, and REUSES the shared claimEl (no second renderer).
+        assert!(
+            INDEX_HTML.contains("process?.witnesses") || INDEX_HTML.contains("process.witnesses"),
+            "witness description map"
+        );
+        assert!(
+            INDEX_HTML.contains("fold.claims[\"telos/\" + slug]"),
+            "reads the telos's claims"
+        );
+        assert!(
+            INDEX_HTML.contains("claimEl(c)"),
+            "reuses the Browse claim renderer"
+        );
+        // AC-3: the standalone tensions overview is retained on the list page.
+        assert!(
+            INDEX_HTML.contains("Tensions held"),
+            "the tensions overview was kept"
+        );
+        // AC-4: no new external dependency.
+        assert!(
+            !INDEX_HTML.contains("<script src") && !INDEX_HTML.contains("<link href"),
+            "the page must gain no external JS/CSS dependency"
+        );
     }
 
     /// AC-1: the token minter yields a non-empty URL-safe token that differs each
