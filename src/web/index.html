@@ -89,6 +89,14 @@
   .telos .title { color: var(--telos); font-weight: 650; }
   .telos .stmt { color: var(--dim); font-size: .88rem; margin-top: .25rem; }
   .telos .wit { color: var(--faint); font-size: .73rem; margin-top: .4rem; }
+  /* teloi rows + drill-down */
+  .telos-rows { display: flex; flex-direction: column; gap: .5rem; }
+  .telos-rows .card.telos { cursor: pointer; margin: 0; }
+  .telos-rows .card.telos .stmt { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+  .card.telos.active { box-shadow: 0 0 0 1px var(--telos); }
+  .card.witness { border-left: 3px solid var(--accent-2); }
+  .card.witness .wtype { color: var(--accent-2); font-size: .82rem; }
+  .card.witness .wdesc { color: var(--dim); font-size: .82rem; margin-top: .2rem; }
   .tension { border-left: 3px solid var(--tension); }
   .tension .pair { color: var(--tension); font-weight: 650; font-size: .85rem; }
   .tension .why { color: var(--dim); font-size: .85rem; margin-top: .3rem; }
@@ -318,12 +326,10 @@
     <div class="atoms" id="atoms"></div>
   </div>
 
-  <!-- TELOI: north star -->
-  <div class="view" id="view-telos">
-    <h2>Teloi</h2>
-    <div id="teloi"></div>
-    <h2 id="tension-h" hidden>Tensions held</h2>
-    <div id="tensions"></div>
+  <!-- TELOI: grid + drill-down (master-detail: grid pane + telos detail pane) -->
+  <div class="view md" id="view-telos">
+    <div class="pane-list" id="telos-list"></div>
+    <div class="pane-detail" id="telos-detail"></div>
   </div>
 
   <!-- BROWSE: subjects -->
@@ -464,27 +470,101 @@
     if (!atoms.children.length) atoms.appendChild(el("div", "empty", "no atoms declared"));
   }
 
-  function renderTeloi() {
-    const t = $("teloi"); t.innerHTML = "";
-    const teloi = fold.process?.teloi || [];
-    teloi.forEach((v) => {
-      const card = el("div", "card telos");
-      card.appendChild(el("div", "title", v.title || v.slug));
-      if (v.statement) card.appendChild(el("div", "stmt", v.statement));
-      if (v.witnesses && v.witnesses.length) card.appendChild(el("div", "wit", "witnesses: " + v.witnesses.join(", ")));
-      t.appendChild(card);
-    });
-    if (!teloi.length) t.appendChild(el("div", "empty", "no teloi"));
+  // Teloi is master-detail: renderTeloi fills the list pane (a tappable grid of
+  // telos cards + the retained tensions overview) and runs on every fold tick, so
+  // it must NEVER touch the detail pane — an open telos detail stays put across a
+  // /stream re-render. openTelos fills the detail pane.
+  let selectedTelos = null;
 
-    const tn = $("tensions"); tn.innerHTML = "";
+  function renderTeloi() {
+    const host = paneList("telos");
+    if (!host) return;
+    host.innerHTML = "";
+    const teloi = fold.process?.teloi || [];
+    if (!teloi.length) {
+      host.appendChild(el("div", "empty", "no teloi"));
+    } else {
+      const rows = el("div", "telos-rows");
+      teloi.forEach((v) => {
+        const card = el("div", "card telos" + (v.slug === selectedTelos ? " active" : ""));
+        card.appendChild(el("div", "title", v.title || v.slug));
+        if (v.statement) card.appendChild(el("div", "stmt", v.statement));
+        const n = (v.witnesses || []).length;
+        if (n) card.appendChild(el("div", "wit", n + " witness" + (n === 1 ? "" : "es")));
+        card.addEventListener("click", () => openTelos(v.slug));
+        rows.appendChild(card);
+      });
+      host.appendChild(rows);
+    }
+    // retained "Tensions held" overview (the at-a-glance map)
     const tensions = fold.process?.tensions || [];
-    tensions.forEach((x) => {
-      const card = el("div", "card tension");
-      card.appendChild(el("div", "pair", `${x.between[0]} ⇄ ${x.between[1]}`));
-      if (x.why) card.appendChild(el("div", "why", x.why));
-      tn.appendChild(card);
-    });
-    $("tension-h").hidden = tensions.length === 0;
+    if (tensions.length) {
+      host.appendChild(el("h2", null, "Tensions held"));
+      tensions.forEach((x) => {
+        const card = el("div", "card tension");
+        card.appendChild(el("div", "pair", `${x.between[0]} ⇄ ${x.between[1]}`));
+        if (x.why) card.appendChild(el("div", "why", x.why));
+        host.appendChild(card);
+      });
+    }
+    // seed the detail placeholder the first time, without disturbing an open one
+    const dh = paneDetail("telos");
+    if (dh && !$("view-telos").classList.contains("detail-open") && !dh.childElementCount) {
+      dh.appendChild(el("div", "empty pane-hint", "Select a telos to see its detail."));
+    }
+  }
+
+  function openTelos(slug) {
+    selectedTelos = slug;
+    const host = paneDetail("telos");
+    setDetailOpen("telos", true);
+    host.innerHTML = "";
+    const v = (fold.process?.teloi || []).find((t) => t.slug === slug);
+    host.appendChild(backBar(v ? (v.title || slug) : slug, () => {
+      selectedTelos = null;
+      paneReset("telos", "Select a telos to see its detail.");
+      renderTeloi();
+    }));
+    if (!v) { host.appendChild(el("div", "empty", "telos not found")); return; }
+
+    const head = el("div", "card telos");
+    head.appendChild(el("div", "title", v.title || v.slug));
+    if (v.statement) head.appendChild(el("div", "stmt", v.statement));
+    host.appendChild(head);
+
+    // witnesses, each with its probe description from the schema/witness map
+    const wmap = fold.process?.witnesses || {};
+    if ((v.witnesses || []).length) {
+      host.appendChild(el("h2", null, "Witnesses"));
+      v.witnesses.forEach((wt) => {
+        const w = el("div", "card witness");
+        w.appendChild(el("div", "wtype mono", wt));
+        // honest-ambiguity: don't invent a description we don't have
+        w.appendChild(el("div", "wdesc", wmap[wt] || "(no probe description recorded)"));
+        host.appendChild(w);
+      });
+    }
+
+    // tensions naming this telos
+    const tensions = (fold.process?.tensions || []).filter((x) => x.between[0] === slug || x.between[1] === slug);
+    if (tensions.length) {
+      host.appendChild(el("h2", null, "Tensions"));
+      tensions.forEach((x) => {
+        const t = el("div", "card tension");
+        t.appendChild(el("div", "pair", `${x.between[0]} ⇄ ${x.between[1]}`));
+        if (x.why) t.appendChild(el("div", "why", x.why));
+        host.appendChild(t);
+      });
+    }
+
+    // the telos's recorded claims — reuse the Browse claim renderer
+    const claims = (fold.claims && fold.claims["telos/" + slug]) || [];
+    host.appendChild(el("h2", null, `Claims (${claims.length})`));
+    if (!claims.length) host.appendChild(el("div", "empty", "no live claims"));
+    claims.forEach((c) => host.appendChild(claimEl(c)));
+
+    // re-mark the active card in the list pane
+    renderTeloi();
   }
 
   function renderSubjects() {
