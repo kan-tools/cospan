@@ -105,27 +105,38 @@
   .filter { width: 100%; padding: .7rem .9rem; margin-bottom: .7rem; background: var(--panel); border: 1px solid var(--edge); border-radius: 12px; color: var(--ink); font-size: .92rem; }
   .filter:focus { outline: none; border-color: var(--accent); }
   .filter::placeholder { color: var(--faint); }
-  .subj-group { margin-bottom: .7rem; }
-  .subj-group > .gh { display: flex; align-items: center; gap: .5rem; padding: .35rem .25rem; color: var(--faint); font-size: .76rem; text-transform: uppercase; letter-spacing: .08em; }
-  .subj-group > .gh .count { margin-left: auto; text-transform: none; letter-spacing: 0; }
-
-  details.subj { background: var(--panel); border: 1px solid var(--edge); border-radius: 12px; margin: .38rem 0; overflow: hidden; transition: border-color .15s ease; }
-  details.subj[open] { border-color: var(--edge-2); }
-  details.subj > summary { list-style: none; cursor: pointer; padding: .68rem .85rem; display: flex; align-items: center; gap: .55rem; }
-  details.subj > summary::-webkit-details-marker { display: none; }
-  details.subj > summary:active { background: var(--panel-2); }
-  details.subj > summary .name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  details.subj > summary .n { margin-left: auto; color: var(--dim); font-size: .74rem; background: var(--panel-2); border: 1px solid var(--edge); border-radius: 999px; padding: .08rem .55rem; flex: none; }
-  details.subj > summary .chev { color: var(--faint); transition: transform .18s ease; flex: none; }
-  details.subj[open] > summary .chev { transform: rotate(90deg); }
-  details.subj[open] > summary { border-bottom: 1px solid var(--edge); }
-  .claims { padding: .35rem .85rem .65rem; }
   .claim { padding: .6rem 0; border-top: 1px dashed var(--edge); }
   .claim:first-child { border-top: none; }
   .claim .row1 { display: flex; align-items: baseline; gap: .5rem; flex-wrap: wrap; }
   .kind { font-size: .66rem; text-transform: uppercase; letter-spacing: .06em; padding: .12rem .48rem; border-radius: 6px; background: var(--panel-2); color: var(--dim); border: 1px solid var(--edge); }
   .kind.Decision { color: #a6c8ff; } .kind.Result { color: var(--good); } .kind.Observation { color: #c8d0dc; }
-  .kind.Plan { color: var(--telos); } .kind.Subject { color: var(--accent); } .kind.Retraction, .kind.Status { color: var(--warn); }
+  .kind.Plan { color: var(--telos); } .kind.Subject { color: var(--accent); }
+  .kind.Publication { color: #5ad6c0; } .kind.Relation { color: var(--accent-2); }
+  .kind.Retraction { color: var(--bad); } .kind.Status { color: var(--warn); }
+  /* browse: subject rows + timeline + state badges */
+  .bgroup-h { color: var(--faint); font-size: .72rem; text-transform: uppercase; letter-spacing: .06em; margin: .7rem .2rem .35rem; }
+  .brow { display: flex; align-items: center; gap: .5rem; padding: .55rem .8rem; background: var(--panel); border: 1px solid var(--edge); border-radius: 10px; margin: .3rem 0; cursor: pointer; }
+  .brow:active { background: var(--panel-2); }
+  .brow .bname { font-size: .85rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .brow .bstate { margin-left: auto; display: flex; align-items: center; gap: .35rem; flex: none; }
+  .bkind { font-size: .6rem; text-transform: uppercase; letter-spacing: .04em; color: var(--dim); }
+  .sbadge { font-size: .6rem; text-transform: uppercase; letter-spacing: .04em; padding: .08rem .4rem; border-radius: 999px; border: 1px solid var(--edge); color: var(--dim); background: var(--panel-2); }
+  .sbadge.published { color: var(--good); border-color: rgba(126,231,135,.4); }
+  .sbadge.retracted { color: var(--bad); border-color: rgba(247,118,142,.4); }
+  .sbadge.status { color: var(--warn); border-color: rgba(227,179,65,.4); }
+  .tl-row { display: flex; align-items: flex-start; gap: .55rem; padding: .5rem .7rem; background: var(--panel); border: 1px solid var(--edge); border-radius: 10px; margin: .28rem 0; cursor: pointer; }
+  .tl-row:active { background: var(--panel-2); }
+  .tl-glyph { flex: none; font-size: .95rem; width: 1.2rem; text-align: center; line-height: 1.4; }
+  .tl-glyph.kind { background: none; border: none; padding: 0; }  /* colored by kind, no chip chrome */
+  .tl-main { min-width: 0; flex: 1; }
+  .tl-top { display: flex; align-items: baseline; gap: .5rem; }
+  .tl-subj { color: var(--faint); font-size: .72rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tl-time { margin-left: auto; color: var(--faint); font-size: .7rem; flex: none; }
+  .tl-sum { color: var(--dim); font-size: .84rem; margin-top: .15rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .cap-note { color: var(--faint); font-size: .74rem; text-align: center; padding: .6rem; }
+  .detail-head { margin-bottom: .5rem; }
+  .detail-head .dh-name { font-weight: 650; word-break: break-word; }
+  .detail-head .dh-state { margin-top: .3rem; display: flex; gap: .35rem; flex-wrap: wrap; }
   .claim .meta { color: var(--faint); font-size: .73rem; margin-left: auto; }
   .claim .summary { margin-top: .32rem; color: var(--ink); font-size: .9rem; word-break: break-word; }
   .claim .arts { margin-top: .34rem; display: flex; flex-wrap: wrap; gap: .3rem; }
@@ -279,20 +290,25 @@
     /* the content region scrolls (single-pane views scroll here) */
     main { grid-column: 2; grid-row: 2; min-height: 0; overflow-y: auto; max-width: none; margin: 0; padding: 1.3rem 1.7rem 2.2rem; }
 
-    /* single-pane views: cap the reading width so text doesn't stretch */
-    #view-now, #view-telos, #view-browse { max-width: 820px; }  /* readability cap */
+    /* single-pane views (only Now now): cap the reading width, centered so the
+       cap reads as an intentional page, not a left-aligned block with a gutter */
+    #view-now { max-width: 820px; margin: 0 auto; }  /* readability cap */
 
-    /* master-detail: list beside detail, filling the content region; each pane
-       scrolls on its own (both always shown; whole area capped) */
-    .view.md.active { display: grid; grid-template-columns: minmax(260px, 340px) minmax(0, 1fr); gap: 1.4rem; height: 100%; max-width: 1500px; }  /* readability cap */
+    /* master-detail: list beside detail, FILLING the content region — the row is
+       an explicit 1fr so both panes reach full height, and the whole capped area
+       is centered (symmetric gutters) rather than left-aligned with a big gutter
+       on the right. Teloi and Browse are master-detail too, so they must NOT keep
+       the single-pane 820px cap above (an id selector would otherwise beat this). */
+    .view.md.active { display: grid; grid-template-columns: minmax(260px, 340px) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); gap: 1.4rem; height: 100%; max-width: 1500px; margin: 0 auto; }  /* readability cap */
     .view.md .pane-detail { display: block; }
     .view.md.detail-open .pane-list { display: block; }
     .pane-list, .pane-detail { overflow-y: auto; }   /* each pane scrolls independently */
     .pane-list { min-width: 0; }
     /* min-width:0 lets the code viewer scroll instead of blowing out the grid;
-       max-width is the per-column readability cap (REQ-6): the detail prose,
-       the file viewer, and the chat transcript don't stretch on ultra-wide. */
-    .pane-detail { min-width: 0; max-width: 820px; }  /* readability cap */
+       the detail pane fills its column so it scales with the window, and the
+       readability bound is the whole two-pane area's max-width (1500px, above)
+       rather than a fixed per-pane cap that leaves dead space as you widen. */
+    .pane-detail { min-width: 0; }
     .pane-hint { display: block; }
   }
 
@@ -333,9 +349,17 @@
   </div>
 
   <!-- BROWSE: subjects -->
-  <div class="view" id="view-browse">
-    <input class="filter" id="filter" placeholder="filter subjects…" autocomplete="off" autocapitalize="off" spellcheck="false" />
-    <div id="subjects"></div>
+  <!-- BROWSE: subjects + timeline (master-detail: list pane + detail pane) -->
+  <div class="view md" id="view-browse">
+    <div class="pane-list" id="browse-list">
+      <div class="segmented" id="browse-toggle">
+        <button class="seg on" data-mode="subjects">Subjects</button>
+        <button class="seg" data-mode="timeline">Timeline</button>
+      </div>
+      <input class="filter" id="filter" placeholder="filter…" autocomplete="off" autocapitalize="off" spellcheck="false" />
+      <div id="browse-content"></div>
+    </div>
+    <div class="pane-detail" id="browse-detail"></div>
   </div>
 
   <!-- COMMENTS: files → comments → thread (master-detail: list pane + detail pane) -->
@@ -379,7 +403,6 @@
   }
 
   let fold = null;
-  let expanded = new Set();
   let filter = "";
   let activeView = "now";
   let commentsIndex = null;   // [{file,total,unresolved}] from GET /comments
@@ -443,7 +466,7 @@
 
     renderNow();
     renderTeloi();
-    renderSubjects();
+    renderBrowse();
   }
 
   function renderNow() {
@@ -567,46 +590,152 @@
     renderTeloi();
   }
 
-  function renderSubjects() {
-    const host = $("subjects"); host.innerHTML = "";
+  // Browse is master-detail with a [Subjects | Timeline] toggle. renderBrowse
+  // fills only the list-pane content (#browse-content) and runs on every fold
+  // tick, so it must never touch the detail pane — an open detail survives a
+  // /stream re-render (the renderTeloi pattern). The toggle and #filter are
+  // persistent (wired once at init), so typing keeps focus.
+  let browseMode = "subjects";
+  let lastBrowseSig = null;
+  const BROWSE_TIMELINE_CAP = 200;
+  const KIND_GLYPH = {
+    Subject: "◆", Decision: "⚖", Publication: "↑", Plan: "⌖", Observation: "◉",
+    Result: "✔", Status: "◐", Relation: "⇄", Retraction: "⌫",
+  };
+
+  // A subject's current-state summary from its live claims: most-recent kind plus
+  // published/retracted/status flags. (The Status *value* is not in the fold.)
+  function subjectState(subject) {
+    const claims = (fold.claims && fold.claims[subject]) || [];
+    let recent = null;
+    for (const c of claims) if (!recent || (c.recorded_at || 0) > (recent.recorded_at || 0)) recent = c;
+    return {
+      kind: recent ? recent.kind : null,
+      published: claims.some((c) => c.kind === "Publication"),
+      retracted: claims.some((c) => c.kind === "Retraction"),
+      status: claims.some((c) => c.kind === "Status"),
+    };
+  }
+
+  function stateBadges(st) {
+    const wrap = el("span", "bstate");
+    if (st.kind) wrap.appendChild(el("span", "bkind kind " + st.kind, st.kind));
+    if (st.published) wrap.appendChild(el("span", "sbadge published", "published"));
+    if (st.retracted) wrap.appendChild(el("span", "sbadge retracted", "retracted"));
+    if (st.status) wrap.appendChild(el("span", "sbadge status", "status"));
+    return wrap;
+  }
+
+  // A cheap signature of everything the list content depends on: the mode, the
+  // filter, and the claim data (subject + claim counts and the newest timestamp).
+  function browseSig() {
+    const cm = fold.claims || {};
+    let n = 0, newest = 0;
+    for (const s in cm) { const arr = cm[s]; n += arr.length; for (const c of arr) { const t = c.recorded_at || 0; if (t > newest) newest = t; } }
+    return browseMode + "|" + filter + "|" + (fold.subjects || []).length + "|" + n + "|" + newest;
+  }
+
+  function renderBrowse() {
+    const host = $("browse-content");
+    if (!host) return;
+    const all = fold.subjects || [];
+    const badge = $("subjBadge"); badge.hidden = all.length === 0; badge.textContent = all.length;
+    // Skip the rebuild when nothing the list depends on changed — a /stream tick
+    // with identical data must not wipe the list or reset its scroll position
+    // (the Timeline is the longest, most-scrolled list). Mode/filter changes are
+    // in the signature, so a toggle or a keystroke still re-renders.
+    const sig = browseSig();
+    if (sig === lastBrowseSig && host.childElementCount) { seedBrowseHint(); return; }
+    lastBrowseSig = sig;
+    host.innerHTML = "";
+    if (browseMode === "timeline") renderTimeline(host);
+    else renderSubjectsList(host);
+    seedBrowseHint();
+  }
+
+  // Seed the detail placeholder once, without disturbing an open detail.
+  function seedBrowseHint() {
+    const dh = paneDetail("browse");
+    if (dh && !$("view-browse").classList.contains("detail-open") && !dh.childElementCount) {
+      dh.appendChild(el("div", "empty pane-hint", "Select a subject or claim to see its detail."));
+    }
+  }
+
+  function renderSubjectsList(host) {
     const all = fold.subjects || [];
     const subjects = all.filter((s) => !filter || s.toLowerCase().includes(filter));
-
-    const badge = $("subjBadge"); badge.hidden = all.length === 0; badge.textContent = all.length;
-
     if (!subjects.length) { host.appendChild(el("div", "empty", filter ? "no subjects match" : "no subjects")); return; }
-
     const groups = new Map();
     subjects.forEach((s) => { const k = ns(s); if (!groups.has(k)) groups.set(k, []); groups.get(k).push(s); });
-    const keys = [...groups.keys()].sort((a,b) => groups.get(b).length - groups.get(a).length || a.localeCompare(b));
-
+    const keys = [...groups.keys()].sort((a, b) => groups.get(b).length - groups.get(a).length || a.localeCompare(b));
     keys.forEach((k) => {
-      const list = groups.get(k);
-      const g = el("div", "subj-group");
-      const gh = el("div", "gh");
-      gh.appendChild(el("span", "mono", k));
-      gh.appendChild(el("span", "count", String(list.length)));
-      g.appendChild(gh);
-      list.sort().forEach((s) => g.appendChild(subjectEl(s)));
-      host.appendChild(g);
+      host.appendChild(el("div", "bgroup-h mono", k));
+      groups.get(k).sort().forEach((s) => {
+        const row = el("div", "brow");
+        row.appendChild(el("span", "bname mono", leaf(s)));
+        row.appendChild(stateBadges(subjectState(s)));
+        row.addEventListener("click", () => openBrowseSubject(s));
+        host.appendChild(row);
+      });
     });
   }
 
-  function subjectEl(subject) {
+  function renderTimeline(host) {
+    let claims = [];
+    const cm = fold.claims || {};
+    for (const s in cm) for (const c of cm[s]) claims.push(c);
+    claims.sort((a, b) => (b.recorded_at || 0) - (a.recorded_at || 0));
+    if (filter) claims = claims.filter((c) => ((c.subject || "") + " " + (c.kind || "") + " " + summarize(c)).toLowerCase().includes(filter));
+    const total = claims.length;
+    const shown = claims.slice(0, BROWSE_TIMELINE_CAP);
+    if (!shown.length) { host.appendChild(el("div", "empty", filter ? "no claims match" : "no claims")); return; }
+    shown.forEach((c) => host.appendChild(timelineRow(c)));
+    if (total > shown.length) host.appendChild(el("div", "cap-note", `showing ${shown.length} of ${total}`));
+  }
+
+  function timelineRow(c) {
+    const row = el("div", "tl-row");
+    row.appendChild(el("span", "tl-glyph kind " + (c.kind || ""), KIND_GLYPH[c.kind] || "•"));
+    const main = el("div", "tl-main");
+    const top = el("div", "tl-top");
+    top.appendChild(el("span", "kind " + (c.kind || ""), c.kind || "claim"));
+    top.appendChild(el("span", "tl-subj mono", leaf(c.subject || "")));
+    top.appendChild(el("span", "tl-time", fmtWhen(c.recorded_at)));
+    main.appendChild(top);
+    main.appendChild(el("div", "tl-sum", summarize(c)));
+    row.appendChild(main);
+    row.addEventListener("click", () => openBrowseClaim(c));
+    return row;
+  }
+
+  function detailHead(name, st, onName) {
+    const h = el("div", "detail-head");
+    const nm = el("div", "dh-name mono", name);
+    if (onName) { nm.style.cursor = "pointer"; nm.addEventListener("click", onName); }
+    h.appendChild(nm);
+    if (st) { const b = stateBadges(st); b.className = "dh-state"; h.appendChild(b); }
+    return h;
+  }
+
+  function openBrowseSubject(subject) {
+    const host = paneDetail("browse");
+    setDetailOpen("browse", true);
+    host.innerHTML = "";
+    host.appendChild(backBar(subject, () => { paneReset("browse", "Select a subject or claim to see its detail."); renderBrowse(); }));
+    host.appendChild(detailHead(subject, subjectState(subject)));
     const claims = (fold.claims && fold.claims[subject]) || [];
-    const d = el("details", "subj");
-    if (expanded.has(subject)) d.open = true;
-    d.addEventListener("toggle", () => { d.open ? expanded.add(subject) : expanded.delete(subject); });
-    const sum = el("summary");
-    sum.appendChild(el("span", "chev", "›"));
-    sum.appendChild(el("span", "name", leaf(subject)));
-    sum.appendChild(el("span", "n", String(claims.length)));
-    d.appendChild(sum);
-    const body = el("div", "claims");
-    if (!claims.length) body.appendChild(el("div", "cites", "no live claims"));
-    claims.forEach((c) => body.appendChild(claimEl(c)));
-    d.appendChild(body);
-    return d;
+    if (!claims.length) host.appendChild(el("div", "empty", "no live claims"));
+    claims.forEach((c) => host.appendChild(claimEl(c)));
+  }
+
+  function openBrowseClaim(c) {
+    const host = paneDetail("browse");
+    setDetailOpen("browse", true);
+    host.innerHTML = "";
+    const subj = c.subject || "";
+    host.appendChild(backBar(subj || "claim", () => { paneReset("browse", "Select a subject or claim to see its detail."); renderBrowse(); }));
+    host.appendChild(detailHead(subj, null, subj ? () => openBrowseSubject(subj) : null));
+    host.appendChild(claimEl(c));
   }
 
   function claimEl(c) {
@@ -1104,7 +1233,16 @@
   });
 
   document.querySelectorAll("nav button").forEach((b) => b.addEventListener("click", () => setView(b.dataset.view)));
-  $("filter").addEventListener("input", (e) => { filter = e.target.value.trim().toLowerCase(); renderSubjects(); });
+  $("filter").addEventListener("input", (e) => { filter = e.target.value.trim().toLowerCase(); renderBrowse(); });
+  // Browse mode toggle (Subjects | Timeline) — persistent, re-renders only the list content.
+  document.querySelectorAll("#browse-toggle .seg").forEach((b) => {
+    b.addEventListener("click", () => {
+      if (browseMode === b.dataset.mode) return;
+      browseMode = b.dataset.mode;
+      document.querySelectorAll("#browse-toggle .seg").forEach((x) => x.classList.toggle("on", x === b));
+      renderBrowse();
+    });
+  });
 
   setDot(""); setView("now");
   loadCaps();                                   // learn whether writes are enabled

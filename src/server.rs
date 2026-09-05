@@ -983,21 +983,21 @@ mod tests {
         // AC-2: two master-detail views, each a list + detail pane; drill-ins
         // target the detail pane; the old single #comments/#chat replace-target is
         // gone (so drill-in no longer overwrites the whole view).
-        // Comments + Chat + Teloi are master-detail (Teloi joined in the teloi-grid slice).
+        // Comments + Chat + Teloi + Browse are master-detail (Browse joined in the browse-timeline slice).
         assert_eq!(
             INDEX_HTML.matches("class=\"view md\"").count(),
-            3,
-            "Comments+Chat+Teloi are master-detail"
+            4,
+            "Comments+Chat+Teloi+Browse are master-detail"
         );
         assert_eq!(
             INDEX_HTML.matches("class=\"pane-list\"").count(),
-            3,
-            "three list panes (Comments, Chat, Teloi)"
+            4,
+            "four list panes (Comments, Chat, Teloi, Browse)"
         );
         assert_eq!(
             INDEX_HTML.matches("class=\"pane-detail\"").count(),
-            3,
-            "three detail panes (Comments, Chat, Teloi)"
+            4,
+            "four detail panes (Comments, Chat, Teloi, Browse)"
         );
         assert!(
             INDEX_HTML.contains("detail-open"),
@@ -1013,12 +1013,13 @@ mod tests {
             "the single #comments/#chat replace-target must be split into panes"
         );
 
-        // AC-3: a readability cap on the DETAIL/text column at desktop (not just a
-        // comment — the detail pane itself must carry a max-width so prose and the
-        // transcript don't stretch on ultra-wide).
+        // AC-3: a readability cap bounds the master-detail reading width at desktop.
+        // The detail pane fills its column (so it scales with the window — operator
+        // feedback in the browse-timeline slice); the bound is the whole two-pane
+        // area's max-width, so prose still can't stretch unbounded on ultra-wide.
         assert!(
-            INDEX_HTML.contains(".pane-detail { min-width: 0; max-width:"),
-            "the detail pane must carry a max-width readability cap (REQ-6)"
+            INDEX_HTML.contains(".view.md.active") && INDEX_HTML.contains("max-width: 1500px"),
+            "the master-detail area must carry a max-width readability cap (REQ-6)"
         );
 
         // AC-4: the mobile/live/token wiring is intact (the refactor dropped none).
@@ -1087,6 +1088,89 @@ mod tests {
             "the tensions overview was kept"
         );
         // AC-4: no new external dependency.
+        assert!(
+            !INDEX_HTML.contains("<script src") && !INDEX_HTML.contains("<link href"),
+            "the page must gain no external JS/CSS dependency"
+        );
+    }
+
+    /// Browse-timeline-and-formatting slice: Browse is master-detail with a
+    /// [Subjects | Timeline] toggle, per-subject state summaries, a flat capped
+    /// timeline, striking per-operation formatting for all nine kinds, and a
+    /// detail pane reusing the shared claimEl.
+    #[test]
+    fn index_html_wires_the_browse_view() {
+        // AC-1: master-detail Browse shell (toggle + filter + content), still one filter.
+        for needle in [
+            "id=\"browse-list\"",
+            "id=\"browse-detail\"",
+            "id=\"browse-content\"",
+            "id=\"browse-toggle\"",
+            "data-mode=\"subjects\"",
+            "data-mode=\"timeline\"",
+            "id=\"filter\"",
+            "renderBrowse",
+        ] {
+            assert!(
+                INDEX_HTML.contains(needle),
+                "missing browse wiring: {needle}"
+            );
+        }
+        // AC-2: timeline — flatten/sort/cap + a "showing N of M" note + drill-in.
+        assert!(INDEX_HTML.contains("BROWSE_TIMELINE_CAP"), "timeline cap");
+        assert!(INDEX_HTML.contains("recorded_at"), "sorts by recorded_at");
+        assert!(
+            INDEX_HTML.contains("`showing ${") || INDEX_HTML.contains("showing "),
+            "cap note"
+        );
+        assert!(
+            INDEX_HTML.contains("openBrowseClaim("),
+            "timeline claim drill-in"
+        );
+        // AC-3: per-subject state summary from Publication/Retraction/Status.
+        for needle in [
+            "subjectState",
+            "\"Publication\"",
+            "\"Retraction\"",
+            "\"Status\"",
+            "published",
+            "retracted",
+        ] {
+            assert!(
+                INDEX_HTML.contains(needle),
+                "missing state-summary wiring: {needle}"
+            );
+        }
+        // AC-4: per-op formatting — a KIND_GLYPH map + a .kind rule for each kind.
+        assert!(INDEX_HTML.contains("KIND_GLYPH"), "kind glyph map");
+        for kind in [
+            "Subject",
+            "Decision",
+            "Publication",
+            "Plan",
+            "Observation",
+            "Result",
+            "Status",
+            "Relation",
+            "Retraction",
+        ] {
+            assert!(
+                INDEX_HTML.contains(&format!(".kind.{kind}")),
+                "missing kind color rule: {kind}"
+            );
+        }
+        // AC-5: detail pane reuses claimEl; renderBrowse targets the list content.
+        assert!(
+            INDEX_HTML.contains("openBrowseSubject")
+                && INDEX_HTML.contains("paneDetail(\"browse\")")
+                && INDEX_HTML.contains("claimEl("),
+            "detail pane must reuse claimEl via paneDetail(\"browse\")"
+        );
+        assert!(
+            INDEX_HTML.contains("$(\"browse-content\")"),
+            "renderBrowse targets the list-pane content"
+        );
+        // AC-5: no new external dependency.
         assert!(
             !INDEX_HTML.contains("<script src") && !INDEX_HTML.contains("<link href"),
             "the page must gain no external JS/CSS dependency"
