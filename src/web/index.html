@@ -192,11 +192,27 @@
   .segmented { display: flex; gap: .3rem; background: var(--panel-2); border: 1px solid var(--edge); border-radius: 999px; padding: .22rem; margin-bottom: .7rem; }
   .seg { flex: 1; appearance: none; border: none; background: transparent; color: var(--dim); font: inherit; font-size: .82rem; padding: .4rem .6rem; border-radius: 999px; cursor: pointer; }
   .seg.on { background: var(--panel); color: var(--ink); border: 1px solid var(--edge); }
-  .ffile { display: flex; align-items: center; gap: .55rem; padding: .55rem .8rem; background: var(--panel); border: 1px solid var(--edge); border-radius: 10px; margin: .3rem 0; cursor: pointer; }
+  /* files browser: inline directory tree — folders are bold + shaded with a
+     folder icon + a chevron, files are plain with a file icon, and each nested
+     level's container carries a left-border guide line so the hierarchy reads
+     at a glance. Icons are monochrome inline SVG (currentColor), not emoji. */
+  .ficon { flex: none; width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.3; stroke-linejoin: round; stroke-linecap: round; }
+  .ficon-folder { color: var(--accent); }
+  .ficon-file { color: var(--faint); }
+  .fchev { flex: none; width: .7rem; text-align: center; color: var(--faint); font-size: .62rem; }
+  .ffile { display: flex; align-items: center; gap: .45rem; padding: .3rem .45rem; margin: .06rem 0; border-radius: 6px; cursor: pointer; }
   .ffile:active { background: var(--panel-2); }
-  .ffile .fpath { font-size: .84rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ffile .fpath { flex: 1; min-width: 0; font-size: .84rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--dim); }
   .ffile .fmark { flex: none; font-size: .7rem; color: var(--accent); }
-  .ffile .fst { margin-left: auto; flex: none; font-size: .72rem; width: 1.1rem; text-align: center; color: var(--warn); }
+  .ffile .fst { flex: none; font-size: .72rem; width: 1.1rem; text-align: center; color: var(--warn); }
+  .ffile .flink { flex: none; font-size: .6rem; text-transform: uppercase; letter-spacing: .04em; color: var(--warn); border: 1px solid var(--edge); border-radius: 999px; padding: .04rem .35rem; }
+  .fdir { display: flex; align-items: center; gap: .45rem; padding: .32rem .45rem; margin: .1rem 0; cursor: pointer; border-radius: 6px; background: var(--panel-2); }
+  .fdir:active { background: var(--edge); }
+  .fdir .fdname { flex: 1; min-width: 0; font-size: .84rem; color: var(--ink); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .fdir .fcount { flex: none; color: var(--faint); font-size: .7rem; }
+  .ftree-children { margin-left: .75rem; padding-left: .55rem; border-left: 1px solid var(--edge); }
+  .clnum.addable { cursor: pointer; }
+  .clnum.addable:hover { color: var(--accent); }
   .vnotice, .vhint { font-size: .74rem; color: var(--faint); margin: .3rem .2rem .5rem; }
   .vcomments { margin: .2rem 0 .7rem; }
   .vch { font-size: .68rem; text-transform: uppercase; letter-spacing: .1em; color: var(--faint); margin: .2rem 0 .35rem; }
@@ -389,6 +405,21 @@
   const $ = (id) => document.getElementById(id);
   const el = (tag, cls, txt) => { const e = document.createElement(tag); if (cls) e.className = cls; if (txt != null) e.textContent = txt; return e; };
 
+  // Monochrome inline SVG icons (no emoji, no dependency; colored via currentColor
+  // so they follow the theme). Used by the file tree — a folder and a file outline.
+  const SVGNS = "http://www.w3.org/2000/svg";
+  function svgIcon(kind) {
+    const s = document.createElementNS(SVGNS, "svg");
+    s.setAttribute("viewBox", "0 0 16 16");
+    s.setAttribute("class", "ficon ficon-" + kind);
+    s.setAttribute("aria-hidden", "true");
+    const paths = kind === "folder"
+      ? ["M1.75 4.25a1 1 0 0 1 1-1H6l1.5 1.5h6a1 1 0 0 1 1 1v5a1 1 0 0 1-1 1H2.75a1 1 0 0 1-1-1z"]
+      : ["M4 2h5l3 3v9H4z", "M9 2v3h3"];
+    paths.forEach((d) => { const p = document.createElementNS(SVGNS, "path"); p.setAttribute("d", d); s.appendChild(p); });
+    return s;
+  }
+
   // Master-detail (Comments, Chat): the list pane vs the detail pane, and the
   // `.detail-open` toggle that drives the mobile one-pane-at-a-time behavior.
   // At desktop both panes always show (the class is inert), so the same code
@@ -407,8 +438,9 @@
   let activeView = "now";
   let commentsIndex = null;   // [{file,total,unresolved}] from GET /comments
   let commentsMode = "commented"; // Comments tab: "commented" | "files"
-  let filesList = null;       // [{path,status}] from GET /files (all files mode)
+  let filesList = null;       // [{path,status,symlink}] from GET /files (all files mode)
   let filesFilter = "";       // client-side substring filter over filesList
+  let expandedDirs = new Set(); // open directories in the folded file tree (session)
   let caps = { writes: false }; // GET /capabilities — gates the write affordances
   let started = false;        // has the first fold render happened (REQ-5)
   let ws = null;              // the live /stream socket
@@ -905,6 +937,23 @@
     });
   }
 
+  // Build a nested {dirs: Map<name,node>, files: [], count} tree from flat file
+  // objects; `count` is the number of files at/under a node (for the dir badge).
+  function buildFileTree(files) {
+    const root = { dirs: new Map(), files: [], count: 0 };
+    files.forEach((f) => {
+      const parts = f.path.split("/");
+      let node = root; node.count++;
+      for (let i = 0; i < parts.length - 1; i++) {
+        const seg = parts[i];
+        if (!node.dirs.has(seg)) node.dirs.set(seg, { dirs: new Map(), files: [], count: 0 });
+        node = node.dirs.get(seg); node.count++;
+      }
+      node.files.push(f);
+    });
+    return root;
+  }
+
   function renderFilesBrowser(host) {
     const filter = el("input", "filter");
     filter.placeholder = "filter files…";
@@ -917,24 +966,70 @@
     host.appendChild(listWrap);
     // files that already carry comments, for an at-a-glance badge in the list
     const commented = new Set((commentsIndex || []).map((f) => f.file));
+    // exclude kan's published tree and cospan's own sidecar tree — not source to
+    // browse or comment on (GET /files still returns them; the browser hides them)
+    const browsable = (filesList || []).filter((f) => !f.path.startsWith(".claims/") && !f.path.startsWith(".cospan/"));
+
+    const fileRow = (f, label) => {
+      const row = el("div", "ffile");
+      row.appendChild(el("span", "fchev", ""));  // spacer so file icons align under folder icons
+      row.appendChild(svgIcon("file"));
+      row.appendChild(el("span", "fpath mono", label != null ? label : f.path));
+      if (commented.has(f.path)) row.appendChild(el("span", "fmark", "✎"));
+      if (f.symlink) row.appendChild(el("span", "flink", "link"));
+      const st = (f.status || "").trim();
+      if (st) row.appendChild(el("span", "fst", st));
+      row.addEventListener("click", () => {
+        if (f.symlink) {
+          const dh = paneDetail("comments"); setDetailOpen("comments", true);
+          dh.innerHTML = ""; dh.appendChild(backBar(f.path, () => renderCommentsHome()));
+          dh.appendChild(el("div", "empty", "symlinks aren't viewable"));
+          return;
+        }
+        openFileViewer(f.path);
+      });
+      return row;
+    };
+
+    // Inline tree: a folder row (chevron + folder icon + bold name + count) then, when open, its
+    // children in a nested container whose left border is the depth guide line —
+    // dirs first (alpha), then files. Nesting (not paddingLeft) draws the guides.
+    function renderNode(node, prefix, into) {
+      [...node.dirs.keys()].sort().forEach((name) => {
+        const path = prefix + name + "/";
+        const open = expandedDirs.has(path);
+        const drow = el("div", "fdir");
+        drow.appendChild(el("span", "fchev", open ? "▾" : "▸"));
+        drow.appendChild(svgIcon("folder"));
+        drow.appendChild(el("span", "fdname mono", name));
+        drow.appendChild(el("span", "fcount", String(node.dirs.get(name).count)));
+        drow.addEventListener("click", () => { open ? expandedDirs.delete(path) : expandedDirs.add(path); draw(); });
+        into.appendChild(drow);
+        if (open) {
+          const kids = el("div", "ftree-children");
+          renderNode(node.dirs.get(name), path, kids);
+          into.appendChild(kids);
+        }
+      });
+      node.files.forEach((f) => into.appendChild(fileRow(f, f.path.slice(prefix.length))));
+    }
+
     const draw = () => {
       listWrap.innerHTML = "";
       const q = filesFilter.trim().toLowerCase();
-      const rows = (filesList || []).filter((f) => !q || f.path.toLowerCase().includes(q));
-      if (!rows.length) {
-        listWrap.appendChild(el("div", "empty", (filesList && filesList.length) ? "no files match" : "no files"));
+      if (q) {
+        // filtered: a flat list of matching files (full path shown), so a search
+        // finds files without manually expanding directories
+        const rows = browsable.filter((f) => f.path.toLowerCase().includes(q));
+        if (!rows.length) { listWrap.appendChild(el("div", "empty", browsable.length ? "no files match" : "no files")); return; }
+        rows.forEach((f) => listWrap.appendChild(fileRow(f)));
         return;
       }
-      rows.forEach((f) => {
-        const row = el("div", "ffile");
-        if (commented.has(f.path)) row.appendChild(el("span", "fmark", "✎"));
-        row.appendChild(el("span", "fpath mono", f.path));
-        const st = (f.status || "").trim();
-        if (st) row.appendChild(el("span", "fst", st));
-        row.addEventListener("click", () => openFileViewer(f.path));
-        listWrap.appendChild(row);
-      });
+      // folded directory tree
+      if (!browsable.length) { listWrap.appendChild(el("div", "empty", "no files")); return; }
+      renderNode(buildFileTree(browsable), "", listWrap);
     };
+
     filter.addEventListener("input", () => { filesFilter = filter.value; draw(); });
     draw();
   }
@@ -993,7 +1088,7 @@
         : "showing a truncated head — file too large";
       host.appendChild(el("div", "vnotice", notice));
     }
-    if (caps.writes) host.appendChild(el("div", "vhint", "tap a line to comment on it"));
+    if (caps.writes) host.appendChild(el("div", "vhint", "tap a line to comment; tap the line number to add another"));
     const code = el("div", "codeview");
     (fileData.lines || []).forEach((runs, i) => {
       const lineNo = i + 1;
@@ -1002,7 +1097,15 @@
       const marks = byLine.get(lineNo);
       if (marks && marks.length) { row.classList.add("hascomment"); gutter.textContent = marks.length > 1 ? String(marks.length) : "●"; }
       row.appendChild(gutter);
-      row.appendChild(el("span", "clnum", String(lineNo)));
+      const num = el("span", "clnum", String(lineNo));
+      // F3: the line number is a distinct add target — under writes it always
+      // starts a NEW comment on this line, even one that already has comments
+      // (whose gutter/code tap opens the thread).
+      if (caps.writes) {
+        num.classList.add("addable");
+        num.addEventListener("click", (e) => { e.stopPropagation(); startAddAt(file, lineNo); });
+      }
+      row.appendChild(num);
       const src = el("span", "csrc");
       if (!runs.length) src.appendChild(document.createTextNode(" "));
       runs.forEach((run) => { const sp = el("span", null, run.t); if (run.c) sp.style.color = run.c; src.appendChild(sp); });
