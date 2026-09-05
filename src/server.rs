@@ -472,9 +472,16 @@ async fn get_files(State(shared): State<Shared>) -> Json<serde_json::Value> {
         let files: Vec<serde_json::Value> = filetree::list(&repo)
             .into_iter()
             .map(|e| {
+                // `symlink` lets the browser badge (and refuse to open) a symlink
+                // rather than list it as a dead row — the viewer's guard rejects
+                // it anyway. `filetree::list` (shared with the TUI) is untouched.
+                let symlink = std::fs::symlink_metadata(repo.join(&e.path))
+                    .map(|m| m.file_type().is_symlink())
+                    .unwrap_or(false);
                 serde_json::json!({
                     "path": e.path.to_string_lossy(),
                     "status": filetree::marker(e.status).to_string(),
+                    "symlink": symlink,
                 })
             })
             .collect();
@@ -950,15 +957,12 @@ mod tests {
             );
         }
         // The add affordance (startAddAt) is reached only under caps.writes — the
-        // tap handler guards it, so a read-only page never offers it.
-        let tap = INDEX_HTML
-            .split_once("startAddAt(file, lineNo)")
-            .expect("tap handler present")
-            .0;
-        let guard = &tap[tap.len().saturating_sub(60)..];
+        // row-tap handler guards it explicitly, so a read-only page never offers it.
+        // (The line-number add target, F3, is gated by an enclosing `if (caps.writes)`
+        // block — asserted in index_html_wires_the_file_tree.)
         assert!(
-            guard.contains("caps.writes"),
-            "startAddAt must be gated on caps.writes, saw: {guard}"
+            INDEX_HTML.contains("if (caps.writes) startAddAt(file, lineNo)"),
+            "the row-tap add must be gated on caps.writes"
         );
     }
 
@@ -1174,6 +1178,49 @@ mod tests {
         assert!(
             !INDEX_HTML.contains("<script src") && !INDEX_HTML.contains("<link href"),
             "the page must gain no external JS/CSS dependency"
+        );
+    }
+
+    /// Comments-file-tree slice: the files browser is a folded directory tree that
+    /// excludes `.claims/`, badges symlinks instead of dead-listing them, and the
+    /// viewer's line number is a distinct add target (F3).
+    #[test]
+    fn index_html_wires_the_file_tree() {
+        // AC-1: folded directory tree in the files browser.
+        for needle in [
+            "buildFileTree",
+            "\"fdir\"",
+            "expandedDirs",
+            "openFileViewer(",
+            "ftree-children", // nested containers = depth guide lines
+            "svgIcon(",       // monochrome inline SVG folder/file icons (not emoji)
+            "ficon-folder",
+        ] {
+            assert!(
+                INDEX_HTML.contains(needle),
+                "missing file-tree wiring: {needle}"
+            );
+        }
+        // AC-2: exclude the .claims/ (and .cospan/) trees from the browser.
+        assert!(
+            INDEX_HTML.contains("startsWith(\".claims/\")")
+                && INDEX_HTML.contains("startsWith(\".cospan/\")"),
+            ".claims/ and .cospan/ must be excluded from the browser"
+        );
+        // AC-3 (client half): symlinks are badged and not opened in the viewer.
+        assert!(
+            INDEX_HTML.contains("f.symlink"),
+            "browser reads the symlink flag"
+        );
+        assert!(
+            INDEX_HTML.contains("symlinks aren't viewable"),
+            "a symlink tap shows a note, not the viewer's guard error"
+        );
+        // AC-4: F3 — the line number is a distinct add target under writes.
+        assert!(
+            INDEX_HTML.contains("num.classList.add(\"addable\")")
+                && INDEX_HTML.contains("e.stopPropagation()"),
+            "the line number must be a distinct add target (F3)"
         );
     }
 

@@ -298,6 +298,51 @@ fn files_endpoint_lists_browsable_files_behind_auth() {
 }
 
 #[test]
+#[cfg(unix)]
+fn files_endpoint_flags_symlinks() {
+    // AC-3 (comments-file-tree): each GET /files entry carries a `symlink` bool —
+    // false for a normal file, true for a committed symlink — so the browser can
+    // badge (not dead-list) symlinks.
+    use std::os::unix::fs::symlink;
+    let repo = git_repo("symlink");
+    symlink("/etc/hosts", repo.join("link")).unwrap();
+    let git = |args: &[&str]| {
+        std::process::Command::new("git")
+            .arg("-C")
+            .arg(&repo)
+            .args(args)
+            .output()
+            .unwrap();
+    };
+    git(&["add", "link"]);
+    git(&["commit", "-qm", "link"]);
+
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    rt.block_on(async {
+        let port = spawn_repo(&repo, Auth::None, 64).await;
+        let idx: serde_json::Value =
+            serde_json::from_str(&http_body(port, "/files").await).unwrap();
+        let files = idx["files"].as_array().unwrap();
+        assert!(
+            files.iter().all(|f| f["symlink"].is_boolean()),
+            "each file carries a symlink flag: {idx}"
+        );
+        let by = |p: &str| files.iter().find(|f| f["path"] == p);
+        assert_eq!(
+            by("src/a.rs").map(|f| f["symlink"].as_bool()),
+            Some(Some(false)),
+            "a normal file is not a symlink"
+        );
+        assert_eq!(
+            by("link").map(|f| f["symlink"].as_bool()),
+            Some(Some(true)),
+            "the committed symlink is flagged"
+        );
+    });
+    std::fs::remove_dir_all(&repo).ok();
+}
+
+#[test]
 fn file_endpoint_highlights_guards_and_truncates() {
     // AC-2 (file-viewer slice): GET /file returns highlighted lines (one array of
     // {t,c} runs per source line); a traversal is guarded; an over-long file comes
