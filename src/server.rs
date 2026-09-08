@@ -916,6 +916,37 @@ mod tests {
         );
     }
 
+    /// AC-4/AC-6 (chat-message-handling): the page renders the server's markdown
+    /// block stream — an `mdBlocks` builder reusing the file-viewer run shape
+    /// (`run.c`/`run.t`), a message-turn branch that consumes `e.blocks` with a
+    /// plain-text fallback, safe `rel="noopener` anchors — and adds no dependency.
+    #[test]
+    fn index_html_wires_chat_markdown() {
+        for needle in [
+            "function mdBlocks(", // the block renderer
+            "e.blocks",           // message turn consumes the block stream
+            "mdcode",             // fenced code block class
+            "run.c",              // reuses the file-viewer run shape
+            "rel = \"noopener",   // sanitized link anchors (REQ-7)
+            "li.value = it.num",  // ordered-list start offset honored (review F1)
+        ] {
+            assert!(
+                INDEX_HTML.contains(needle),
+                "page missing chat-markdown wiring: {needle}"
+            );
+        }
+        // The plain-text fallback for a body with no blocks must remain.
+        assert!(
+            INDEX_HTML.contains("el(\"div\", \"tbody\", e.text || \"\")"),
+            "plain-text message fallback removed"
+        );
+        // telos/disposable: no external script/stylesheet was introduced.
+        assert!(
+            !INDEX_HTML.contains("<script src") && !INDEX_HTML.contains("<link href"),
+            "no external dependency may be added to the page"
+        );
+    }
+
     /// AC-3 (Slice A): the page wires the UX-pass behavior — a Comments tab over
     /// `/comments`+`/thread`, claim drill-in resolving cites through `by_cid`, a
     /// visibility-aware capped-backoff reconnect, and the render-once startup.

@@ -8,7 +8,7 @@
 //! the machine's paths on the wire (`telos/disposable`, and the recorded rule
 //! that cospan does not surface local paths). It writes nothing.
 
-use crate::transcripts::{self, Event, Session, SessionHandle};
+use crate::transcripts::{self, Event, EventKind, Session, SessionHandle};
 use serde_json::{json, Value};
 use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -42,13 +42,22 @@ fn handle_json(h: &SessionHandle) -> Value {
 /// Project one turn — every event, tagged by `kind`, so the client decides what
 /// to collapse (thinking/tool) versus show (messages).
 fn event_json(e: &Event) -> Value {
-    json!({
-        "role": e.role.label(),
-        "kind": e.kind.label(),
-        "ts": e.ts,
-        "is_sidechain": e.is_sidechain,
-        "text": e.text,
-    })
+    let mut m = serde_json::Map::new();
+    m.insert("role".into(), json!(e.role.label()));
+    m.insert("kind".into(), json!(e.kind.label()));
+    m.insert("ts".into(), json!(e.ts));
+    m.insert("is_sidechain".into(), json!(e.is_sidechain));
+    m.insert("text".into(), json!(e.text));
+    // Only message bodies are rendered as markdown (REQ-5); thinking/tool turns
+    // keep their collapsed plain-text drill-down, so they carry no `blocks`. The
+    // client falls back to `text` whenever `blocks` is absent.
+    if e.kind == EventKind::Message {
+        m.insert(
+            "blocks".into(),
+            Value::Array(crate::markdown::render_web(&e.text)),
+        );
+    }
+    Value::Object(m)
 }
 
 /// Project a fully-read session to `{ harness, id, title, git_branch, events }`.
@@ -162,6 +171,39 @@ mod tests {
             !v.to_string().contains("/Users/"),
             "no path in session json"
         );
+    }
+
+    /// AC-3 (chat-message-handling): only message turns carry a `blocks`
+    /// markdown stream; thinking/tool turns do not, and every turn keeps `text`.
+    #[test]
+    fn only_message_turns_carry_markdown_blocks() {
+        let ev = |kind: EventKind, text: &str| Event {
+            role: Role::Assistant,
+            kind,
+            ts: None,
+            id: None,
+            parent: None,
+            is_sidechain: false,
+            text: text.into(),
+        };
+        let msg = event_json(&ev(EventKind::Message, "# H\n\nbody with `code`"));
+        assert!(msg.get("blocks").is_some(), "message must carry blocks");
+        let blocks = msg["blocks"].as_array().unwrap();
+        assert_eq!(blocks[0]["t"], "heading");
+        assert_eq!(msg["text"], "# H\n\nbody with `code`");
+
+        for kind in [
+            EventKind::Thinking,
+            EventKind::ToolResult,
+            EventKind::ToolCall,
+        ] {
+            let v = event_json(&ev(kind, "raw log {json}"));
+            assert!(
+                v.get("blocks").is_none(),
+                "{kind:?} must NOT carry blocks: {v}"
+            );
+            assert_eq!(v["text"], "raw log {json}", "{kind:?} keeps text");
+        }
     }
 
     /// AC-5: the path-leak guard, isolated — neither projection emits a `locator`
