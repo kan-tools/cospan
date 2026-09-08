@@ -250,6 +250,21 @@
   .tpeek { color: var(--faint); font-size: .8rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .tfull { margin: .45rem 0 0; white-space: pre-wrap; word-break: break-word; font-size: .8rem; color: var(--dim); }
 
+  /* ---- markdown message bodies (Chat) — server-rendered blocks (markdown::render_web) ---- */
+  .tbody.md { white-space: normal; }
+  .md > :first-child { margin-top: 0; }
+  .md > :last-child { margin-bottom: 0; }
+  .mdp { margin: .5rem 0; line-height: 1.5; }
+  .mdh { margin: .7rem 0 .35rem; line-height: 1.3; font-weight: 700; color: var(--ink); }
+  .mdh1 { font-size: 1.12rem; } .mdh2 { font-size: 1.04rem; } .mdh3 { font-size: .97rem; }
+  .mdh4, .mdh5, .mdh6 { font-size: .9rem; color: var(--dim); }
+  .md ul, .md ol { margin: .4rem 0; padding-left: 1.35rem; }
+  .md li { margin: .15rem 0; line-height: 1.45; }
+  .md a { color: var(--accent); text-decoration: underline; }
+  code.mdc { background: var(--panel-2); border: 1px solid var(--edge); border-radius: 5px; padding: .04rem .3rem; font-size: .82em; color: var(--warn); }
+  .mdcode { background: var(--bg-2); border: 1px solid var(--edge); border-radius: 10px; padding: .45rem .65rem; margin: .5rem 0; overflow-x: auto; white-space: pre; font-size: .8rem; line-height: 1.5; }
+  hr.mdrule { border: none; border-top: 1px solid var(--edge); margin: .7rem 0; }
+
   .banner { background: rgba(247,118,142,.12); border: 1px solid var(--bad); color: #ffd7de; border-radius: 12px; padding: .65rem .85rem; font-size: .82rem; margin-bottom: 1rem; }
   .empty { color: var(--faint); text-align: center; padding: 2.5rem 1rem; }
 
@@ -1248,6 +1263,78 @@
     events.forEach((e) => host.appendChild(turnEl(e)));
   }
 
+  // ---- markdown rendering ----
+  // The server (markdown::render_web) parses message bodies and ships a block
+  // stream; the page only builds DOM nodes from it — no client-side markdown
+  // parser and no library (telos/disposable). Every text value is set via
+  // textContent/createTextNode, never innerHTML, so untrusted transcript text is
+  // rendered as data.
+  function mdSpan(s) {
+    let node = document.createTextNode(s.text || "");
+    if (s.code) { const c = el("code", "mdc"); c.appendChild(node); node = c; }
+    if (s.em) { const i = document.createElement("em"); i.appendChild(node); node = i; }
+    if (s.strong) { const b = document.createElement("strong"); b.appendChild(node); node = b; }
+    // href is guaranteed http(s) by the server (REQ-7); render a safe anchor.
+    if (s.href) { const a = document.createElement("a"); a.href = s.href; a.target = "_blank"; a.rel = "noopener noreferrer"; a.appendChild(node); node = a; }
+    return node;
+  }
+  function mdSpans(parent, spans) { (spans || []).forEach((s) => parent.appendChild(mdSpan(s))); }
+
+  // Flat items (each with a `depth`) rebuilt into nested <ul>/<ol> via a
+  // per-depth stack; a nested list attaches to the most recent <li>.
+  function mdList(items) {
+    const frag = document.createDocumentFragment();
+    const lists = [];
+    let lastLi = null;
+    (items || []).forEach((it) => {
+      // An item with no inline text is the degraded artifact of a block construct
+      // (a code block/heading) nested inside a list item, which render_web lifts
+      // to top level — skip it rather than leave an empty <li> (review F2).
+      if (!it.spans || !it.spans.length) return;
+      const depth = it.depth || 0;
+      while (lists.length > depth + 1) lists.pop();
+      if (!lists[depth]) {
+        const listEl = document.createElement(it.ordered ? "ol" : "ul");
+        if (depth > 0 && lastLi) lastLi.appendChild(listEl); else frag.appendChild(listEl);
+        lists[depth] = listEl;
+      }
+      const li = document.createElement("li");
+      // Honor the server's ordinal so a list starting at N renders from N, not 1
+      // (review F1). `value` is ignored on a <ul> item, harmless there.
+      if (it.ordered && it.num != null) li.value = it.num;
+      mdSpans(li, it.spans);
+      lists[depth].appendChild(li);
+      lastLi = li;
+    });
+    return frag;
+  }
+
+  function mdBlocks(blocks) {
+    const frag = document.createDocumentFragment();
+    (blocks || []).forEach((b) => {
+      if (b.t === "heading") {
+        const lvl = Math.min(Math.max(b.level || 1, 1), 6);
+        const h = el("div", "mdh mdh" + lvl); mdSpans(h, b.spans); frag.appendChild(h);
+      } else if (b.t === "para") {
+        const p = el("div", "mdp"); mdSpans(p, b.spans); frag.appendChild(p);
+      } else if (b.t === "list") {
+        frag.appendChild(mdList(b.items));
+      } else if (b.t === "code") {
+        // Reuse the file viewer's run shape: each run is { t: text, c: hex }.
+        const pre = el("pre", "mdcode");
+        (b.lines || []).forEach((runs, i) => {
+          if (i) pre.appendChild(document.createTextNode("\n"));
+          if (!runs || !runs.length) { pre.appendChild(document.createTextNode(" ")); return; }
+          runs.forEach((run) => { const sp = el("span", null, run.t); if (run.c) sp.style.color = run.c; pre.appendChild(sp); });
+        });
+        frag.appendChild(pre);
+      } else if (b.t === "rule") {
+        frag.appendChild(el("hr", "mdrule"));
+      }
+    });
+    return frag;
+  }
+
   function turnEl(e) {
     if (COLLAPSES.has(e.kind)) {
       // thinking / tool traffic: a dim one-liner that expands to the text on tap
@@ -1267,7 +1354,16 @@
     r1.appendChild(el("span", "trole", e.role));
     if (e.ts) r1.appendChild(el("span", "meta", e.ts));
     w.appendChild(r1);
-    w.appendChild(el("div", "tbody", e.text || ""));
+    // Message bodies render as markdown blocks when the server supplied them;
+    // otherwise (older fold, or a body that produced no blocks) fall back to the
+    // plain-text body so this path never regresses.
+    if (e.blocks && e.blocks.length) {
+      const body = el("div", "tbody md");
+      body.appendChild(mdBlocks(e.blocks));
+      w.appendChild(body);
+    } else {
+      w.appendChild(el("div", "tbody", e.text || ""));
+    }
     return w;
   }
 
