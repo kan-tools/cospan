@@ -13,7 +13,7 @@
   ],
   "rev": "223mu5narxik7",
   "seq": 0,
-  "of": 6,
+  "of": 7,
   "text_len": 959,
   "content": "p2Rib2R5oWhEZWNpc2lvbqFkdGV4dGBlY2l0ZXOB2CpYJQABcRIgFpkBOJGKQ6eJSoajaPkr67dJIpRjvIrCuC/Lv9bWWs5mYXV0aG9yomNkaWR4OWRpZDprZXk6ekRuYWVTZEJick02TmVZNGk4TW94dUZpeUR0d3gzQUhKOGZqRWQ5NGdySDMxcjhYWWVhZ2VudPZnc3ViamVjdKFlTG9jYWxvbW9iaWxlLXdlYi12aWV3aWFydGlmYWN0c4GhZkNvbW1pdHgoNmRkYjI5YjhjNmQ0MmM4ZDBjN2E4N2M4ZWZjMDk3NTA2Mzg1ZjA4MWl3b3Jrc3BhY2WhaVdvcmtzcGFjZXhAYTIxMzIzZmM2OTcyNjdjMmMzNjg3ODU3NTg2OGQ0OGUzOTMyZTQzOGQwNzcwOWIwYTZlYmNmMjRkMmFkZjhlZmtyZWNvcmRlZF9hdBsABloczX65mA=="
 }
@@ -34,7 +34,7 @@ Interim human view for the mobile read-API, served at GET / by cospan serve. Dec
   "cites": [],
   "rev": "223mu5nas3khh",
   "seq": 1,
-  "of": 6,
+  "of": 7,
   "content": "p2Rib2R5oWdTdWJqZWN0omV0aXRsZXhDSW50ZXJpbSBlbWJlZGRlZCBodW1hbiB2aWV3IChHRVQgLykgYWhlYWQgb2YgdGhlIFBoYXNlLTIgd2ViIGNsaWVudGxzdWJqZWN0X2tpbmRkSWRlYWVjaXRlc4BmYXV0aG9yomNkaWR4OWRpZDprZXk6ekRuYWVTZEJick02TmVZNGk4TW94dUZpeUR0d3gzQUhKOGZqRWQ5NGdySDMxcjhYWWVhZ2VudPZnc3ViamVjdKFlTG9jYWxvbW9iaWxlLXdlYi12aWV3aWFydGlmYWN0c4GhZkNvbW1pdHgoNmRkYjI5YjhjNmQ0MmM4ZDBjN2E4N2M4ZWZjMDk3NTA2Mzg1ZjA4MWl3b3Jrc3BhY2WhaVdvcmtzcGFjZXhAYTIxMzIzZmM2OTcyNjdjMmMzNjg3ODU3NTg2OGQ0OGUzOTMyZTQzOGQwNzcwOWIwYTZlYmNmMjRkMmFkZjhlZmtyZWNvcmRlZF9hdBsABloczYDBRA=="
 }
 ---
@@ -54,7 +54,7 @@ Interim human view for the mobile read-API, served at GET / by cospan serve. Dec
   ],
   "rev": "223mu5nhrxfgf",
   "seq": 2,
-  "of": 6,
+  "of": 7,
   "text_len": 496,
   "content": "p2Rib2R5oWhEZWNpc2lvbqFkdGV4dGBlY2l0ZXOB2CpYJQABcRIghyy+lku0jjiKhHh9rxTIWjWUb1FVro3uR5ItDyeO9SlmYXV0aG9yomNkaWR4OWRpZDprZXk6ekRuYWVTZEJick02TmVZNGk4TW94dUZpeUR0d3gzQUhKOGZqRWQ5NGdySDMxcjhYWWVhZ2VudPZnc3ViamVjdKFlTG9jYWxvbW9iaWxlLXdlYi12aWV3aWFydGlmYWN0c4GhZkNvbW1pdHgoNmRkYjI5YjhjNmQ0MmM4ZDBjN2E4N2M4ZWZjMDk3NTA2Mzg1ZjA4MWl3b3Jrc3BhY2WhaVdvcmtzcGFjZXhAYTIxMzIzZmM2OTcyNjdjMmMzNjg3ODU3NTg2OGQ0OGUzOTMyZTQzOGQwNzcwOWIwYTZlYmNmMjRkMmFkZjhlZmtyZWNvcmRlZF9hdBsABloc236tFA=="
 }
@@ -77,7 +77,7 @@ adversarial review of mobile-web-view: APPROVE-WITH-FOLLOW-UPS — Independent c
   ],
   "rev": "223mu5nhyno7x",
   "seq": 3,
-  "of": 6,
+  "of": 7,
   "text_len": 234,
   "content": "p2Rib2R5oWtPYnNlcnZhdGlvbqFkdGV4dGBlY2l0ZXOB2CpYJQABcRIgbCBCEl5BuSc97mWAptXKEN/eUXRmiQdo0uOqahsXjF9mYXV0aG9yomNkaWR4OWRpZDprZXk6ekRuYWVTZEJick02TmVZNGk4TW94dUZpeUR0d3gzQUhKOGZqRWQ5NGdySDMxcjhYWWVhZ2VudPZnc3ViamVjdKFlTG9jYWxvbW9iaWxlLXdlYi12aWV3aWFydGlmYWN0c4GhZkNvbW1pdHgoNmRkYjI5YjhjNmQ0MmM4ZDBjN2E4N2M4ZWZjMDk3NTA2Mzg1ZjA4MWl3b3Jrc3BhY2WhaVdvcmtzcGFjZXhAYTIxMzIzZmM2OTcyNjdjMmMzNjg3ODU3NTg2OGQ0OGUzOTMyZTQzOGQwNzcwOWIwYTZlYmNmMjRkMmFkZjhlZmtyZWNvcmRlZF9hdBsABloc2+nQTw=="
 }
@@ -100,7 +100,7 @@ Follow-up (UX pass): the /stream reconnect loop retries every 1.5s with no backo
   ],
   "rev": "223mu5nhz24dp",
   "seq": 4,
-  "of": 6,
+  "of": 7,
   "text_len": 211,
   "content": "p2Rib2R5oWtPYnNlcnZhdGlvbqFkdGV4dGBlY2l0ZXOB2CpYJQABcRIgbCBCEl5BuSc97mWAptXKEN/eUXRmiQdo0uOqahsXjF9mYXV0aG9yomNkaWR4OWRpZDprZXk6ekRuYWVTZEJick02TmVZNGk4TW94dUZpeUR0d3gzQUhKOGZqRWQ5NGdySDMxcjhYWWVhZ2VudPZnc3ViamVjdKFlTG9jYWxvbW9iaWxlLXdlYi12aWV3aWFydGlmYWN0c4GhZkNvbW1pdHgoNmRkYjI5YjhjNmQ0MmM4ZDBjN2E4N2M4ZWZjMDk3NTA2Mzg1ZjA4MWl3b3Jrc3BhY2WhaVdvcmtzcGFjZXhAYTIxMzIzZmM2OTcyNjdjMmMzNjg3ODU3NTg2OGQ0OGUzOTMyZTQzOGQwNzcwOWIwYTZlYmNmMjRkMmFkZjhlZmtyZWNvcmRlZF9hdBsABloc2/AIxQ=="
 }
@@ -121,7 +121,30 @@ Follow-up (UX pass): on load the page fetches /fold and then the WS delivers the
   "cites": [],
   "rev": "223mu6iafc4cj",
   "seq": 5,
-  "of": 6,
+  "of": 7,
   "content": "p2Rib2R5oWtQdWJsaWNhdGlvbqFlbGF5ZXJnR2l0VHJlZWVjaXRlc4BmYXV0aG9yomNkaWR4OWRpZDprZXk6ekRuYWVTZEJick02TmVZNGk4TW94dUZpeUR0d3gzQUhKOGZqRWQ5NGdySDMxcjhYWWVhZ2VudPZnc3ViamVjdKFlTG9jYWxvbW9iaWxlLXdlYi12aWV3aWFydGlmYWN0c4GhZkNvbW1pdHgoMjQ5NGM4ZDRmYjY5OTU3NDcwYTNmNmQ2MTdlNTNhNzRiNDRiY2I3MWl3b3Jrc3BhY2WhaVdvcmtzcGFjZXhAYTIxMzIzZmM2OTcyNjdjMmMzNjg3ODU3NTg2OGQ0OGUzOTMyZTQzOGQwNzcwOWIwYTZlYmNmMjRkMmFkZjhlZmtyZWNvcmRlZF9hdBsABlojjLQInA=="
 }
 ---
+***8<***
+---
+{
+  "v": 3,
+  "cid": "bafyreib4h5uphyspkv6fsx3xitdwzs5vftyfi6wi7siztqur5fcfbnos7q",
+  "sig": "19fd76bdb3b1be79cdd77f51284a48da70b993879838684bd7c4b89d235079201acbc6999addb9f49117680fc4d1ee778985fbfe5f8aae667d5178cc383f23df",
+  "author": "did:key:zDnaeSdBbrM6NeY4i8MoxuFiyDtwx3AHJ8fjEd94grH31r8XY",
+  "subject": {
+    "local": "mobile-web-view"
+  },
+  "kind": "observation",
+  "cites": [
+    "bafyreig67dnflh3es5jlj3x27akqjwai44f4xidtv7o5bksffiprjqjkhq"
+  ],
+  "rev": "223mufgng5ndp",
+  "seq": 6,
+  "of": 7,
+  "text_len": 629,
+  "content": "p2Rib2R5oWtPYnNlcnZhdGlvbqFkdGV4dGBlY2l0ZXOB2CpYJQABcRIg3vjaVZ9kl1K07vr4FQTYCOcLy6Bzr93QqkUqHxTBKjxmYXV0aG9yomNkaWR4OWRpZDprZXk6ekRuYWVTZEJick02TmVZNGk4TW94dUZpeUR0d3gzQUhKOGZqRWQ5NGdySDMxcjhYWWVhZ2VudPZnc3ViamVjdKFlTG9jYWxvbW9iaWxlLXdlYi12aWV3aWFydGlmYWN0c4GhZkNvbW1pdHgoNmU5YmM4OGU0YzJiY2Q5N2JkZTUwZDkyYzQ0NzFjODQxYTMwOGU0YWl3b3Jrc3BhY2WhaVdvcmtzcGFjZXhAYTIxMzIzZmM2OTcyNjdjMmMzNjg3ODU3NTg2OGQ0OGUzOTMyZTQzOGQwNzcwOWIwYTZlYmNmMjRkMmFkZjhlZmtyZWNvcmRlZF9hdBsABlpbJsHMyQ=="
+}
+---
+
+UX gap found on-device (mobile web view): you cannot add a FIRST comment to a file that has no comments yet. The Comments tab lists the /comments INDEX (only files that already have sidecars), and the add-comment form only appears once you drill INTO a file. A file with zero comments never appears in the index, so there is no path to comment on it — the tab dead-ends at "no comments in this repo". Needs a file/line picker or a "new comment on <path>" entry not gated behind existing comments. Also: the demo ran read-only (no --allow-writes), so no write affordances showed at all. Both point to the planned bigger UX pass.

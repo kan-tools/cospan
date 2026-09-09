@@ -11,7 +11,7 @@
   "cites": [],
   "rev": "223mtqanifwqx",
   "seq": 0,
-  "of": 3,
+  "of": 4,
   "text_len": 1757,
   "content": "p2Rib2R5oWtPYnNlcnZhdGlvbqFkdGV4dGBlY2l0ZXOAZmF1dGhvcqJjZGlkeDlkaWQ6a2V5OnpEbmFlU2RCYnJNNk5lWTRpOE1veHVGaXlEdHd4M0FISjhmakVkOTRnckgzMXI4WFllYWdlbnT2Z3N1YmplY3ShZUxvY2Fsb21vYmlsZS1mcm9udGVuZGlhcnRpZmFjdHOBoWZDb21taXR4KDk2YzljNTE5ZWUxYjkyOWMyZjg3ODFiYmQ0ODY2NmRjNmY0OTdmOGJpd29ya3NwYWNloWlXb3Jrc3BhY2V4QGEyMTMyM2ZjNjk3MjY3YzJjMzY4Nzg1NzU4NjhkNDhlMzkzMmU0MzhkMDc3MDliMGE2ZWJjZjI0ZDJhZGY4ZWZrcmVjb3JkZWRfYXQbAAZZsabl7OY="
 }
@@ -32,7 +32,7 @@ Recorded vision (not started; deferred until the comment authoring milestone wra
   "cites": [],
   "rev": "223mtqanijasn",
   "seq": 1,
-  "of": 3,
+  "of": 4,
   "content": "p2Rib2R5oWdTdWJqZWN0omV0aXRsZXhKTW9iaWxlIGZyb250ZW5kOiBjb3NwYW4gYXMgYSBob3N0ZWQgQVBJICsgc2VjdXJlIHNvY2tldCArIHBob25lIHdlYiBjbGllbnRsc3ViamVjdF9raW5kZElkZWFlY2l0ZXOAZmF1dGhvcqJjZGlkeDlkaWQ6a2V5OnpEbmFlU2RCYnJNNk5lWTRpOE1veHVGaXlEdHd4M0FISjhmakVkOTRnckgzMXI4WFllYWdlbnT2Z3N1YmplY3ShZUxvY2Fsb21vYmlsZS1mcm9udGVuZGlhcnRpZmFjdHOBoWZDb21taXR4KDk2YzljNTE5ZWUxYjkyOWMyZjg3ODFiYmQ0ODY2NmRjNmY0OTdmOGJpd29ya3NwYWNloWlXb3Jrc3BhY2V4QGEyMTMyM2ZjNjk3MjY3YzJjMzY4Nzg1NzU4NjhkNDhlMzkzMmU0MzhkMDc3MDliMGE2ZWJjZjI0ZDJhZGY4ZWZrcmVjb3JkZWRfYXQbAAZZsabnmq0="
 }
 ---
@@ -50,7 +50,30 @@ Recorded vision (not started; deferred until the comment authoring milestone wra
   "cites": [],
   "rev": "223mtqaniss4n",
   "seq": 2,
-  "of": 3,
+  "of": 4,
   "content": "p2Rib2R5oWtQdWJsaWNhdGlvbqFlbGF5ZXJnR2l0VHJlZWVjaXRlc4BmYXV0aG9yomNkaWR4OWRpZDprZXk6ekRuYWVTZEJick02TmVZNGk4TW94dUZpeUR0d3gzQUhKOGZqRWQ5NGdySDMxcjhYWWVhZ2VudPZnc3ViamVjdKFlTG9jYWxvbW9iaWxlLWZyb250ZW5kaWFydGlmYWN0c4GhZkNvbW1pdHgoOTZjOWM1MTllZTFiOTI5YzJmODc4MWJiZDQ4NjY2ZGM2ZjQ5N2Y4Yml3b3Jrc3BhY2WhaVdvcmtzcGFjZXhAYTIxMzIzZmM2OTcyNjdjMmMzNjg3ODU3NTg2OGQ0OGUzOTMyZTQzOGQwNzcwOWIwYTZlYmNmMjRkMmFkZjhlZmtyZWNvcmRlZF9hdBsABlmxpuxf7A=="
 }
 ---
+***8<***
+---
+{
+  "v": 3,
+  "cid": "bafyreie4dudh4vlk22qqtyg37gl2skjpo3glb36nrojhekrrzpqef6u3du",
+  "sig": "f6dffdcc48f19e41086435dedb440a7d7def9abf0262d2e819e5387caadb0d9463cccdb37ab87f2e64ca40d555b68db406c4093244ce07b071b41587d3c5887d",
+  "author": "did:key:zDnaeSdBbrM6NeY4i8MoxuFiyDtwx3AHJ8fjEd94grH31r8XY",
+  "subject": {
+    "local": "mobile-frontend"
+  },
+  "kind": "plan",
+  "cites": [
+    "bafyreiawteatremkiotyssugunupsk7lw5esffddxsfmfobpzo75nvs2zy"
+  ],
+  "rev": "223muakzupzim",
+  "seq": 3,
+  "of": 4,
+  "text_len": 1109,
+  "content": "p2Rib2R5oWRQbGFuoWR0ZXh0YGVjaXRlc4HYKlglAAFxEiAWmQE4kYpDp4lKhqNo+Svrt0kilGO8isK4L8u/1tZazmZhdXRob3KiY2RpZHg5ZGlkOmtleTp6RG5hZVNkQmJyTTZOZVk0aThNb3h1Rml5RHR3eDNBSEo4ZmpFZDk0Z3JIMzFyOFhZZWFnZW509mdzdWJqZWN0oWVMb2NhbG9tb2JpbGUtZnJvbnRlbmRpYXJ0aWZhY3RzgaFmQ29tbWl0eChkNzdkZmZkMzkyYjFiYTY0Nzk2NGVlODE0ODE0ODlmZGUzYjczYTBhaXdvcmtzcGFjZaFpV29ya3NwYWNleEBhMjEzMjNmYzY5NzI2N2MyYzM2ODc4NTc1ODY4ZDQ4ZTM5MzJlNDM4ZDA3NzA5YjBhNmViY2YyNGQyYWRmOGVma3JlY29yZGVkX2F0GwAGWjQ/qvpL"
+}
+---
+
+Roadmap after alpha.20 (Phases 1-2 shipped: read API + interim embedded web view). Agreed slice order, each its own design->build->review->release: (B) HARDEN + AUTH the remote channel — app-level auth token on cospan serve + the two server follow-ups (resolve repo-internal symlinks in the path guard; cap concurrent /stream connections). The honest prerequisite now that Tailscale already makes serve remote. (A) UX PASS on the embedded GET / view — surface Comments (/comments + /thread already exist), claim drill-in, close the frontend follow-ups (reconnect backoff + visibility gating; redundant initial render); decide embedded-page vs separate PWA. (C) COMMENT WRITES over the API — the observe->control transition (Phase 4): phone sends intents, laptop signs (seed stays local), reusing the S5 write core; depends on B. (Chat) CHAT READS over the API — surface the Chat/transcripts tab (needs Serialize on the transcripts types, deferred by the mobile-api-server design). Sequencing follows telos/observe-now-control-later: authenticate+harden the observe channel, then cross the first write.

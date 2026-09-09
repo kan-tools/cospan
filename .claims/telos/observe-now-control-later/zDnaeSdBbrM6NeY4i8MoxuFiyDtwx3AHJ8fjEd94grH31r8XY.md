@@ -11,7 +11,7 @@
   "cites": [],
   "rev": "223mtfaehxxhl",
   "seq": 0,
-  "of": 5,
+  "of": 7,
   "text_len": 201,
   "content": "p2Rib2R5oWhEZWNpc2lvbqFkdGV4dGBlY2l0ZXOAZmF1dGhvcqJjZGlkeDlkaWQ6a2V5OnpEbmFlU2RCYnJNNk5lWTRpOE1veHVGaXlEdHd4M0FISjhmakVkOTRnckgzMXI4WFllYWdlbnT2Z3N1YmplY3ShZUxvY2FseB90ZWxvcy9vYnNlcnZlLW5vdy1jb250cm9sLWxhdGVyaWFydGlmYWN0c4GhZkNvbW1pdHgoYzMwNWQ5MTlkNzU3ODBhZjI5NDNkN2U4YzEwMDQzMDZhNDExMjIwYWl3b3Jrc3BhY2WhaVdvcmtzcGFjZXhAODM1Zjg3YWRlNDBiZGM4ZGYyMmMzYmJkMjc4ZDU3ZTA0MGZhYTA4Y2M2ZTQxNWQ2YmQwMzg0ZWI5YTdlNTNjZWtyZWNvcmRlZF9hdBsABllZlN71Qw=="
 }
@@ -37,7 +37,7 @@ cospan ships read-only observation first, leaving a clean command-bus seam for s
   "cites": [],
   "rev": "223mtfaehyoso",
   "seq": 1,
-  "of": 5,
+  "of": 7,
   "content": "p2Rib2R5oWdTdWJqZWN0omV0aXRsZXgaT2JzZXJ2ZSBub3csIGNvbnRyb2wgbGF0ZXJsc3ViamVjdF9raW5kZElkZWFlY2l0ZXOAZmF1dGhvcqJjZGlkeDlkaWQ6a2V5OnpEbmFlU2RCYnJNNk5lWTRpOE1veHVGaXlEdHd4M0FISjhmakVkOTRnckgzMXI4WFllYWdlbnT2Z3N1YmplY3ShZUxvY2FseB90ZWxvcy9vYnNlcnZlLW5vdy1jb250cm9sLWxhdGVyaWFydGlmYWN0c4GhZkNvbW1pdHgoYzMwNWQ5MTlkNzU3ODBhZjI5NDNkN2U4YzEwMDQzMDZhNDExMjIwYWl3b3Jrc3BhY2WhaVdvcmtzcGFjZXhAODM1Zjg3YWRlNDBiZGM4ZGYyMmMzYmJkMjc4ZDU3ZTA0MGZhYTA4Y2M2ZTQxNWQ2YmQwMzg0ZWI5YTdlNTNjZWtyZWNvcmRlZF9hdBsABllZlN9Ssw=="
 }
 ---
@@ -57,7 +57,7 @@ cospan ships read-only observation first, leaving a clean command-bus seam for s
   ],
   "rev": "223mtfafr3voq",
   "seq": 2,
-  "of": 5,
+  "of": 7,
   "text_len": 188,
   "content": "p2Rib2R5oWhEZWNpc2lvbqFkdGV4dGBlY2l0ZXOB2CpYJQABcRIgCSFS2scamMlulXqz/K2ur7r7jalinT15cLsH+FlBhDNmYXV0aG9yomNkaWR4OWRpZDprZXk6ekRuYWVTZEJick02TmVZNGk4TW94dUZpeUR0d3gzQUhKOGZqRWQ5NGdySDMxcjhYWWVhZ2VudPZnc3ViamVjdKFlTG9jYWx4H3RlbG9zL29ic2VydmUtbm93LWNvbnRyb2wtbGF0ZXJpYXJ0aWZhY3RzgaFmQ29tbWl0eChjMzA1ZDkxOWQ3NTc4MGFmMjk0M2Q3ZThjMTAwNDMwNmE0MTEyMjBhaXdvcmtzcGFjZaFpV29ya3NwYWNleEA4MzVmODdhZGU0MGJkYzhkZjIyYzNiYmQyNzhkNTdlMDQwZmFhMDhjYzZlNDE1ZDZiZDAzODRlYjlhN2U1M2Nla3JlY29yZGVkX2F0GwAGWVmXcO4g"
 }
@@ -83,7 +83,7 @@ cospan ships read-only observation first, leaving a clean command-bus seam for s
   "cites": [],
   "rev": "223mtfafr4oov",
   "seq": 3,
-  "of": 5,
+  "of": 7,
   "content": "p2Rib2R5oWdTdWJqZWN0omV0aXRsZXgaT2JzZXJ2ZSBub3csIGNvbnRyb2wgbGF0ZXJsc3ViamVjdF9raW5kZElkZWFlY2l0ZXOAZmF1dGhvcqJjZGlkeDlkaWQ6a2V5OnpEbmFlU2RCYnJNNk5lWTRpOE1veHVGaXlEdHd4M0FISjhmakVkOTRnckgzMXI4WFllYWdlbnT2Z3N1YmplY3ShZUxvY2FseB90ZWxvcy9vYnNlcnZlLW5vdy1jb250cm9sLWxhdGVyaWFydGlmYWN0c4GhZkNvbW1pdHgoYzMwNWQ5MTlkNzU3ODBhZjI5NDNkN2U4YzEwMDQzMDZhNDExMjIwYWl3b3Jrc3BhY2WhaVdvcmtzcGFjZXhAODM1Zjg3YWRlNDBiZGM4ZGYyMmMzYmJkMjc4ZDU3ZTA0MGZhYTA4Y2M2ZTQxNWQ2YmQwMzg0ZWI5YTdlNTNjZWtyZWNvcmRlZF9hdBsABllZl3FSLg=="
 }
 ---
@@ -101,7 +101,47 @@ cospan ships read-only observation first, leaving a clean command-bus seam for s
   "cites": [],
   "rev": "223mtfaruekd5",
   "seq": 4,
-  "of": 5,
+  "of": 7,
   "content": "p2Rib2R5oWtQdWJsaWNhdGlvbqFlbGF5ZXJnR2l0VHJlZWVjaXRlc4BmYXV0aG9yomNkaWR4OWRpZDprZXk6ekRuYWVTZEJick02TmVZNGk4TW94dUZpeUR0d3gzQUhKOGZqRWQ5NGdySDMxcjhYWWVhZ2VudPZnc3ViamVjdKFlTG9jYWx4H3RlbG9zL29ic2VydmUtbm93LWNvbnRyb2wtbGF0ZXJpYXJ0aWZhY3RzgaFmQ29tbWl0eChmMTMzNzY0YzExMjU5ODBiNjBmYmVlZjM1MWQ4M2MxZmNmMDc3MTgzaXdvcmtzcGFjZaFpV29ya3NwYWNleEA4MzVmODdhZGU0MGJkYzhkZjIyYzNiYmQyNzhkNTdlMDQwZmFhMDhjYzZlNDE1ZDZiZDAzODRlYjlhN2U1M2Nla3JlY29yZGVkX2F0GwAGWVmvpUC9"
+}
+---
+***8<***
+---
+{
+  "v": 3,
+  "cid": "bafyreigq63inyxmwnufwmqbm5befpsxraqszop34c4bxlzitybnb3as6fi",
+  "sig": "66ec2e187ed9ac326ccdf2c32774edacf084c7f5b9db28e9d29e423bcab01872690ab015709351a6024314d0659ff10d8f4961c344f7680a06af6149ace8a549",
+  "author": "did:key:zDnaeSdBbrM6NeY4i8MoxuFiyDtwx3AHJ8fjEd94grH31r8XY",
+  "subject": {
+    "local": "telos/observe-now-control-later"
+  },
+  "kind": "relation",
+  "cites": [
+    "bafyreidx4ftliemflcwb4sppx3jv7z7nxskwuapr3egkw7xbhje6ffujoe"
+  ],
+  "rev": "223mtymzkxhsu",
+  "seq": 5,
+  "of": 7,
+  "content": "p2Rib2R5oWhSZWxhdGlvbqJka2luZG1JblRlbnNpb25XaXRoZnRhcmdldKFlTG9jYWxwdGVsb3MvZGlzcG9zYWJsZWVjaXRlc4HYKlglAAFxEiB34Wa0EYVYrB5J777TX+ftvJVqAfHZDKt+4TpJ4paJcWZhdXRob3KiY2RpZHg5ZGlkOmtleTp6RG5hZVNkQmJyTTZOZVk0aThNb3h1Rml5RHR3eDNBSEo4ZmpFZDk0Z3JIMzFyOFhZZWFnZW509mdzdWJqZWN0oWVMb2NhbHgfdGVsb3Mvb2JzZXJ2ZS1ub3ctY29udHJvbC1sYXRlcmlhcnRpZmFjdHOBoWZDb21taXR4KDAyMmEzODg0YzcwNWMzYWUzZWNkZTIxNjA2ODhjN2IyZGQ4MDc2MzZpd29ya3NwYWNloWlXb3Jrc3BhY2V4QGEyMTMyM2ZjNjk3MjY3YzJjMzY4Nzg1NzU4NjhkNDhlMzkzMmU0MzhkMDc3MDliMGE2ZWJjZjI0ZDJhZGY4ZWZrcmVjb3JkZWRfYXQbAAZZ9L8OtqE="
+}
+---
+***8<***
+---
+{
+  "v": 3,
+  "cid": "bafyreibolu3znbqacahjrh3mgjwrcjk2iehsjnt7uupicw6yw4og45qkre",
+  "sig": "27a54c11db7bcff13c1c5ade3f0f65aacfe8097b4a596922af3119c6290acf836d114c9a7cb03aa1939176e3a724a7395b21605ab6e08aa6fd77a8abb8795cfb",
+  "author": "did:key:zDnaeSdBbrM6NeY4i8MoxuFiyDtwx3AHJ8fjEd94grH31r8XY",
+  "subject": {
+    "local": "telos/observe-now-control-later"
+  },
+  "kind": "relation",
+  "cites": [
+    "bafyreichym2nzevwhyr22nps6whjrot75h3uhjzzwxp42tdvjhw3mg4jsa"
+  ],
+  "rev": "223mud6uqx3xt",
+  "seq": 6,
+  "of": 7,
+  "content": "p2Rib2R5oWhSZWxhdGlvbqJka2luZG1JblRlbnNpb25XaXRoZnRhcmdldKFlTG9jYWxwdGVsb3MvZGlzcG9zYWJsZWVjaXRlc4HYKlglAAFxEiBHwzTckrY+I6018vWOmLp/6fdDpzm1381MdUntthuJkGZhdXRob3KiY2RpZHg5ZGlkOmtleTp6RG5hZVNkQmJyTTZOZVk0aThNb3h1Rml5RHR3eDNBSEo4ZmpFZDk0Z3JIMzFyOFhZZWFnZW509mdzdWJqZWN0oWVMb2NhbHgfdGVsb3Mvb2JzZXJ2ZS1ub3ctY29udHJvbC1sYXRlcmlhcnRpZmFjdHOBoWZDb21taXR4KGYzYWE1MzkzZTk3MjJjZGFjZDc5N2U2ZDc1ZGY5M2QzZWZhMjVhMjJpd29ya3NwYWNloWlXb3Jrc3BhY2V4QGEyMTMyM2ZjNjk3MjY3YzJjMzY4Nzg1NzU4NjhkNDhlMzkzMmU0MzhkMDc3MDliMGE2ZWJjZjI0ZDJhZGY4ZWZrcmVjb3JkZWRfYXQbAAZaSTVuh0w="
 }
 ---
