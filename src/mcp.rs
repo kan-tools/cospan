@@ -53,7 +53,7 @@ fn sidecar(repo: &Path, file: &str) -> std::path::PathBuf {
 /// tail — and requires containment, closing the hole where an in-repo symlink
 /// (`link -> /etc`) points outside the repo.
 fn guard(repo: &Path, file: &str) -> Result<(), Value> {
-    let err = || json!({ "error": format!("file must be a path inside the repo: {file}") });
+    let err = || json!({ "error": format!("file must be a path inside the repo: {file}"), "code": "bad_request" });
     let p = Path::new(file);
     if p.is_absolute() || p.components().any(|c| c == std::path::Component::ParentDir) {
         return Err(err());
@@ -194,7 +194,7 @@ pub fn file_view(repo: &Path, file: &str) -> Value {
     if let Err(e) = guard(repo, file) {
         return e;
     }
-    let err = || json!({ "error": format!("not a readable file: {file}") });
+    let err = || json!({ "error": format!("not a readable file: {file}"), "code": "bad_request" });
     let mut f = match std::fs::File::open(repo.join(file)) {
         Ok(f) => f,
         Err(_) => return err(),
@@ -297,7 +297,7 @@ pub fn get_thread(repo: &Path, file: &str, id: &str) -> Value {
             let loc = comments::localize_and_update(c, &content);
             comment_json(c, &loc)
         }
-        None => json!({ "error": format!("no comment {id} on {file}") }),
+        None => json!({ "error": format!("no comment {id} on {file}"), "code": "not_found" }),
     }
 }
 
@@ -337,7 +337,7 @@ pub fn add_comment_as(repo: &Path, file: &str, line: usize, body: &str, author: 
         Ok(()) => {
             json!({ "id": id, "state": state_str(loc.state), "line": loc.span.map(|(s,_)| s+1) })
         }
-        Err(e) => json!({ "error": e }),
+        Err(e) => json!({ "error": e, "code": "bad_request" }),
     }
 }
 
@@ -361,11 +361,11 @@ pub fn reply_as(repo: &Path, file: &str, id: &str, body: &str, author: Author) -
         created_at: comments::now_micros(),
     };
     if !comments::add_reply(&mut cs, id, r) {
-        return json!({ "error": format!("no comment {id} on {file}") });
+        return json!({ "error": format!("no comment {id} on {file}"), "code": "not_found" });
     }
     match comments::save(&path, &cs) {
         Ok(()) => json!({ "ok": true, "id": id }),
-        Err(e) => json!({ "error": e }),
+        Err(e) => json!({ "error": e, "code": "bad_request" }),
     }
 }
 
@@ -377,11 +377,11 @@ pub fn resolve(repo: &Path, file: &str, id: &str, value: bool) -> Value {
     let path = sidecar(repo, file);
     let mut cs = comments::load(&path).unwrap_or_default();
     if !comments::set_resolved(&mut cs, id, value) {
-        return json!({ "error": format!("no comment {id} on {file}") });
+        return json!({ "error": format!("no comment {id} on {file}"), "code": "not_found" });
     }
     match comments::save(&path, &cs) {
         Ok(()) => json!({ "ok": true, "id": id, "resolved": value }),
-        Err(e) => json!({ "error": e }),
+        Err(e) => json!({ "error": e, "code": "bad_request" }),
     }
 }
 

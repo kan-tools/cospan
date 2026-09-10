@@ -89,7 +89,7 @@ pub fn chat_session(repo: &Path, id: &str) -> Value {
         .find(|h| h.id == id)
     {
         Some(handle) => session_json(&transcripts::read(&handle)),
-        None => json!({ "error": format!("no chat session {id}") }),
+        None => json!({ "error": format!("no chat session {id}"), "code": "not_found" }),
     }
 }
 
