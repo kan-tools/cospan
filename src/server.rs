@@ -402,23 +402,41 @@ struct CommentsQuery {
     file: Option<String>,
 }
 
+/// Map a core result Value to an HTTP response (api-error-status-semantics): an
+/// error-free body is `200 OK`; an error body's additive `code` selects the
+/// status (`not_found` → 404, `forbidden` → 403, `internal` → 500, and
+/// `bad_request` or any other/absent code → 400). The body is passed through
+/// verbatim, so clients that read `{"error":…}` keep working while the status
+/// now also carries the failure.
+fn respond(v: serde_json::Value) -> Response {
+    if v.get("error").is_none() {
+        return Json(v).into_response();
+    }
+    let status = match v.get("code").and_then(|c| c.as_str()) {
+        Some("not_found") => StatusCode::NOT_FOUND,
+        Some("forbidden") => StatusCode::FORBIDDEN,
+        Some("internal") => StatusCode::INTERNAL_SERVER_ERROR,
+        _ => StatusCode::BAD_REQUEST,
+    };
+    (status, Json(v)).into_response()
+}
+
 /// `GET /comments` — the comment read collection. With no `file`, returns the
 /// index of files that have comments (`mcp::comment_files`); with `?file=<rel>`,
 /// that file's comments (`mcp::list_comments`). The blocking sidecar I/O runs
 /// under `spawn_blocking`; the single-file path is path-guarded, so a
 /// `file=../x` returns the guard error, never a read outside the repo.
-async fn get_comments(
-    State(shared): State<Shared>,
-    Query(q): Query<CommentsQuery>,
-) -> Json<serde_json::Value> {
+async fn get_comments(State(shared): State<Shared>, Query(q): Query<CommentsQuery>) -> Response {
     let repo = shared.repo.clone();
     let v = tokio::task::spawn_blocking(move || match q.file {
         Some(file) => mcp::list_comments(&repo, &file),
         None => mcp::comment_files(&repo),
     })
     .await
-    .unwrap_or_else(|e| serde_json::json!({ "error": format!("task join failed: {e}") }));
-    Json(v)
+    .unwrap_or_else(
+        |e| serde_json::json!({ "error": format!("task join failed: {e}"), "code": "internal" }),
+    );
+    respond(v)
 }
 
 #[derive(Deserialize)]
@@ -428,15 +446,12 @@ struct ThreadQuery {
 }
 
 /// `GET /thread?file=<rel>&id=<id>` — one comment with its full reply thread.
-async fn get_thread(
-    State(shared): State<Shared>,
-    Query(q): Query<ThreadQuery>,
-) -> Json<serde_json::Value> {
+async fn get_thread(State(shared): State<Shared>, Query(q): Query<ThreadQuery>) -> Response {
     let repo = shared.repo.clone();
     let v = tokio::task::spawn_blocking(move || mcp::get_thread(&repo, &q.file, &q.id))
         .await
-        .unwrap_or_else(|e| serde_json::json!({ "error": format!("task join failed: {e}") }));
-    Json(v)
+        .unwrap_or_else(|e| serde_json::json!({ "error": format!("task join failed: {e}"), "code": "internal" }));
+    respond(v)
 }
 
 #[derive(Deserialize)]
@@ -447,18 +462,17 @@ struct ChatQuery {
 /// `GET /chat` — the index of the repo's chat sessions; with `?session=<id>`,
 /// that session's turns. A read of the transcript stores under `spawn_blocking`
 /// (discovery reads files / a SQLite DB); no local path is ever returned.
-async fn get_chat(
-    State(shared): State<Shared>,
-    Query(q): Query<ChatQuery>,
-) -> Json<serde_json::Value> {
+async fn get_chat(State(shared): State<Shared>, Query(q): Query<ChatQuery>) -> Response {
     let repo = shared.repo.clone();
     let v = tokio::task::spawn_blocking(move || match q.session {
         Some(id) => chat::chat_session(&repo, &id),
         None => chat::chat_index(&repo),
     })
     .await
-    .unwrap_or_else(|e| serde_json::json!({ "error": format!("task join failed: {e}") }));
-    Json(v)
+    .unwrap_or_else(
+        |e| serde_json::json!({ "error": format!("task join failed: {e}"), "code": "internal" }),
+    );
+    respond(v)
 }
 
 /// `GET /files` — the browsable file list: the same tracked ∪ untracked-not-ignored
@@ -466,7 +480,7 @@ async fn get_chat(
 /// one-char git marker. A read (no `--allow-writes` needed) and the source for the
 /// phone's file picker, so a file with **no** comments can still be reached to
 /// receive its first one.
-async fn get_files(State(shared): State<Shared>) -> Json<serde_json::Value> {
+async fn get_files(State(shared): State<Shared>) -> Response {
     let repo = shared.repo.clone();
     let v = tokio::task::spawn_blocking(move || {
         let files: Vec<serde_json::Value> = filetree::list(&repo)
@@ -488,8 +502,10 @@ async fn get_files(State(shared): State<Shared>) -> Json<serde_json::Value> {
         serde_json::json!({ "files": files })
     })
     .await
-    .unwrap_or_else(|e| serde_json::json!({ "error": format!("task join failed: {e}") }));
-    Json(v)
+    .unwrap_or_else(
+        |e| serde_json::json!({ "error": format!("task join failed: {e}"), "code": "internal" }),
+    );
+    respond(v)
 }
 
 #[derive(Deserialize)]
@@ -501,28 +517,26 @@ struct FileQuery {
 /// (`mcp::file_view`): `{path, lines, truncated, total}`, capped at
 /// `mcp::FILE_VIEW_MAX_LINES`. Path-guarded under `spawn_blocking`, so
 /// `path=../x` returns the guard error and a non-file path returns `{error}`.
-async fn get_file(
-    State(shared): State<Shared>,
-    Query(q): Query<FileQuery>,
-) -> Json<serde_json::Value> {
+async fn get_file(State(shared): State<Shared>, Query(q): Query<FileQuery>) -> Response {
     let repo = shared.repo.clone();
     let v = tokio::task::spawn_blocking(move || mcp::file_view(&repo, &q.path))
         .await
-        .unwrap_or_else(|e| serde_json::json!({ "error": format!("task join failed: {e}") }));
-    Json(v)
+        .unwrap_or_else(|e| serde_json::json!({ "error": format!("task join failed: {e}"), "code": "internal" }));
+    respond(v)
 }
 
 /// `GET /capabilities` — what this server allows, so the page knows whether to
 /// show write UI without probing a `405`. `{writes, author}` when writes are on,
 /// `{writes:false}` when off.
-async fn get_capabilities(State(shared): State<Shared>) -> Json<serde_json::Value> {
+async fn get_capabilities(State(shared): State<Shared>) -> Response {
     if shared.allow_writes {
         Json(serde_json::json!({
             "writes": true,
             "author": { "who": shared.web_author.who, "id": shared.web_author.id },
         }))
+        .into_response()
     } else {
-        Json(serde_json::json!({ "writes": false }))
+        Json(serde_json::json!({ "writes": false })).into_response()
     }
 }
 
@@ -538,9 +552,9 @@ async fn post_comment(
     State(shared): State<Shared>,
     Query(q): Query<CommentsQuery>,
     Json(b): Json<AddBody>,
-) -> Json<serde_json::Value> {
+) -> Response {
     let Some(file) = q.file else {
-        return Json(serde_json::json!({ "error": "missing ?file=" }));
+        return respond(serde_json::json!({ "error": "missing ?file=", "code": "bad_request" }));
     };
     write_blocking(shared.clone(), move |s| {
         mcp::add_comment_as(&s.repo, &file, b.line, &b.body, s.web_author.clone())
@@ -558,7 +572,7 @@ async fn post_reply(
     State(shared): State<Shared>,
     Query(q): Query<ThreadQuery>,
     Json(b): Json<ReplyBody>,
-) -> Json<serde_json::Value> {
+) -> Response {
     write_blocking(shared.clone(), move |s| {
         mcp::reply_as(&s.repo, &q.file, &q.id, &b.body, s.web_author.clone())
     })
@@ -576,7 +590,7 @@ async fn post_resolve(
     State(shared): State<Shared>,
     Query(q): Query<ThreadQuery>,
     Json(b): Json<ResolveBody>,
-) -> Json<serde_json::Value> {
+) -> Response {
     let value = b.value.unwrap_or(true);
     write_blocking(shared.clone(), move |s| {
         mcp::resolve(&s.repo, &q.file, &q.id, value)
@@ -588,7 +602,7 @@ async fn post_resolve(
 /// the load-modify-save so concurrent writes cannot lose an update. The lock is a
 /// std `Mutex` taken and released inside the blocking closure — never across an
 /// `.await`.
-async fn write_blocking<F>(shared: Shared, f: F) -> Json<serde_json::Value>
+async fn write_blocking<F>(shared: Shared, f: F) -> Response
 where
     F: FnOnce(&Shared) -> serde_json::Value + Send + 'static,
 {
@@ -597,8 +611,10 @@ where
         f(&shared)
     })
     .await
-    .unwrap_or_else(|e| serde_json::json!({ "error": format!("task join failed: {e}") }));
-    Json(v)
+    .unwrap_or_else(
+        |e| serde_json::json!({ "error": format!("task join failed: {e}"), "code": "internal" }),
+    );
+    respond(v)
 }
 
 /// The router over the shared state — the page, the read endpoints, and
@@ -944,6 +960,36 @@ mod tests {
         assert!(
             !INDEX_HTML.contains("<script src") && !INDEX_HTML.contains("<link href"),
             "no external dependency may be added to the page"
+        );
+    }
+
+    /// AC-3 (api-error-status-semantics): `respond` maps an error body's `code`
+    /// to an HTTP status and passes an error-free body through as 200.
+    #[test]
+    fn respond_maps_error_code_to_status() {
+        use axum::http::StatusCode;
+        let s = |v: serde_json::Value| respond(v).status();
+        assert_eq!(s(serde_json::json!({ "ok": true })), StatusCode::OK);
+        assert_eq!(
+            s(serde_json::json!({ "error": "x", "code": "not_found" })),
+            StatusCode::NOT_FOUND
+        );
+        assert_eq!(
+            s(serde_json::json!({ "error": "x", "code": "bad_request" })),
+            StatusCode::BAD_REQUEST
+        );
+        assert_eq!(
+            s(serde_json::json!({ "error": "x", "code": "forbidden" })),
+            StatusCode::FORBIDDEN
+        );
+        assert_eq!(
+            s(serde_json::json!({ "error": "x", "code": "internal" })),
+            StatusCode::INTERNAL_SERVER_ERROR
+        );
+        // An error with no code defaults to 400, not a silent 200.
+        assert_eq!(
+            s(serde_json::json!({ "error": "x" })),
+            StatusCode::BAD_REQUEST
         );
     }
 

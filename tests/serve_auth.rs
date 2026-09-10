@@ -595,9 +595,12 @@ fn writes_are_auth_gated_and_path_guarded() {
             Some(&bearer),
         )
         .await;
-        assert_eq!(st2, 200, "guard returns JSON error, not an HTTP error");
+        // api-error-status-semantics: the guard now maps to a real 400, while the
+        // {error} body is preserved (backward compatible for body-reading clients).
+        assert_eq!(st2, 400, "guard maps to a 400 bad_request");
         let v: serde_json::Value = serde_json::from_str(&b2).unwrap();
         assert!(v.get("error").is_some(), "traversal must be guarded: {v}");
+        assert_eq!(v.get("code").and_then(|c| c.as_str()), Some("bad_request"));
         assert!(
             !std::path::Path::new("/etc/passwd.jsonl").exists(),
             "no write escaped"
@@ -709,4 +712,60 @@ fn stream_cap_rejects_then_releases() {
             "slot must release after the first client disconnects"
         );
     });
+}
+
+#[test]
+fn core_read_errors_map_to_4xx_with_error_body() {
+    // AC-1/AC-4 (api-error-status-semantics): core read errors now carry a real
+    // 4xx status while keeping the {error} body; a valid read stays 200.
+    let repo = git_repo("apierr");
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    rt.block_on(async {
+        let port = spawn_repo(&repo, Auth::None, 64).await;
+        assert_eq!(
+            http_status(port, "/comments?file=src/a.rs", None).await,
+            200,
+            "a valid read is 200"
+        );
+        assert_eq!(
+            http_status(port, "/file?path=../../etc/passwd", None).await,
+            400,
+            "path escape guard → 400"
+        );
+        assert_eq!(
+            http_status(port, "/file?path=src", None).await,
+            400,
+            "a directory is not a readable file → 400"
+        );
+        assert_eq!(
+            http_status(port, "/thread?file=src/a.rs&id=bogus", None).await,
+            404,
+            "unknown comment id → 404"
+        );
+        assert_eq!(
+            http_status(port, "/chat?session=bogus", None).await,
+            404,
+            "unknown chat session → 404"
+        );
+        // AC-4: a 4xx still carries the {error} body, so body-readers keep working.
+        let v: serde_json::Value =
+            serde_json::from_str(&http_body(port, "/chat?session=bogus").await).unwrap();
+        assert!(v.get("error").is_some(), "4xx keeps an error body: {v}");
+    });
+    std::fs::remove_dir_all(&repo).ok();
+}
+
+#[test]
+fn core_write_errors_map_to_4xx() {
+    // AC-2 (api-error-status-semantics): write-path errors carry a real 4xx too.
+    let repo = git_repo("apierrw");
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    rt.block_on(async {
+        let port = spawn_writes(&repo, Auth::None, "web").await;
+        let (st, body) = http_post(port, "/resolve?file=src/a.rs&id=bogus", "{}", None).await;
+        assert_eq!(st, 404, "resolve of an unknown comment id → 404: {body}");
+        let (st2, body2) = http_post(port, "/comments", "{\"line\":1,\"body\":\"x\"}", None).await;
+        assert_eq!(st2, 400, "POST /comments with no ?file= → 400: {body2}");
+    });
+    std::fs::remove_dir_all(&repo).ok();
 }
